@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    @apply bg-surface-50 text-surface-900 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+
+  /* Avoid iOS auto-zoom on focus */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white shadow-card hover:bg-primary-700;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-surface-900 border border-surface-200 hover:bg-surface-50;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-primary-700 hover:bg-primary-50;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+
+  .card {
+    @apply rounded-2xl bg-white shadow-card;
+  }
+
+  .page-container {
+    @apply mx-auto w-full max-w-md px-4;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
