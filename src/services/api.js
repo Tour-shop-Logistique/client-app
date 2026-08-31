@@ -1,9 +1,18 @@
 import axios from 'axios';
 
-export const API_URL = import.meta.env.VITE_API_URL;
+// VITE_API_URL est injecté au build (variable `VITE_`). On enlève un éventuel
+// slash final pour composer proprement `${API_URL}/api`.
+export const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+
+// - Dev  : baseURL relatif `/api` -> réécrit par le proxy Vite (vite.config.js)
+//          vers VITE_API_URL. Même origine côté navigateur, aucun CORS.
+// - Prod : pas de proxy -> on appelle directement le domaine de l'API. Requiert
+//          que le backend autorise le CORS pour l'origine de l'app (config/cors.php).
+// Si VITE_API_URL n'est pas défini, on retombe sur `/api` relatif dans tous les cas.
+const baseURL = import.meta.env.PROD && API_URL ? `${API_URL}/api` : '/api';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
