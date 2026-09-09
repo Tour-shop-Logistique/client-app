@@ -18,7 +18,9 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
   "email": "jean.kouassi@example.com",
   "password": "motdepasse123",
   "password_confirmation": "motdepasse123",
-  "type": "client"
+  "type": "client",
+  "code_pays": "CI",
+  "code_parrain": "BYNHH23T"
 }
 ```
 
@@ -31,6 +33,8 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
 | `password` | string, min 8 | Oui | Doit être accompagné de `password_confirmation` identique |
 | `password_confirmation` | string | Oui | Doit être identique à `password` |
 | `type` | string | Oui | Toujours `"client"` pour l'app cliente — jamais déduit automatiquement |
+| `code_pays` | string (code ISO pays, ex. `CI`) | **Oui pour un client** | Obligatoire uniquement si `type = "client"` (`nullable` pour les autres types) — c'est le seul moyen de rattacher le client à un backoffice/pays, aucune autre source (contrairement à une agence/un backoffice, qui ont leur propre entité). Validé par une règle `ValidCountryCode` (code ISO reconnu). |
+| `code_parrain` | string | Non | Le `code_parrainage` d'un compte existant (voir `docs/api-parrainage-client.md`) — si fourni, doit correspondre à un compte réel (`exists:users,code_parrainage`), sinon 422. Rattache le nouveau compte à ce parrain (`User.parrain_id`), sans effet immédiat visible : les bonus ne se déclenchent que plus tard, sur une activité payante du filleul. |
 
 ### Comportement
 
@@ -51,6 +55,8 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
     "telephone": "0102030405",
     "email": "jean.kouassi@example.com",
     "type": "client",
+    "code_pays": "CI",
+    "parrain_id": "uuid-du-parrain-ou-null",
     "email_verified_at": null,
     "actif": true,
     "...": "..."
@@ -75,6 +81,16 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
 **Validation (422)**
 ```json
 { "success": false, "message": "Erreur de validation des données.", "errors": { "password": ["The password confirmation does not match."] } }
+```
+
+**`code_pays` manquant pour un client (422)** — piège fréquent, ce champ est absent des exemples les plus simples qu'on trouve en ligne mais bien requis ici pour `type: "client"` :
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "code_pays": ["The code pays field is required."] } }
+```
+
+**`code_parrain` invalide (422)** — aucun compte ne porte ce `code_parrainage` :
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "code_parrain": ["The selected code parrain is invalid."] } }
 ```
 
 ---
@@ -278,6 +294,7 @@ Change le mot de passe et **révoque tous les tokens existants** du compte (déc
 
 - **Aucune vérification par téléphone/WhatsApp/OTP n'est implémentée côté backend actuellement**, malgré la colonne `telephone_verified_at` prévue en base et malgré le cahier des charges qui évoque une vérification WhatsApp. Seule la vérification par email existe et est bloquante aujourd'hui. Si le design de l'app PWA prévoit un flux WhatsApp/SMS, il faudra le construire séparément — ne pas s'appuyer dessus pour l'instant.
 - `type: "client"` doit être envoyé explicitement à **chaque** appel de `register` et `login` — ce n'est jamais déduit du contexte ou de la route appelée.
+- `code_pays` est **obligatoire** sur `register` dès que `type: "client"` (422 sinon) — l'écran d'inscription doit inclure un sélecteur de pays, ce n'est pas un champ optionnel malgré son absence dans certains exemples d'API génériques. C'est ce qui permet ensuite de rattacher le client à un backoffice pour la tarification/le parrainage (voir `taux_international`/`taux_national` dans `docs/api-parrainage-client.md`).
 - Stocker le `token` reçu à la connexion (ex: `localStorage`/`sessionStorage` selon la stratégie PWA) et l'envoyer en `Authorization: Bearer <token>` sur toutes les routes authentifiées listées dans `docs/api-enregistrement-expedition-client.md`.
 - Après un `reset-password`, l'ancien token stocké côté client devient invalide (tous révoqués) — il faut détecter une réponse 401 et rediriger vers `login`, ou explicitement invalider le token stocké côté client juste après l'appel `reset-password`.
 - Le flux complet minimal pour un nouveau client : `register` → écran "saisir le code reçu par email" → `verify-email` → `login` automatique ou redirection vers l'écran de connexion.

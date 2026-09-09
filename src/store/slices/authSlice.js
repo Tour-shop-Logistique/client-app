@@ -1,5 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import authService from '../../services/authService';
+import profileService from '../../services/profileService';
+import { setCountry } from './countrySlice';
 
 // Guests can browse the whole app; `isAuthenticated` only gates the moment they
 // validate an expedition or a marketplace order (cahier 4.1). Auth itself is
@@ -25,10 +27,14 @@ const failure = (err, fallback) => ({
 
 export const registerClient = createAsyncThunk(
   'auth/registerClient',
-  async (form, { rejectWithValue }) => {
+  async (form, { dispatch, rejectWithValue }) => {
     try {
-      await authService.register(form);
-      return { email: form.email };
+      const data = await authService.register(form);
+      // Keep the app-wide country (agencies, expeditions) aligned with the one
+      // the account was created for. setCountry ignores an unknown code.
+      const codePays = data?.user?.code_pays || form.codePays;
+      if (codePays) dispatch(setCountry(codePays));
+      return { email: form.email, codePays };
     } catch (err) {
       return rejectWithValue(failure(err, "Impossible de créer le compte."));
     }
@@ -133,6 +139,80 @@ export const resetPassword = createAsyncThunk(
 export const logout = createAsyncThunk('auth/logout', async () => {
   await authService.logout();
 });
+
+// --- Profil (api-profil-et-notifications-client.md) --------------------------
+
+// PUT /api/profile/update. Sends only the changed fields. When the email is
+// changed to a new address the account keeps its token but must re-verify the
+// new address (POST /api/verify-email) before it can `login` again.
+export const updateProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (form, { getState, dispatch, rejectWithValue }) => {
+    try {
+      const previousEmail = getState().auth.user?.email || null;
+      const data = await profileService.update(form);
+      const user = data?.user || null;
+      const emailChanged = Boolean(form.email && form.email !== previousEmail);
+      if (user?.code_pays) dispatch(setCountry(user.code_pays));
+      return { user, emailChanged, message: data?.message };
+    } catch (err) {
+      return rejectWithValue(failure(err, 'Impossible de mettre à jour le profil.'));
+    }
+  }
+);
+
+// PUT /api/profile/change-password — revokes every token on success, so the
+// session is dropped and a fresh `login` is required.
+export const changePassword = createAsyncThunk(
+  'auth/changePassword',
+  async ({ currentPassword, password, passwordConfirmation }, { rejectWithValue }) => {
+    try {
+      const data = await profileService.changePassword({ currentPassword, password, passwordConfirmation });
+      return { message: data?.message };
+    } catch (err) {
+      return rejectWithValue(failure(err, 'Impossible de changer le mot de passe.'));
+    }
+  }
+);
+
+// PUT /api/profile/favorite-addresses — replaces the whole list.
+export const updateFavoriteAddresses = createAsyncThunk(
+  'auth/updateFavoriteAddresses',
+  async (adressesFavoris, { rejectWithValue }) => {
+    try {
+      const data = await profileService.updateFavoriteAddresses(adressesFavoris);
+      return data?.adresses_favoris ?? adressesFavoris;
+    } catch (err) {
+      return rejectWithValue(failure(err, 'Impossible de mettre à jour les adresses favorites.'));
+    }
+  }
+);
+
+// PUT /api/profile/avatar — `avatar` is a plain URL string, not an upload.
+export const updateAvatar = createAsyncThunk(
+  'auth/updateAvatar',
+  async (avatar, { rejectWithValue }) => {
+    try {
+      const data = await profileService.updateAvatar(avatar);
+      return data?.avatar ?? avatar;
+    } catch (err) {
+      return rejectWithValue(failure(err, "Impossible de mettre à jour l'avatar."));
+    }
+  }
+);
+
+// DELETE /api/profile/delete-account — soft delete, revokes every token.
+export const deleteAccount = createAsyncThunk(
+  'auth/deleteAccount',
+  async (password, { rejectWithValue }) => {
+    try {
+      const data = await profileService.deleteAccount(password);
+      return { message: data?.message };
+    } catch (err) {
+      return rejectWithValue(failure(err, 'Impossible de supprimer le compte.'));
+    }
+  }
+);
 
 const clearAuth = (state) => {
   state.user = null;
@@ -242,6 +322,55 @@ const authSlice = createSlice({
         state.resetCodeVerified = false;
       })
       .addCase(resetPassword.rejected, rejected)
+
+      .addCase(updateProfile.pending, pending)
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.status = 'idle';
+        if (action.payload.user) state.user = action.payload.user;
+        // A changed email is unverified again -> route the user to the verify
+        // screen (AuthSheet reads `pendingEmail`).
+        if (action.payload.emailChanged) {
+          state.pendingEmail = action.payload.user?.email || state.pendingEmail;
+          state.emailVerified = false;
+        }
+      })
+      .addCase(updateProfile.rejected, rejected)
+
+      .addCase(changePassword.pending, pending)
+      .addCase(changePassword.fulfilled, (state) => {
+        state.status = 'idle';
+        // change-password revoked every token server-side (session cleared in
+        // profileService) -> drop the local session, force a re-login.
+        clearAuth(state);
+      })
+      .addCase(changePassword.rejected, rejected)
+
+      .addCase(updateFavoriteAddresses.pending, pending)
+      .addCase(updateFavoriteAddresses.fulfilled, (state, action) => {
+        state.status = 'idle';
+        if (state.user) {
+          state.user.adresses_favoris = action.payload;
+          authService.persistUser(state.user);
+        }
+      })
+      .addCase(updateFavoriteAddresses.rejected, rejected)
+
+      .addCase(updateAvatar.pending, pending)
+      .addCase(updateAvatar.fulfilled, (state, action) => {
+        state.status = 'idle';
+        if (state.user) {
+          state.user.avatar = action.payload;
+          authService.persistUser(state.user);
+        }
+      })
+      .addCase(updateAvatar.rejected, rejected)
+
+      .addCase(deleteAccount.pending, pending)
+      .addCase(deleteAccount.fulfilled, (state) => {
+        state.status = 'idle';
+        clearAuth(state);
+      })
+      .addCase(deleteAccount.rejected, rejected)
 
       .addCase(logout.fulfilled, clearAuth)
       .addCase(logout.rejected, clearAuth);

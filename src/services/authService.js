@@ -4,6 +4,8 @@ import api from './api';
 // Mandatory flow for a new client: register -> verify-email -> login.
 // Only `login` ever returns a token (Sanctum, sent as `Authorization: Bearer <token>`).
 // `type: "client"` must be sent explicitly on every register/login call.
+// `register` also requires `code_pays` (ISO country code) for a client and
+// accepts an optional `code_parrain` (an existing account's code_parrainage).
 
 const TOKEN_KEY = 'token';
 const USER_KEY = 'user';
@@ -24,7 +26,20 @@ const clearSession = () => {
 
 // POST /api/register — creates the account with email_verified_at = null and
 // emails a 6-digit code (valid 30 min). Never returns a token.
-const register = async ({ nom, prenoms, telephone, email, password, passwordConfirmation }) => {
+// `codePays` is mandatory for a client (422 `code_pays` otherwise): it is the
+// only link between the client and a backoffice/country (tarification, parrainage).
+// `codeParrain` is optional — an existing account's `code_parrainage`; when sent
+// it must match a real account (422 `code_parrain` otherwise) and sets `parrain_id`.
+const register = async ({
+  nom,
+  prenoms,
+  telephone,
+  email,
+  password,
+  passwordConfirmation,
+  codePays,
+  codeParrain,
+}) => {
   const { data } = await api.post('/register', {
     nom,
     prenoms: prenoms || undefined,
@@ -33,6 +48,8 @@ const register = async ({ nom, prenoms, telephone, email, password, passwordConf
     password,
     password_confirmation: passwordConfirmation,
     type: 'client',
+    code_pays: codePays,
+    code_parrain: codeParrain || undefined,
   });
   return data;
 };
@@ -129,6 +146,8 @@ const authService = {
   getStoredUser,
   getStoredToken,
   clearSession,
+  // Overwrite the cached user after a profile edit (see profileService).
+  persistUser,
 };
 
 export default authService;

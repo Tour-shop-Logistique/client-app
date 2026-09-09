@@ -19,6 +19,7 @@ export const FEATURES = {
   expeditionHistory: true,    // GET /list + PUT /cancel/{id} + GET /statistics (documented)
   agencies: true,             // GET /api/agences, GET /api/agences/{id}      (documented)
   profile: true,              // GET /api/profil + auth flow                  (documented)
+  referral: true,             // GET /api/client/parrainage/*  (mon-code, solde, historique, filleuls) (documented)
 
   // --- Not connected yet ------------------------------------------------
   // Endpoints /expeditions/interville/estimation + /expeditions/interville
@@ -32,9 +33,6 @@ export const FEATURES = {
 
   // No /marketplace/* endpoint is documented anywhere.
   marketplace: false,
-
-  // No /parrainage/* endpoint is documented.
-  referral: false,
 
   // Depends on /expeditions/{id}/facture (undocumented).
   invoices: false,

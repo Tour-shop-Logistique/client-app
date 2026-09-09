@@ -6,7 +6,7 @@ Cette API fait suite au devis (`POST /api/expedition/client/devis`, voir `docs/a
 
 Le serveur **recalcule systématiquement le tarif** à partir des données brutes envoyées — il ne fait jamais confiance à un montant transmis par le client. Il est donc normal (et attendu) de renvoyer les mêmes données que celles utilisées pour le devis, pas le résultat du devis lui-même.
 
-Comme pour le devis, il y a deux modes avec des structures différentes.
+Trois modes avec des structures différentes : `livraison_domicile`, `recuperation_agence` (tous deux précédés d'un devis via `POST /api/expedition/client/devis`, voir `docs/api-devis-client.md`), et `interville` (précédé d'une simulation via `POST /api/expedition/client/simulate-interville`, voir `docs/api-simulation-et-formats-client.md`).
 
 ---
 
@@ -22,6 +22,8 @@ Crée **une seule expédition** de type `simple`.
   "code_pays_depart": "CI",
   "code_pays_destination": "FR",
   "agence_id": "d60b5ab0-f928-4bd7-a4ed-e7e8123b6b37",
+  "ville_depart": "Bouaké",
+  "ville_destination": "Marseille",
 
   "expediteur_nom_prenom": "Jean Kouassi",
   "expediteur_telephone": "0102030405",
@@ -63,6 +65,7 @@ Crée **une seule expédition** de type `simple`.
 | `mode` | string | Oui | `"livraison_domicile"` |
 | `code_pays_depart` / `code_pays_destination` | string (2 lettres) | Oui | Identiques au devis |
 | `agence_id` | uuid | Oui | Agence de départ choisie, doit être active |
+| `ville_depart` / `ville_destination` | string | Non | **Sans effet sur le calcul en mode LD** (le tarif LD est par zone/pays, pas par ville) — acceptés uniquement pour cohérence avec `devis` (même noms de champs) : si le client les a déjà saisis à l'étape du devis, pas besoin de les redemander ici |
 | `expediteur_*` | — | `nom_prenom`, `telephone`, `adresse`, `ville` **requis** ; `email`, `societe`, `code_postal`, `etat`, `quartier` optionnels | Saisie libre par le client (peut expédier pour un tiers) |
 | `destinataire_*` | — | Mêmes règles que `expediteur_*` | |
 | `colis[]` | array, min 1 | Oui | |
@@ -71,7 +74,7 @@ Crée **une seule expédition** de type `simple`.
 | `colis[].prix_emballage` | number | Non | |
 | `colis[].articles[].produit_id` | uuid | Non | Description du contenu uniquement, **aucun impact sur le prix** |
 
-> Le sélecteur de produits pour ce mode doit utiliser `GET /api/produits?eligible_ld=1` (mêmes règles que pour le devis).
+> Le sélecteur de produits pour ce mode doit filtrer côté frontend sur `eligible_ld === true` (mêmes règles que pour le devis — voir `docs/api-devis-client.md`) : `GET /api/produits` ne filtre plus par éligibilité côté serveur.
 
 ### Sortie — succès (201)
 
@@ -160,7 +163,7 @@ Peut créer **plusieurs expéditions en un seul appel** — une par catégorie d
 | `mode` | string | Oui | `"recuperation_agence"` |
 | `code_pays_depart` / `code_pays_destination` | string (2 lettres) | Oui | |
 | `agence_id` | uuid | Oui | |
-| `ville_depart` | string | Non | Utile pour DHD (ligne ville-ville) — prime sur la ville de l'agence si fournie |
+| `ville_depart` | string | Non | Utile pour DHD (ligne ville-ville) — sert seulement de repli si l'agence n'a pas de ville renseignée (`agence.ville` prime toujours) |
 | `ville_destination` | string | Requis pour tester DHD | Idem devis |
 | `expediteur_*` / `destinataire_*` | — | Mêmes règles qu'en mode LD | |
 | `colis[].articles[].produit_id` | uuid | Oui | Depuis `GET /api/produits` (catalogue complet, pas de filtre) |
@@ -213,11 +216,101 @@ Chaque entrée de `resultats[]` a `success: false` avec un `message` au lieu d'`
 
 ---
 
-## Erreurs communes aux deux modes
+## Mode 3 — `interville`
 
-**Non authentifié**
+Crée **une seule expédition** de type `interville`. À utiliser après une simulation via `POST /api/expedition/client/simulate-interville` (voir `docs/api-simulation-et-formats-client.md`).
+
+### Entrée
+
+```json
+{
+  "mode": "interville",
+  "agence_id": "d60b5ab0-f928-4bd7-a4ed-e7e8123b6b37",
+  "destinataire_commune_id": "uuid-commune-bouake",
+
+  "expediteur_nom_prenom": "Jean Kouassi",
+  "expediteur_telephone": "0102030405",
+  "expediteur_email": null,
+  "expediteur_adresse": "Rue 12",
+  "expediteur_ville": "Abidjan",
+  "expediteur_societe": null,
+  "expediteur_code_postal": null,
+  "expediteur_etat": null,
+  "expediteur_quartier": null,
+
+  "destinataire_nom_prenom": "Marie Yao",
+  "destinataire_telephone": "0708090100",
+  "destinataire_email": null,
+  "destinataire_adresse": "Rue du marché",
+  "destinataire_ville": "Bouaké",
+  "destinataire_societe": null,
+  "destinataire_code_postal": null,
+  "destinataire_etat": null,
+  "destinataire_quartier": null,
+
+  "colis": [
+    { "poids": 5, "longueur": 40, "largeur": 30, "hauteur": 20, "format_colis_id": "uuid-format-moyen" }
+  ]
+}
 ```
-HTTP 500 { "success": false, "message": "Unauthenticated.", "error": "Unauthenticated." }
+
+| Champ | Type | Obligatoire | Notes |
+|---|---|---|---|
+| `mode` | string | Oui | `"interville"` |
+| `agence_id` | uuid | Oui | Agence de départ choisie, doit être active **et avoir une commune configurée** (`agence.commune_id`) — sinon `"Aucune commune n'est associée à votre agence."` |
+| `destinataire_commune_id` | uuid | Oui | Commune d'arrivée — pas une ville en texte libre, voir `docs/api-simulation-et-formats-client.md` pour comment la résoudre |
+| `expediteur_*` | — | `nom_prenom`, `telephone`, `adresse`, `ville` requis ; le reste optionnel | Comme les autres modes. `expediteur_ville` n'a qu'un rôle d'affichage — **la commune de départ réelle est toujours celle de l'agence** (`agence.commune_id`), jamais déduite de ce champ |
+| `destinataire_*` | — | Mêmes règles que `expediteur_*` | `destinataire_ville` a aussi un rôle d'affichage uniquement — la commune réelle vient de `destinataire_commune_id` |
+| `colis[]` | array, min 1 | Oui | |
+| `colis[].poids` | number | Oui, min 0.01 | kg |
+| `colis[].longueur/largeur/hauteur` | number | Non | cm |
+| `colis[].format_colis_id` | uuid | Non | Voir `GET /api/expedition/client/formats-colis` — si omis, le format par défaut du backoffice est utilisé |
+| `colis[].prix_emballage` | number | Non | |
+
+### Sortie — succès (201)
+
+```json
+{
+  "success": true,
+  "message": "Demande enregistrée avec succès.",
+  "expedition": {
+    "id": "dee91b34-eaee-4eab-a04b-fbf0f8bdcb2c",
+    "reference": "RDKWDB202609080001",
+    "type_expedition": "interville",
+    "statut_expedition": "en_attente",
+    "is_demande_client": true,
+    "montant_base": "3000.00",
+    "pourcentage_prestation": "0.00",
+    "montant_prestation": "0.00",
+    "montant_expedition": "3000.00",
+    "colis": [ { "code_colis": "DHD-AR-001-RDKWDB", "poids": "5.00", "format_colis_id": "uuid-format-moyen", "...": "..." } ],
+    "agence": { "nom_agence": "Agence ...", "commune_id": "uuid-commune-agence", "...": "..." },
+    "...": "tous les autres champs de l'expédition"
+  }
+}
+```
+
+**Note sur `code_colis`** : le préfixe généré pour l'Interville retombe actuellement sur `DHD-AR` par défaut (limitation connue, partagée avec le générateur de code équivalent côté agence — l'Interville n'a pas encore son propre préfixe dédié dans aucun des deux). Le code reste unique et fonctionnel, seul le préfixe visuel n'est pas idéal ; sans impact sur le fonctionnement.
+
+### Sortie — échec (422)
+
+```json
+{ "success": false, "message": "Agence invalide ou inactive." }
+```
+```json
+{ "success": false, "message": "Aucune commune n'est associée à votre agence." }
+```
+```json
+{ "success": false, "message": "Aucun tarif interville configuré entre ces deux communes pour le format Moyen." }
+```
+
+---
+
+## Erreurs communes aux trois modes
+
+**Non authentifié (401)**
+```json
+{ "success": false, "message": "Unauthenticated.", "error": "Unauthenticated." }
 ```
 (comportement standard de toutes les routes protégées de cette API — pas spécifique à cet endpoint)
 
@@ -260,7 +353,7 @@ Liste complète (pas de pagination — même comportement que la liste des expé
 | Paramètre | Type | Description |
 |---|---|---|
 | `statut` | string | Filtre sur `statut_expedition` (ex: `en_attente`, `accepted`, `refused`, `cancelled`, `termined`, ...) |
-| `type_expedition` | string | Filtre sur `type_expedition` (`simple`, `groupage_afrique`, `groupage_ca`, `groupage_dhd_aerien`, `groupage_dhd_maritime`) |
+| `type_expedition` | string | Filtre sur `type_expedition` (`simple`, `groupage_afrique`, `groupage_ca`, `groupage_dhd_aerien`, `groupage_dhd_maritime`, `interville`) |
 | `date_debut` | date (`YYYY-MM-DD`) | Filtre `created_at >= date_debut` |
 | `date_fin` | date (`YYYY-MM-DD`) | Filtre `created_at <= date_fin` |
 
@@ -408,9 +501,11 @@ Compteurs agrégés sur l'ensemble des expéditions du client connecté (tous st
 | Endpoint | Auth | Usage |
 |---|---|---|
 | `GET /api/agences` / `GET /api/agences/{id}` | Non | Liste/profil des agences |
-| `GET /api/produits` | Non | Catalogue produits (`?code_pays=`, `?eligible_ld=1`) |
-| `POST /api/expedition/client/devis` | Non | Devis (voir `docs/api-devis-client.md`) |
-| `POST /api/expedition/client/store` | Oui (client) | Enregistrement de la demande (documenté ci-dessus) |
+| `GET /api/produits` | Non | Catalogue produits (`?code_pays=` uniquement — filtre d'éligibilité à la charge du frontend) |
+| `POST /api/expedition/client/devis` | Non | Devis LD/Groupage (voir `docs/api-devis-client.md`) |
+| `POST /api/expedition/client/simulate-interville` | Oui (client) | Simulation Interville (voir `docs/api-simulation-et-formats-client.md`) |
+| `GET /api/expedition/client/formats-colis` | Oui (client) | Formats de colis du backoffice du client (voir `docs/api-simulation-et-formats-client.md`) |
+| `POST /api/expedition/client/store` | Oui (client) | Enregistrement de la demande, 3 modes (documenté ci-dessus) |
 | `GET /api/expedition/client/list` | Oui (client) | Liste des expéditions du client connecté |
 | `GET /api/expedition/client/show/{id}` | Oui (client) | Détail d'une expédition du client |
 | `PUT /api/expedition/client/cancel/{id}` | Oui (client) | Annulation d'une demande |

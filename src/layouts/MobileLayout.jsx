@@ -1,6 +1,11 @@
+import { Suspense, lazy } from 'react';
 import { Outlet } from 'react-router-dom';
 import BottomNav from '../components/common/BottomNav';
-import AuthSheet from '../components/auth/AuthSheet';
+
+// Guest-first: the auth sheet is only mounted-visible on demand. Lazy-loading it
+// keeps its deps (react-phone-number-input + bundled country flags) out of the
+// initial bundle.
+const AuthSheet = lazy(() => import('../components/auth/AuthSheet'));
 
 export default function MobileLayout() {
   return (
@@ -9,7 +14,9 @@ export default function MobileLayout() {
         <Outlet />
       </main>
       <BottomNav />
-      <AuthSheet />
+      <Suspense fallback={null}>
+        <AuthSheet />
+      </Suspense>
     </div>
   );
 }

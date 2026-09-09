@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Routes, Route } from 'react-router-dom';
 import MobileLayout from './layouts/MobileLayout';
+import LoadingSpinner from './components/common/LoadingSpinner';
 import { ROUTES } from './routes';
 import authService from './services/authService';
 import { restoreSession } from './store/slices/authSlice';
@@ -30,6 +31,13 @@ import ReferralPage from './pages/Profile/ReferralPage';
 import InvoicesPage from './pages/Profile/InvoicesPage';
 import PageUnavailable from './pages/PageUnavailable';
 import NotFoundPage from './pages/NotFoundPage';
+
+// Secondary account screens — lazy so their deps (react-phone-number-input +
+// bundled country flags, shared with AuthSheet) stay out of the initial bundle.
+const EditProfilePage = lazy(() => import('./pages/Profile/EditProfilePage'));
+const ChangePasswordPage = lazy(() => import('./pages/Profile/ChangePasswordPage'));
+const FavoriteAddressesPage = lazy(() => import('./pages/Profile/FavoriteAddressesPage'));
+const DeleteAccountPage = lazy(() => import('./pages/Profile/DeleteAccountPage'));
 
 // Renders the real page only if its backend is wired (src/config/features.js),
 // otherwise the "Page non disponible" screen.
@@ -63,7 +71,8 @@ export default function App() {
   }
 
   return (
-    <Routes>
+    <Suspense fallback={<div className="page-container py-10"><LoadingSpinner /></div>}>
+      <Routes>
       <Route element={<MobileLayout />}>
         <Route path={ROUTES.HOME} element={gated('home', <HomePage />)} />
 
@@ -84,11 +93,16 @@ export default function App() {
         <Route path={ROUTES.AGENCY_DETAIL} element={gated('agencies', <AgencyDetailPage />)} />
 
         <Route path={ROUTES.PROFILE} element={gated('profile', <ProfilePage />)} />
+        <Route path={ROUTES.PROFILE_EDIT} element={gated('profile', <EditProfilePage />)} />
+        <Route path={ROUTES.PROFILE_PASSWORD} element={gated('profile', <ChangePasswordPage />)} />
+        <Route path={ROUTES.PROFILE_ADDRESSES} element={gated('profile', <FavoriteAddressesPage />)} />
+        <Route path={ROUTES.PROFILE_DELETE} element={gated('profile', <DeleteAccountPage />)} />
         <Route path={ROUTES.PROFILE_REFERRAL} element={gated('referral', <ReferralPage />)} />
         <Route path={ROUTES.PROFILE_INVOICES} element={gated('invoices', <InvoicesPage />)} />
 
         <Route path="*" element={<NotFoundPage />} />
       </Route>
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
