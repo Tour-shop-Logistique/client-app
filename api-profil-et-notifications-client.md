@@ -25,14 +25,15 @@ Met à jour les informations personnelles. Tous les champs sont optionnels (`som
 ### Entrée
 
 ```json
-{ "nom": "Kouassi", "prenoms": "Jean-Pierre", "telephone": "0102030406", "email": "nouveau@example.com", "code_pays": "FR" }
+{ "nom": "Kouassi", "prenoms": "Jean-Pierre", "indicatif_telephone": "+225", "telephone": "0575081162", "email": "nouveau@example.com", "code_pays": "FR" }
 ```
 
 | Champ | Type | Obligatoire | Notes |
 |---|---|---|---|
 | `nom` | string, max 255 | Non | |
 | `prenoms` | string, max 255, nullable | Non | |
-| `telephone` | string | Non | Unique en base (hors le compte courant) |
+| `indicatif_telephone` | string (indicatif international, ex. `+225`) | Non | Indicatif du pays du numéro. À envoyer avec `telephone` quand on modifie le numéro (mêmes deux champs qu'à l'inscription, voir `docs/api-authentification-client.md`). |
+| `telephone` | string | Non | **Numéro national uniquement**, sans indicatif (ex. `0575081162`). Unique en base (hors le compte courant). |
 | `email` | string, email, max 255, nullable | Non | Unique en base (hors le compte courant) |
 | `code_pays` | string (code ISO pays, ex. `FR`) | Non | **Uniquement pour un compte `client`** — `422` (`"The code pays field is prohibited."`) si envoyé par un compte agence/livreur/backoffice, qui dérivent leur pays de leur entité propre. Même validation `ValidCountryCode` qu'à l'inscription (voir `docs/api-authentification-client.md`), insensible à la casse (`"fr"` stocké comme `"FR"`). |
 

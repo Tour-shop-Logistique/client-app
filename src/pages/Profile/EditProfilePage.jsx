@@ -9,6 +9,7 @@ import 'react-phone-number-input/style.css';
 import TopBar from '../../components/common/TopBar';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import { getFlagEmoji, getCountryName } from '../../utils/countries';
+import { splitPhone, joinPhone } from '../../utils/phone';
 import { updateProfile } from '../../store/slices/authSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { ROUTES } from '../../routes';
@@ -18,13 +19,15 @@ function FieldError({ errors, name }) {
   return msg ? <p className="mt-1 text-xs text-red-600">{msg}</p> : null;
 }
 
-// Normalise whatever the backend stored (E.164 or a legacy local number) into an
-// E.164 string PhoneInput can display; give up gracefully if it can't be parsed.
-const toE164 = (value, codePays) => {
-  if (!value) return '';
+// Normalise whatever the backend stored into an E.164 string PhoneInput can
+// display: preferred is the split pair (`indicatif_telephone` + national
+// `telephone`); fall back to a bare E.164 or a legacy local number.
+const seedPhone = (u) => {
+  if (u?.indicatif_telephone) return joinPhone(u.indicatif_telephone, u.telephone);
+  const value = u?.telephone || '';
   if (value.startsWith('+')) return value;
   try {
-    return parsePhoneNumber(value, (codePays || 'CI').toUpperCase())?.number || '';
+    return parsePhoneNumber(value, (u?.code_pays || 'CI').toUpperCase())?.number || '';
   } catch {
     return '';
   }
@@ -41,7 +44,7 @@ export default function EditProfilePage() {
     () => ({
       nom: user?.nom || '',
       prenoms: user?.prenoms || '',
-      telephone: toE164(user?.telephone, user?.code_pays),
+      telephone: seedPhone(user),
       email: user?.email || '',
       codePays: (user?.code_pays || '').toUpperCase(),
     }),
@@ -58,7 +61,8 @@ export default function EditProfilePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.telephone && !isPossiblePhoneNumber(form.telephone)) {
+    const phoneChanged = form.telephone !== initial.telephone;
+    if (phoneChanged && (!form.telephone || !isPossiblePhoneNumber(form.telephone))) {
       toast.error('Numéro de téléphone invalide.');
       return;
     }
@@ -67,7 +71,12 @@ export default function EditProfilePage() {
     const changes = {};
     if (form.nom.trim() !== initial.nom) changes.nom = form.nom.trim();
     if (form.prenoms.trim() !== initial.prenoms) changes.prenoms = form.prenoms.trim() || null;
-    if (form.telephone !== initial.telephone) changes.telephone = form.telephone;
+    if (phoneChanged) {
+      // The API wants the dialing code and the national number in separate fields.
+      const { indicatif, national } = splitPhone(form.telephone);
+      changes.telephone = national;
+      changes.indicatifTelephone = indicatif || null;
+    }
     if (form.email.trim() !== initial.email) changes.email = form.email.trim();
     if (form.codePays && form.codePays !== initial.codePays) changes.codePays = form.codePays;
 

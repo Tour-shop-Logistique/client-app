@@ -26,6 +26,9 @@ const clearSession = () => {
 
 // POST /api/register — creates the account with email_verified_at = null and
 // emails a 6-digit code (valid 30 min). Never returns a token.
+// The phone goes in two fields: `indicatifTelephone` ("+225") and `telephone`
+// (national number only, "0575081162") — never concatenate the dialing code
+// into `telephone`.
 // `codePays` is mandatory for a client (422 `code_pays` otherwise): it is the
 // only link between the client and a backoffice/country (tarification, parrainage).
 // `codeParrain` is optional — an existing account's `code_parrainage`; when sent
@@ -34,6 +37,7 @@ const register = async ({
   nom,
   prenoms,
   telephone,
+  indicatifTelephone,
   email,
   password,
   passwordConfirmation,
@@ -43,6 +47,7 @@ const register = async ({
   const { data } = await api.post('/register', {
     nom,
     prenoms: prenoms || undefined,
+    indicatif_telephone: indicatifTelephone || undefined,
     telephone,
     email,
     password,

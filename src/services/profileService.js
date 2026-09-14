@@ -14,6 +14,8 @@ const get = async () => {
 };
 
 // PUT /api/profile/update — all fields are `sometimes`; only send what changed.
+// - phone: same split as register — `indicatifTelephone` ("+225") and
+//   `telephone` (national number only, "0575081162"); send both together.
 // - `codePays`: client accounts only (422 "code pays field is prohibited." for
 //   agence/livreur/backoffice). Same ValidCountryCode rule as register,
 //   case-insensitive ("fr" -> "FR"). Effective immediately (no re-verification).
@@ -21,11 +23,12 @@ const get = async () => {
 //   6-digit code sent to the NEW address; the current token stays valid but a
 //   later `login` is blocked until POST /api/verify-email is re-run with it.
 //   The success message mentions the code only when the email actually changed.
-const update = async ({ nom, prenoms, telephone, email, codePays }) => {
+const update = async ({ nom, prenoms, telephone, indicatifTelephone, email, codePays }) => {
   const payload = {};
   if (nom !== undefined) payload.nom = nom;
   if (prenoms !== undefined) payload.prenoms = prenoms;
   if (telephone !== undefined) payload.telephone = telephone;
+  if (indicatifTelephone !== undefined) payload.indicatif_telephone = indicatifTelephone;
   if (email !== undefined) payload.email = email;
   if (codePays !== undefined) payload.code_pays = codePays;
   const { data } = await api.put('/profile/update', payload);

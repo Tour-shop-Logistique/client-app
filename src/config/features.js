@@ -16,16 +16,13 @@ export const FEATURES = {
   home: true,                 // static content, no backend
   expeditionNew: true,        // static chooser (interville vs extrapays)
   expeditionExtrapays: true,  // POST /api/expedition/client/devis + /store  (documented)
+  expeditionInterville: true, // GET /communes + /formats-colis + POST /simulate-interville + /store (documented)
   expeditionHistory: true,    // GET /list + PUT /cancel/{id} + GET /statistics (documented)
   agencies: true,             // GET /api/agences, GET /api/agences/{id}      (documented)
   profile: true,              // GET /api/profil + auth flow                  (documented)
   referral: true,             // GET /api/client/parrainage/*  (mon-code, solde, historique, filleuls) (documented)
 
   // --- Not connected yet ------------------------------------------------
-  // Endpoints /expeditions/interville/estimation + /expeditions/interville
-  // are not in any API doc.
-  expeditionInterville: false,
-
   // Delivery-offer / confirm-delivery / rating / invoice-download endpoints
   // (/expeditions/{id}/...) are not documented; client API only exposes
   // show / list / cancel / statistics.

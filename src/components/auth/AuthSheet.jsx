@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
 import 'react-phone-number-input/style.css';
+import { splitPhone } from '../../utils/phone';
 import BottomSheet from '../common/BottomSheet';
 import CountrySelectSheet from '../common/CountrySelectSheet';
 import { getFlagEmoji, getCountryName } from '../../utils/countries';
@@ -139,10 +140,13 @@ export default function AuthSheet() {
       toast.error('Numéro de téléphone invalide.');
       return;
     }
+    // The API wants the dialing code and the national number in separate fields.
+    const { indicatif, national } = splitPhone(form.telephone.trim());
     const result = await dispatch(registerClient({
       nom: form.nom.trim(),
       prenoms: form.prenoms.trim(),
-      telephone: form.telephone.trim(),
+      indicatifTelephone: indicatif || undefined,
+      telephone: national,
       email: form.email.trim(),
       password: form.password,
       passwordConfirmation: form.passwordConfirmation,

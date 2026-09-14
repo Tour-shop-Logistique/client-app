@@ -21,11 +21,13 @@ import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import CitySelectSheet from '../../components/common/CitySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ProductSelectSheet from '../../components/expedition/ProductSelectSheet';
+import DestinationCountrySheet from '../../components/expedition/DestinationCountrySheet';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import expeditionService from '../../services/expeditionService';
 import produitService from '../../services/produitService';
 import cityService from '../../services/cityService';
 import { getCountryName, getFlagEmoji } from '../../utils/countries';
+import { isDestinationCompatible, destinationBadges } from '../../utils/expedition';
 import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, trackingPath } from '../../routes';
@@ -355,6 +357,12 @@ export default function ExtrapaysFormPage() {
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState('idle');
 
+  // Destination countries actually tariffed from the departure backoffice
+  // (GET /api/expedition/client/pays-disponibles) — feeds the improved picker.
+  const [destinations, setDestinations] = useState([]);
+  const [destinationsStatus, setDestinationsStatus] = useState('idle');
+  const [destRetry, setDestRetry] = useState(0);
+
   const [devis, setDevis] = useState(null);
   const [devisStatus, setDevisStatus] = useState('idle');
   const [devisError, setDevisError] = useState('');
@@ -402,6 +410,13 @@ export default function ExtrapaysFormPage() {
     setDevis(null);
     setDevisStatus('idle');
     setTypesChoisis({});
+    // Drop a destination that isn't tariffed for the new mode (e.g. an LD-only
+    // country when switching to groupage) so the devis can't fail silently.
+    const dest = destinations.find((d) => d.code_pays === paysDestination);
+    if (paysDestination && !isDestinationCompatible(dest, value)) {
+      setPaysDestination('');
+      setVilleDestination('');
+    }
     if (value === 'livraison_domicile') {
       setArticles([]);
       setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]));
@@ -409,6 +424,24 @@ export default function ExtrapaysFormPage() {
       setColisList([]);
     }
   };
+
+  // Load the tariffed destination countries once the departure country is known.
+  useEffect(() => {
+    if (!country.code) return undefined;
+    let cancelled = false;
+    setDestinationsStatus('loading');
+    expeditionService
+      .listAvailableDestinations(country.code)
+      .then((data) => {
+        if (cancelled) return;
+        setDestinations(data.pays ?? []);
+        setDestinationsStatus('idle');
+      })
+      .catch(() => !cancelled && setDestinationsStatus('error'));
+    return () => {
+      cancelled = true;
+    };
+  }, [country.code, destRetry]);
 
   useEffect(() => {
     if (!country.code || !mode) return;
@@ -718,6 +751,26 @@ export default function ExtrapaysFormPage() {
                 </span>
                 <ChevronDown size={16} className="text-surface-400" />
               </button>
+              {destinationsStatus === 'error' && (
+                <p className="mt-1 text-xs text-amber-600">
+                  Liste des destinations indisponible —{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => setDestRetry((t) => t + 1)}>
+                    reessayer
+                  </button>
+                </p>
+              )}
+              {paysDestination && (() => {
+                const badges = destinationBadges(destinations.find((d) => d.code_pays === paysDestination), mode);
+                return badges.length > 0 ? (
+                  <p className="mt-1.5 flex flex-wrap gap-1">
+                    {badges.map((b) => (
+                      <span key={b} className="rounded bg-primary-50 px-1.5 py-0.5 text-[11px] font-medium text-primary-700">
+                        {b}
+                      </span>
+                    ))}
+                  </p>
+                ) : null;
+              })()}
             </div>
             {villeRequise && (
               <div>
@@ -963,16 +1016,18 @@ export default function ExtrapaysFormPage() {
         )}
       </div>
 
-      <CountrySelectSheet
+      <DestinationCountrySheet
         open={destSheetOpen}
         onClose={() => setDestSheetOpen(false)}
+        destinations={destinations}
+        status={destinationsStatus}
+        mode={mode}
         currentCode={paysDestination}
         onSelect={(code) => {
           setPaysDestination(code);
           setVilleDestination('');
         }}
-        title="Pays de destination"
-        description="Selectionnez le pays vers lequel vous souhaitez expedier votre colis."
+        onRetry={() => setDestRetry((t) => t + 1)}
       />
       <CitySelectSheet
         open={citySheetOpen}

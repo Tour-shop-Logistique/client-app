@@ -14,7 +14,8 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
 {
   "nom": "Kouassi",
   "prenoms": "Jean",
-  "telephone": "0102030405",
+  "indicatif_telephone": "+225",
+  "telephone": "0575081162",
   "email": "jean.kouassi@example.com",
   "password": "motdepasse123",
   "password_confirmation": "motdepasse123",
@@ -28,7 +29,8 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
 |---|---|---|---|
 | `nom` | string, max 255 | Oui | |
 | `prenoms` | string, max 255 | Non | |
-| `telephone` | string | Oui | Unique en base |
+| `indicatif_telephone` | string (indicatif international, ex. `+225`) | Oui | Indicatif du pays du numéro, saisi via le sélecteur de drapeau côté app. Stocké séparément du numéro national. |
+| `telephone` | string | Oui | **Numéro national uniquement**, sans l'indicatif (ex. `0575081162`). Unique en base. La combinaison `indicatif_telephone` + `telephone` forme le numéro complet. |
 | `email` | string, email, max 255 | Oui | Unique en base |
 | `password` | string, min 8 | Oui | Doit être accompagné de `password_confirmation` identique |
 | `password_confirmation` | string | Oui | Doit être identique à `password` |
@@ -52,7 +54,8 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
     "id": "uuid",
     "nom": "Kouassi",
     "prenoms": "Jean",
-    "telephone": "0102030405",
+    "indicatif_telephone": "+225",
+    "telephone": "0575081162",
     "email": "jean.kouassi@example.com",
     "type": "client",
     "code_pays": "CI",
@@ -171,7 +174,7 @@ Flux obligatoire pour un nouveau client : **register → verify-email → login*
 | Champ | Type | Obligatoire | Notes |
 |---|---|---|---|
 | `email` | string, email | Un des deux (`email` ou `telephone`) requis | |
-| `telephone` | string | Un des deux (`email` ou `telephone`) requis | |
+| `telephone` | string | Un des deux (`email` ou `telephone`) requis | Numéro national tel qu'enregistré à l'inscription (ex. `0575081162`), sans indicatif |
 | `password` | string | Oui | |
 | `type` | string | Oui | Toujours `"client"` — sert de filtre, un compte agence avec le même email ne matchera pas |
 
@@ -295,6 +298,7 @@ Change le mot de passe et **révoque tous les tokens existants** du compte (déc
 - **Aucune vérification par téléphone/WhatsApp/OTP n'est implémentée côté backend actuellement**, malgré la colonne `telephone_verified_at` prévue en base et malgré le cahier des charges qui évoque une vérification WhatsApp. Seule la vérification par email existe et est bloquante aujourd'hui. Si le design de l'app PWA prévoit un flux WhatsApp/SMS, il faudra le construire séparément — ne pas s'appuyer dessus pour l'instant.
 - `type: "client"` doit être envoyé explicitement à **chaque** appel de `register` et `login` — ce n'est jamais déduit du contexte ou de la route appelée.
 - `code_pays` est **obligatoire** sur `register` dès que `type: "client"` (422 sinon) — l'écran d'inscription doit inclure un sélecteur de pays, ce n'est pas un champ optionnel malgré son absence dans certains exemples d'API génériques. C'est ce qui permet ensuite de rattacher le client à un backoffice pour la tarification/le parrainage (voir `taux_international`/`taux_national` dans `docs/api-parrainage-client.md`).
+- Le numéro de téléphone est envoyé en **deux champs séparés** : `indicatif_telephone` (ex. `+225`) et `telephone` (numéro national seul, ex. `0575081162`). Le sélecteur de drapeau/indicatif du formulaire d'inscription alimente `indicatif_telephone` ; ne jamais concaténer l'indicatif dans `telephone`.
 - Stocker le `token` reçu à la connexion (ex: `localStorage`/`sessionStorage` selon la stratégie PWA) et l'envoyer en `Authorization: Bearer <token>` sur toutes les routes authentifiées listées dans `docs/api-enregistrement-expedition-client.md`.
 - Après un `reset-password`, l'ancien token stocké côté client devient invalide (tous révoqués) — il faut détecter une réponse 401 et rediriger vers `login`, ou explicitement invalider le token stocké côté client juste après l'appel `reset-password`.
 - Le flux complet minimal pour un nouveau client : `register` → écran "saisir le code reçu par email" → `verify-email` → `login` automatique ou redirection vers l'écran de connexion.

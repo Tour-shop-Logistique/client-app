@@ -1,15 +1,48 @@
 import api from './api';
 
-// Interville: shipping between two cities of the same country (cahier 4.2)
+// Interville: shipping between two communes of the same country (cahier 4.2)
 // Extrapays: international shipping between countries (cahier 4.3), priced
 // via the devis client API — see api-devis-client.md.
 
-const estimateInterville = async ({ villeDepart, villeDestination, poids, taille }) => {
-  const { data } = await api.post('/expeditions/interville/estimation', {
-    ville_depart: villeDepart,
-    ville_destination: villeDestination,
-    poids,
-    taille,
+// GET /api/communes?code_pays= — public list of a country's active communes,
+// { id, nom } only, sorted by name. First call of the interville flow: gives the
+// `destinataire_commune_id` needed by simulate-interville / store.
+// See docs/api-simulation-et-formats-client.md.
+const listCommunes = async (codePays) => {
+  const { data } = await api.get('/communes', { params: { code_pays: codePays } });
+  return data;
+};
+
+// GET /api/expedition/client/formats-colis — colis formats (Petit/Moyen/Grand…)
+// of the client's backoffice, resolved from User.code_pays (no params). Auth
+// (client). Sorted by `ordre`; exactly one `is_default: true`; a null
+// max = unlimited. Used to build the format picker for interville.
+const getColisFormats = async () => {
+  const { data } = await api.get('/expedition/client/formats-colis');
+  return data;
+};
+
+// POST /api/expedition/client/simulate-interville — the ONLY way to simulate an
+// interville tariff (the public `devis` covers LD/Groupage only). Auth (client).
+// Call it with type_expedition: "interville". On success the result is
+// double-wrapped: `data.data.{ success, tarif, colis }` (tarif has
+// montant_base / pourcentage_prestation / montant_prestation / montant_expedition,
+// per-colis detail in `data.colis`). On failure: a flat { success:false, message }
+// (HTTP 422) — always show `message` as-is.
+const simulateInterville = async (payload) => {
+  const { data } = await api.post('/expedition/client/simulate-interville', payload);
+  return data;
+};
+
+// GET /api/expedition/client/pays-disponibles?code_pays=<DEPART> — public.
+// Call BEFORE the devis: returns only destination countries that actually have
+// at least one active tariff from the departure backoffice, each with a boolean
+// per type (ld / groupage_afrique / groupage_ca / groupage_dhd_aerien /
+// groupage_dhd_maritime). A country with a zone but no active tariff is absent.
+// See api-devis-client.md.
+const listAvailableDestinations = async (codePaysDepart) => {
+  const { data } = await api.get('/expedition/client/pays-disponibles', {
+    params: { code_pays: codePaysDepart },
   });
   return data;
 };
@@ -19,12 +52,7 @@ const getDevis = async (payload) => {
   const { data } = await api.post('/expedition/client/devis', payload);
    console.log('getDevis response:', data);
   return data;
- 
-};
 
-const createInterville = async (payload) => {
-  const { data } = await api.post('/expeditions/interville', payload);
-  return data;
 };
 
 // Registers an extrapays shipment request after the devis step — see
@@ -97,9 +125,11 @@ const downloadInvoice = async (id) => {
 };
 
 const expeditionService = {
-  estimateInterville,
+  listCommunes,
+  getColisFormats,
+  simulateInterville,
+  listAvailableDestinations,
   getDevis,
-  createInterville,
   storeExpedition,
   list,
   getById,
