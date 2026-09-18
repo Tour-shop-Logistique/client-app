@@ -29,8 +29,11 @@ const getColisFormats = async () => {
 // montant_base / pourcentage_prestation / montant_prestation / montant_expedition,
 // per-colis detail in `data.colis`). On failure: a flat { success:false, message }
 // (HTTP 422) — always show `message` as-is.
+
 const simulateInterville = async (payload) => {
+  console.log('simulateInterville payload:', payload);
   const { data } = await api.post('/expedition/client/simulate-interville', payload);
+  console.log('simulateInterville response:', data);
   return data;
 };
 
