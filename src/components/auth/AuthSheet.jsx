@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
 import 'react-phone-number-input/style.css';
-import { splitPhone } from '../../utils/phone';
+import { splitPhone, getPhoneLengthHint } from '../../utils/phone';
 import BottomSheet from '../common/BottomSheet';
 import CountrySelectSheet from '../common/CountrySelectSheet';
 import { getFlagEmoji, getCountryName } from '../../utils/countries';
@@ -305,12 +305,19 @@ export default function AuthSheet() {
               flags={flags}
               international
               countryCallingCodeEditable={false}
+              limitMaxLength
               defaultCountry={(form.codePays || 'CI').toUpperCase()}
               value={form.telephone}
               onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
               numberInputProps={{ autoComplete: 'tel', required: true }}
               placeholder="01 02 03 04 05"
             />
+            {(() => {
+              const hint = getPhoneLengthHint(form.codePays || 'CI');
+              return hint ? (
+                <p className="mt-1 text-xs text-surface-400">Numéro national : {hint}</p>
+              ) : null;
+            })()}
             <FieldError errors={fieldErrors} name="telephone" />
           </div>
           <label className="block text-sm font-medium text-surface-700">

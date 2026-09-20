@@ -26,7 +26,7 @@ export default function ProductListPage() {
   return (
     <div>
       <TopBar
-        title="Marketplace"
+        title="E-commerce"
         right={
           <Link to={ROUTES.MARKETPLACE_CART} className="relative rounded-full bg-white p-2 text-surface-700 shadow-card">
             <ShoppingCart size={18} />
@@ -60,7 +60,7 @@ export default function ProductListPage() {
           <EmptyState
             icon={PackageSearch}
             title="Aucun article trouve"
-            description="Soyez le premier a publier un article sur la marketplace."
+            description="Soyez le premier a publier un article sur l’e-commerce."
             action={
               <Link to={ROUTES.MARKETPLACE_SELL} className="btn-primary">
                 Publier un article

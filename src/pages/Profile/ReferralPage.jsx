@@ -117,15 +117,15 @@ export default function ReferralPage() {
 
         {!loading && (
           <div className="space-y-5">
-            <div className="card bg-gradient-to-br from-amber-400 to-amber-500 p-5 text-white">
+            <div className="card bg-gradient-to-br from-shop-500 to-shop-600 p-5 text-white">
               <Gift size={22} />
-              <p className="mt-3 text-sm text-amber-50">Votre code de parrainage</p>
-              <p className="mt-1 text-2xl font-bold tracking-wide">{code || '—'}</p>
+              <p className="mt-3 text-sm text-shop-50">Votre code de parrainage</p>
+              <p className="mt-1 font-heading text-2xl font-bold tracking-wide">{code || '—'}</p>
               <div className="mt-4 flex gap-2">
                 <button type="button" onClick={handleCopyCode} disabled={!code} className="btn bg-white/20 text-white flex-1">
                   <Copy size={16} /> Copier
                 </button>
-                <button type="button" onClick={handleShare} disabled={!code} className="btn bg-white text-amber-700 flex-1">
+                <button type="button" onClick={handleShare} disabled={!code} className="btn bg-white text-shop-700 flex-1">
                   <Share2 size={16} /> Partager
                 </button>
               </div>

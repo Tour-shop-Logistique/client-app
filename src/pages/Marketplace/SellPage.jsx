@@ -33,7 +33,7 @@ export default function SellPage() {
         Object.entries(values).forEach(([key, value]) => payload.append(key, value));
         if (photo) payload.append('photo', photo);
         await marketplaceService.createProduct(payload);
-        toast.success('Article publie sur la marketplace.');
+        toast.success('Article publié sur l’e-commerce.');
         navigate(ROUTES.MARKETPLACE_MY_LISTINGS);
       } catch (err) {
         toast.error(err.response?.data?.message || "Impossible de publier l'article.");

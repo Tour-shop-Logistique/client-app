@@ -1,103 +1,172 @@
-import { Link } from 'react-router-dom';
-import { PackagePlus, Globe2, Store, MapPinned, Gift, Bell } from 'lucide-react';
-import { useSelector } from 'react-redux';
-import { ROUTES } from '../../routes';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  PackagePlus, Store, MapPinned, Package, Gift, Bell, Search, ChevronRight,
+  ShoppingCart, Tag, Shirt, Smartphone, Home, Sparkles, Apple,
+} from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import { toast } from 'sonner';
+import { ROUTES, expeditionDetailPath } from '../../routes';
+import { fetchExpeditions } from '../../store/slices/expeditionSlice';
+import { openAuthSheet } from '../../store/slices/uiSlice';
+import logo from '../../assets/logo_transparent.png';
 
-const QUICK_ACTIONS = [
-  {
-    to: ROUTES.EXPEDITION_INTERVILLE,
-    icon: PackagePlus,
-    label: 'Envoyer entre villes',
-    desc: 'Interville',
-    color: 'bg-primary-50 text-primary-600',
-  },
-  {
-    to: ROUTES.EXPEDITION_EXTRAPAYS,
-    icon: Globe2,
-    label: 'Envoyer a l’international',
-    desc: 'Extrapays',
-    color: 'bg-accent-50 text-accent-600',
-  },
-  {
-    to: ROUTES.MARKETPLACE,
-    icon: Store,
-    label: 'Marketplace',
-    desc: 'Acheter / vendre',
-    color: 'bg-emerald-50 text-emerald-600',
-  },
-  {
-    to: ROUTES.AGENCIES,
-    icon: MapPinned,
-    label: 'Agences',
-    desc: 'Trouver un point relais',
-    color: 'bg-violet-50 text-violet-600',
-  },
+const CATEGORIES = [
+  { label: 'Mode', icon: Shirt },
+  { label: 'Électronique', icon: Smartphone },
+  { label: 'Maison', icon: Home },
+  { label: 'Beauté', icon: Sparkles },
+  { label: 'Alimentation', icon: Apple },
 ];
 
-function QuickActionCard({ action }) {
-  return (
-    <Link to={action.to} className="card flex flex-col gap-3 p-4">
-      <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${action.color}`}>
-        <action.icon size={20} />
-      </span>
-      <div>
-        <p className="text-sm font-semibold text-surface-900">{action.label}</p>
-        <p className="text-xs text-surface-500">{action.desc}</p>
-      </div>
-    </Link>
-  );
-}
+const SHORTCUTS = [
+  { to: ROUTES.EXPEDITION_HISTORY, icon: Package, label: 'Mes colis', color: 'bg-primary-50 text-primary-700' },
+  { to: ROUTES.AGENCIES, icon: MapPinned, label: 'Agences', color: 'bg-navy-50 text-navy-600' },
+  { to: ROUTES.MARKETPLACE_SELL, icon: Tag, label: 'Vendre', color: 'bg-shop-100 text-shop-800' },
+  { to: ROUTES.PROFILE_REFERRAL, icon: Gift, label: 'Parrainage', color: 'bg-teal-50 text-teal-700' },
+];
 
 export default function HomePage() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const user = useSelector((state) => state.auth.user);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+
+  const [trackingCode, setTrackingCode] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  const handleTrackingSubmit = async (e) => {
+    e.preventDefault();
+    const code = trackingCode.trim();
+    if (!code) return;
+
+    if (!isAuthenticated) {
+      dispatch(openAuthSheet({ mode: 'login', reason: 'default' }));
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const result = await dispatch(fetchExpeditions());
+      if (fetchExpeditions.fulfilled.match(result)) {
+        const match = (result.payload || []).find(
+          (exp) => (exp.reference || '').toLowerCase() === code.toLowerCase()
+        );
+        if (match) {
+          navigate(expeditionDetailPath(match.id));
+        } else {
+          toast.error('Aucune expédition trouvée pour ce numéro.');
+        }
+      } else {
+        toast.error('Recherche impossible pour le moment.');
+      }
+    } finally {
+      setSearching(false);
+    }
+  };
 
   return (
-    <div className="page-container safe-top pt-4">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-surface-500">Bonjour{user?.name ? `,` : ''}</p>
-          <h1 className="text-xl font-bold text-surface-900">{user?.name || 'Bienvenue sur TourShop'}</h1>
+    <div className="safe-top pb-6">
+      <div className="brand-gradient relative overflow-hidden pb-14 pt-4">
+        <div className="pointer-events-none absolute -right-8 -top-14 h-40 w-40 rounded-full bg-white/10" />
+        <div className="pointer-events-none absolute -bottom-16 left-4 h-32 w-32 rounded-full bg-shop-400/20" />
+
+        <div className="page-container relative flex items-center justify-between">
+          <img src={logo} alt="TourShop" className="h-10 w-auto object-contain" />
+          <div className="flex items-center gap-2">
+            <Link
+              to={ROUTES.MARKETPLACE_CART}
+              className="rounded-full bg-white/15 p-2.5 text-white"
+              aria-label="Panier"
+            >
+              <ShoppingCart size={20} />
+            </Link>
+            <Link to={ROUTES.PROFILE} className="rounded-full bg-white/15 p-2.5 text-white" aria-label="Profil">
+              <Bell size={20} />
+            </Link>
+          </div>
         </div>
+
+        <p className="page-container relative mt-3 text-body text-white/80">
+          {user?.name ? `Bonjour, ${user.name}` : 'Bienvenue sur TourShop'}
+        </p>
+        <h1 className="page-container relative text-display text-white">Envoyez. Achetez. Vendez.</h1>
+      </div>
+
+      <div className="page-container relative -mt-8">
+        <form onSubmit={handleTrackingSubmit} className="card p-4">
+          <p className="text-body font-semibold text-surface-900">Suivez votre colis</p>
+          <div className="mt-2.5 flex gap-2">
+            <input
+              type="text"
+              value={trackingCode}
+              onChange={(e) => setTrackingCode(e.target.value)}
+              placeholder="N° de suivi"
+              className="input-field flex-1"
+            />
+            <button type="submit" className="btn-primary shrink-0 px-4" disabled={searching}>
+              <Search size={16} />
+              {searching ? '...' : 'Rechercher'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Two universes: logistics (blue/teal) and commerce (lime). */}
+      <div className="page-container mt-4 grid grid-cols-2 gap-3">
         <Link
-          to={ROUTES.PROFILE}
-          className="rounded-full bg-white p-2.5 text-surface-600 shadow-card"
-          aria-label="Notifications"
+          to={ROUTES.EXPEDITION_NEW}
+          className="brand-gradient relative flex min-h-[9.5rem] flex-col justify-between overflow-hidden rounded-2xl p-4 shadow-brand"
         >
-          <Bell size={20} />
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
+            <PackagePlus size={22} />
+          </span>
+          <div>
+            <p className="text-title">Envoyer un colis</p>
+            <p className="text-caption text-white/80">Interville et international</p>
+          </div>
+        </Link>
+        <Link
+          to={ROUTES.MARKETPLACE}
+          className="shop-gradient relative flex min-h-[9.5rem] flex-col justify-between overflow-hidden rounded-2xl p-4"
+        >
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/40">
+            <Store size={22} />
+          </span>
+          <div>
+            <p className="text-title">E-commerce</p>
+            <p className="text-caption text-shop-900">Achetez, vendez, on livre</p>
+          </div>
         </Link>
       </div>
 
-      <div className="card mb-5 overflow-hidden bg-gradient-to-br from-primary-600 to-primary-700 p-5 text-white">
-        <p className="text-sm font-medium text-primary-100">Expedier un colis</p>
-        <p className="mt-1 text-lg font-semibold">Rapide, suivi en temps reel</p>
-        <div className="mt-4 flex gap-2">
-          <Link to={ROUTES.EXPEDITION_INTERVILLE} className="btn bg-white text-primary-700 flex-1">
-            Interville
+      <div className="mt-5">
+        <div className="page-container flex items-center justify-between">
+          <h2 className="text-title text-surface-900">Catégories</h2>
+          <Link to={ROUTES.MARKETPLACE} className="flex items-center text-caption font-medium text-primary-700">
+            Tout voir <ChevronRight size={14} />
           </Link>
-          <Link to={ROUTES.EXPEDITION_EXTRAPAYS} className="btn bg-primary-500/40 text-white flex-1 border border-white/30">
-            Extrapays
-          </Link>
+        </div>
+        <div className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto px-4">
+          {CATEGORIES.map((c) => (
+            <Link key={c.label} to={ROUTES.MARKETPLACE} className="chip">
+              <c.icon size={14} className="text-shop-700" />
+              {c.label}
+            </Link>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {QUICK_ACTIONS.map((action) => (
-          <QuickActionCard key={action.to} action={action} />
+      <div className="page-container mt-5 grid grid-cols-4 gap-2.5">
+        {SHORTCUTS.map((s) => (
+          <Link key={s.label} to={s.to} className="flex flex-col items-center gap-1.5 text-center">
+            <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl ${s.color}`}>
+              <s.icon size={20} />
+            </span>
+            <span className="text-caption font-medium text-surface-700">{s.label}</span>
+          </Link>
         ))}
       </div>
-
-      <Link
-        to={ROUTES.PROFILE_REFERRAL}
-        className="card mt-3 flex items-center gap-3 p-4"
-      >
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-          <Gift size={20} />
-        </span>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-surface-900">Parrainez vos proches</p>
-          <p className="text-xs text-surface-500">Gagnez un bonus a chaque expedition de vos filleuls</p>
-        </div>
-      </Link>
     </div>
   );
 }

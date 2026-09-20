@@ -7,31 +7,60 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Brand palette sourced from the TourShop logomark (feather: navy base ->
+        // teal -> cyan -> lime tip, "Tour" wordmark blue, "Shop" wordmark lime).
         primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-          950: '#082f49',
+          50: '#eff7fe',
+          100: '#dceefc',
+          200: '#b7ddfa',
+          300: '#82c3f5',
+          400: '#47a3eb',
+          500: '#2185d6',
+          600: '#156fbe',
+          700: '#10589a',
+          800: '#12477b',
+          900: '#143c64',
+          950: '#0c2540',
         },
-        accent: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
-          950: '#451a03',
+        teal: {
+          50: '#edfbfc',
+          100: '#d3f5f8',
+          200: '#a9eaf0',
+          300: '#71d9e3',
+          400: '#34bfcc',
+          500: '#159faf',
+          600: '#10808d',
+          700: '#126672',
+          800: '#15525c',
+          900: '#16444c',
+          950: '#07282e',
+        },
+        navy: {
+          50: '#eeeef6',
+          100: '#dfdeee',
+          200: '#c1bfdf',
+          300: '#9e9bcb',
+          400: '#7a75b3',
+          500: '#5c5599',
+          600: '#453d80',
+          700: '#363065',
+          800: '#2b2650',
+          900: '#241f41',
+          950: '#16132a',
+        },
+        // Marketplace-only accent, matching the "Shop" wordmark's olive-lime.
+        shop: {
+          50: '#fafbe7',
+          100: '#f2f6c4',
+          200: '#e5ee8f',
+          300: '#d2e052',
+          400: '#bdce2e',
+          500: '#a3b01e',
+          600: '#808c17',
+          700: '#636b16',
+          800: '#505619',
+          900: '#45491b',
+          950: '#24270a',
         },
         surface: {
           50: '#f8fafc',
@@ -47,10 +76,20 @@ export default {
           950: '#020617',
         },
       },
+      fontFamily: {
+        heading: ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
+      },
       spacing: {
         'bottom-nav': '4.25rem',
         'safe-top': 'env(safe-area-inset-top)',
         'safe-bottom': 'env(safe-area-inset-bottom)',
+      },
+      // Typographic scale: nothing below 12px.
+      fontSize: {
+        caption: ['0.75rem', { lineHeight: '1rem' }],
+        body: ['0.875rem', { lineHeight: '1.25rem' }],
+        title: ['1.125rem', { lineHeight: '1.5rem', fontWeight: '600' }],
+        display: ['1.5rem', { lineHeight: '1.875rem', fontWeight: '700' }],
       },
       borderRadius: {
         'xl': '1rem',
@@ -59,6 +98,7 @@ export default {
       boxShadow: {
         'nav': '0 -2px 12px rgba(15, 23, 42, 0.06)',
         'card': '0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
+        'brand': '0 8px 24px -8px rgba(21, 111, 190, 0.45)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out forwards',

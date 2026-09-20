@@ -4,7 +4,11 @@ import { User } from 'lucide-react';
 // Shared expediteur/destinataire block for the expedition forms.
 // Shape + helpers (EMPTY_CONTACT, contactIsComplete, contactPayload) live in
 // src/utils/contact.js.
-export default function ContactFields({ title, data, onChange }) {
+//
+// The ville field never accepts free text here: pass `villeFixed` to lock it
+// to the commune already chosen during the trajet step (destinataire), or
+// `communes` to offer a select of the country's communes (expediteur).
+export default function ContactFields({ title, data, onChange, communes, villeFixed }) {
   const [showMore, setShowMore] = useState(false);
   const set = (field) => (e) => onChange({ ...data, [field]: e.target.value });
 
@@ -26,10 +30,23 @@ export default function ContactFields({ title, data, onChange }) {
         Adresse
         <input className="input-field mt-1.5" placeholder="Ex: Rue 12" value={data.adresse} onChange={set('adresse')} />
       </label>
-      <label className="block text-sm font-medium text-surface-700">
+      <div className="block text-sm font-medium text-surface-700">
         Ville
-        <input className="input-field mt-1.5" placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
-      </label>
+        {villeFixed ? (
+          <div className="input-field mt-1.5 bg-surface-50 text-surface-500">{villeFixed}</div>
+        ) : communes ? (
+          <select className="input-field mt-1.5" value={data.ville} onChange={set('ville')}>
+            <option value="">Choisir une commune</option>
+            {communes.map((c) => (
+              <option key={c.id} value={c.nom}>
+                {c.nom}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input className="input-field mt-1.5" placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
+        )}
+      </div>
       <button type="button" onClick={() => setShowMore((v) => !v)} className="text-xs font-semibold text-primary-600">
         {showMore ? 'Masquer les champs optionnels' : '+ Email, societe, code postal...'}
       </button>

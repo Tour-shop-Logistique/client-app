@@ -12,13 +12,13 @@ export default function TopBar({ title, back = false, right = null }) {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="-ml-2 rounded-full p-2 text-surface-700 hover:bg-surface-100"
+              className="-ml-2 rounded-full p-2 text-primary-700 hover:bg-primary-50"
               aria-label="Retour"
             >
               <ChevronLeft size={22} />
             </button>
           )}
-          <h1 className="truncate text-base font-semibold text-surface-900">{title}</h1>
+          <h1 className="truncate font-heading text-base font-semibold text-surface-900">{title}</h1>
         </div>
         {right}
       </div>

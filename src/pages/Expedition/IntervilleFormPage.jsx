@@ -296,6 +296,13 @@ export default function IntervilleFormPage() {
 
   const communeNom = communes.find((c) => c.id === destinataireCommuneId)?.nom || '—';
 
+  // The destinataire's ville is never typed: it always mirrors the commune
+  // de destination picked on the Trajet step.
+  useEffect(() => {
+    if (communeNom === '—') return;
+    setDestinataire((d) => (d.ville === communeNom ? d : { ...d, ville: communeNom }));
+  }, [communeNom]);
+
   const canContinueStep1 = Boolean(agence?.id) && Boolean(destinataireCommuneId);
   const canContinueStep2 = colisList.length > 0 && colisList.every((c) => Number(c.poids) >= 0.01);
   const canContinueStep3 = contactIsComplete(expediteur) && contactIsComplete(destinataire);
@@ -550,8 +557,8 @@ export default function IntervilleFormPage() {
         {step === 3 && (
           <div className="space-y-4">
             <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
-            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} />
-            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} />
+            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} />
+            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(2)}>Retour</button>
               <button type="button" className="btn-primary flex-1" disabled={!canContinueStep3} onClick={() => goToStep(4)}>Continuer</button>

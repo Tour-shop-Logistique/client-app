@@ -51,7 +51,7 @@ export default function AgencySelectSheet({ open, onClose, codePays, currentId, 
               }}
               className="flex w-full items-center gap-3 p-3 text-left hover:bg-surface-50"
             >
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy-50 text-navy-600">
                 <MapPinned size={18} />
               </span>
               <div className="min-w-0 flex-1">

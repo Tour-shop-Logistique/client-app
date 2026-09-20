@@ -213,7 +213,7 @@ export default function ExpeditionDetailPage() {
       <div className="page-container space-y-3 py-4">
         {/* En-tête */}
         <div className="card overflow-hidden">
-          <div className="bg-gradient-to-br from-primary-600 to-primary-700 p-4 text-white">
+          <div className="brand-gradient p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-wide text-white/70">Référence</p>
@@ -223,7 +223,7 @@ export default function ExpeditionDetailPage() {
                 {statut.label}
               </span>
             </div>
-            <p className="mt-3 text-2xl font-extrabold">{formatPrice(exp.montant_expedition)}</p>
+            <p className="mt-3 font-heading text-2xl font-extrabold">{formatPrice(exp.montant_expedition)}</p>
             <p className="text-xs text-white/70">
               {getTypeLabel(exp.type_expedition)} · créée le {formatDate(exp.created_at)}
             </p>

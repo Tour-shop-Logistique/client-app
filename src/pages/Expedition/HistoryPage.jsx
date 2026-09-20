@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { Package, Plus, RefreshCw, ChevronRight, ArrowRight } from 'lucide-react';
-import TopBar from '../../components/common/TopBar';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import { fetchExpeditions, fetchExpeditionStats } from '../../store/slices/expeditionSlice';
@@ -118,16 +117,19 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-surface-50">
-      <TopBar
-        title="Mes colis"
-        right={
-          <div className="flex items-center gap-1">
+    <div className="min-h-dvh bg-surface-50 safe-top">
+      <div className="brand-gradient relative overflow-hidden pb-12 pt-4">
+        <div className="pointer-events-none absolute -right-8 -top-14 h-40 w-40 rounded-full bg-white/10" />
+        <div className="pointer-events-none absolute -bottom-16 left-4 h-32 w-32 rounded-full bg-shop-400/20" />
+
+        <div className="page-container relative flex items-center justify-between gap-2">
+          <h1 className="font-heading text-lg font-bold text-white">Mes colis</h1>
+          <div className="flex items-center gap-1.5">
             {isAuthenticated && (
               <button
                 type="button"
                 onClick={refresh}
-                className="rounded-full p-2 text-surface-500 hover:bg-surface-100"
+                className="rounded-full bg-white/15 p-2 text-white hover:bg-white/25"
                 aria-label="Rafraîchir"
               >
                 <RefreshCw size={16} className={status === 'loading' ? 'animate-spin' : ''} />
@@ -135,35 +137,39 @@ export default function HistoryPage() {
             )}
             <Link
               to={ROUTES.EXPEDITION_NEW}
-              className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white"
+              className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-primary-700"
             >
               <Plus size={15} /> Envoyer
             </Link>
           </div>
-        }
-      />
+        </div>
+      </div>
 
-      <div className="page-container space-y-4 py-4">
+      <div className="page-container space-y-4 pb-4">
         {!isAuthenticated && (
-          <EmptyState
-            icon={Package}
-            title="Connectez-vous pour voir vos colis"
-            description="Votre historique apparaît ici dès votre première expédition validée."
-            action={
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => dispatch(openAuthSheet({ mode: 'login', reason: 'default' }))}
-              >
-                Se connecter
-              </button>
-            }
-          />
+          <div className="pt-4">
+            <EmptyState
+              icon={Package}
+              title="Connectez-vous pour voir vos colis"
+              description="Votre historique apparaît ici dès votre première expédition validée."
+              action={
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => dispatch(openAuthSheet({ mode: 'login', reason: 'default' }))}
+                >
+                  Se connecter
+                </button>
+              }
+            />
+          </div>
         )}
 
         {isAuthenticated && (
           <>
-            <StatCards stats={stats} />
+            <div className="relative -mt-8">
+              <StatCards stats={stats} />
+            </div>
 
             <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
               {STATUS_FILTERS.map((f) => (

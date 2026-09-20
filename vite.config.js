@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: 'TourShop',
           short_name: 'TourShop',
-          description: "Expeditions, marketplace et suivi de colis - TourShop",
+          description: "Expéditions, e-commerce et suivi de colis - TourShop",
           theme_color: '#0284c7',
           background_color: '#f8fafc',
           display: 'standalone',

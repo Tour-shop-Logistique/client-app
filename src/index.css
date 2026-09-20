@@ -13,6 +13,10 @@
     font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
 
+  h1, h2, h3 {
+    @apply font-heading;
+  }
+
   #root {
     min-height: 100dvh;
   }
@@ -38,7 +42,30 @@
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white shadow-card hover:bg-primary-700;
+    @apply btn bg-primary-600 text-white shadow-brand hover:bg-primary-700;
+  }
+
+  /* Brand sweep: navy feather base -> teal -> primary blue, mirroring the
+     logomark's gradient. Used for hero banners and prominent headers. */
+  .brand-gradient {
+    @apply bg-gradient-to-br from-navy-800 via-primary-700 to-teal-600 text-white;
+  }
+
+  /* Commerce universe: lime with dark text (white on lime fails contrast). */
+  .shop-gradient {
+    @apply bg-gradient-to-br from-shop-300 via-shop-400 to-shop-500 text-shop-950;
+  }
+
+  .btn-shop {
+    @apply btn bg-shop-400 text-shop-950 hover:bg-shop-300;
+  }
+
+  .chip {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full border border-surface-200 bg-white px-3.5 py-2 text-xs font-medium text-surface-700 transition active:scale-95;
+  }
+
+  .chip-active {
+    @apply border-shop-400 bg-shop-100 text-shop-900;
   }
 
   .btn-secondary {

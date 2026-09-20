@@ -6,7 +6,7 @@ import { isFeatureReady } from '../../config/features';
 const TABS = [
   { to: ROUTES.HOME, icon: Home, label: 'Accueil', end: true, feature: 'home' },
   { to: ROUTES.EXPEDITION_HISTORY, icon: Package, label: 'Colis', feature: 'expeditionHistory' },
-  { to: ROUTES.MARKETPLACE, icon: Store, label: 'Marketplace', feature: 'marketplace' },
+  { to: ROUTES.MARKETPLACE, icon: Store, label: 'E-commerce', feature: 'marketplace' },
   { to: ROUTES.AGENCIES, icon: MapPinned, label: 'Agences', feature: 'agencies' },
   { to: ROUTES.PROFILE, icon: User, label: 'Profil', feature: 'profile' },
 ];
@@ -26,11 +26,11 @@ function NavItem({ tab }) {
     >
       {({ isActive }) => (
         <>
-          <span className="relative">
-            <tab.icon size={22} strokeWidth={isActive ? 2.4 : 2} />
+          <span className={`relative flex h-8 w-11 items-center justify-center rounded-full transition-colors ${isActive ? 'bg-primary-50' : ''}`}>
+            <tab.icon size={20} strokeWidth={isActive ? 2.4 : 2} />
             {comingSoon && (
               <span
-                className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-white"
+                className="absolute right-1.5 top-0.5 h-2 w-2 rounded-full bg-shop-500 ring-2 ring-white"
                 aria-label="Bientôt disponible"
               />
             )}

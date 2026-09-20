@@ -1,4 +1,5 @@
 import { parsePhoneNumber } from 'react-phone-number-input';
+import { Metadata } from 'libphonenumber-js/min';
 
 // The registration API stores the phone as two fields — `indicatif_telephone`
 // ("+225") and `telephone` (national number only, "0575081162"). The PhoneInput
@@ -20,6 +21,31 @@ export function splitPhone(e164) {
     /* not parseable — fall through */
   }
   return { indicatif: '', national: e164 };
+}
+
+// Valid national-number digit counts for a country (e.g. `[10]` for Côte
+// d'Ivoire, `[7, 8, 9, 10]` for a country with variable-length numbers).
+// Same metadata `<PhoneInput limitMaxLength>` uses to trim input — here it
+// only drives the on-screen "expected digits" hint.
+export function getPhoneDigitLengths(country) {
+  if (!country) return [];
+  try {
+    const metadata = new Metadata();
+    metadata.selectNumberingPlan(country.toUpperCase());
+    return metadata.numberingPlan.possibleLengths();
+  } catch {
+    return [];
+  }
+}
+
+// "10 chiffres" or "7 à 10 chiffres" depending on whether the country has a
+// single fixed length or several valid lengths.
+export function getPhoneLengthHint(country) {
+  const lengths = getPhoneDigitLengths(country);
+  if (!lengths.length) return '';
+  const min = lengths[0];
+  const max = lengths[lengths.length - 1];
+  return min === max ? `${min} chiffres` : `${min} à ${max} chiffres`;
 }
 
 // Rebuild an E.164 string from the two stored fields, e.g. to prefill PhoneInput.

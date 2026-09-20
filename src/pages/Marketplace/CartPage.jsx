@@ -39,7 +39,7 @@ export default function CartPage() {
       <TopBar title="Mon panier" back />
       <div className="page-container py-4">
         {items.length === 0 && (
-          <EmptyState icon={ShoppingBag} title="Panier vide" description="Ajoutez des articles depuis la marketplace." />
+          <EmptyState icon={ShoppingBag} title="Panier vide" description="Ajoutez des articles depuis l’e-commerce." />
         )}
 
         {items.length > 0 && (

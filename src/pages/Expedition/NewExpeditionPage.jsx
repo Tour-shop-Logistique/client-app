@@ -18,7 +18,7 @@ export default function NewExpeditionPage() {
           </div>
         </Link>
         <Link to={ROUTES.EXPEDITION_EXTRAPAYS} className="card flex items-center gap-4 p-4">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
             <Globe2 size={22} />
           </span>
           <div className="flex-1">

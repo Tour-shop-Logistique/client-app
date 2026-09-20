@@ -348,7 +348,8 @@ export default function ExtrapaysFormPage() {
   const [paysDestination, setPaysDestination] = useState('');
   const [villeDestination, setVilleDestination] = useState('');
   const [articles, setArticles] = useState([]); // groupage: { produit_id, designation, reference, poids }
-  const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, articles: [{produit_id, designation, reference}] }
+  const [groupageDesignation, setGroupageDesignation] = useState(''); // groupage: designation du contenu (obligatoire, un seul colis implicite)
+  const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, designation, articles: [{produit_id, designation, reference}] }
   const [agence, setAgence] = useState(null);
   const [typesChoisis, setTypesChoisis] = useState({}); // groupage: { category_id: type_expedition }
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
@@ -395,6 +396,7 @@ export default function ExtrapaysFormPage() {
     setPaysDestination('');
     setVilleDestination('');
     setArticles([]);
+    setGroupageDesignation('');
     setColisList([]);
     setAgence(null);
     setTypesChoisis({});
@@ -419,7 +421,7 @@ export default function ExtrapaysFormPage() {
     }
     if (value === 'livraison_domicile') {
       setArticles([]);
-      setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]));
+      setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', designation: '', articles: [] }]));
     } else {
       setColisList([]);
     }
@@ -542,7 +544,7 @@ export default function ExtrapaysFormPage() {
     setArticles((list) => list.filter((_, i) => i !== index));
   };
 
-  const addColis = () => setColisList((list) => [...list, { poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]);
+  const addColis = () => setColisList((list) => [...list, { poids: '', longueur: '', largeur: '', hauteur: '', designation: '', articles: [] }]);
   const removeColis = (index) => setColisList((list) => list.filter((_, i) => i !== index));
   const updateColisField = (index, field, value) =>
     setColisList((list) => list.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
@@ -587,8 +589,9 @@ export default function ExtrapaysFormPage() {
   const canContinueStep2 = Boolean(paysDestination) && (!villeRequise || villeDestination);
   const canContinueStep3 =
     mode === 'livraison_domicile'
-      ? colisList.length > 0 && colisList.every((c) => Number(c.poids) > 0)
-      : articles.length > 0 && articles.every((a) => Number(a.poids) > 0);
+      ? colisList.length > 0 &&
+        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0 && c.designation.trim())
+      : articles.length > 0 && articles.every((a) => Number(a.poids) > 0) && groupageDesignation.trim();
 
   const groupageHasShippableGroup = mode !== 'recuperation_agence' || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
   const groupageAllChoicesMade =
@@ -635,13 +638,17 @@ export default function ExtrapaysFormPage() {
               largeur: Number(c.largeur) || 0,
               hauteur: Number(c.hauteur) || 0,
               prix_emballage: 0,
+              designation: c.designation.trim(),
               articles: c.articles.map((a) => ({ produit_id: a.produit_id })),
             })),
           };
         } else {
           payload = {
             ...base,
-            colis: [{ articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })) }],
+            colis: [{
+              designation: groupageDesignation.trim(),
+              articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })),
+            }],
             types_choisis: typesChoisis,
           };
         }
@@ -805,11 +812,20 @@ export default function ExtrapaysFormPage() {
 
         {step === 3 && mode === 'recuperation_agence' && (
           <div className="space-y-4">
+            <label className="block text-sm font-medium text-surface-700">
+              Designation du contenu
+              <input
+                className="input-field mt-1.5"
+                placeholder="Ex: Denrees alimentaires et produits cosmetiques"
+                value={groupageDesignation}
+                onChange={(e) => setGroupageDesignation(e.target.value)}
+              />
+            </label>
             {articles.length === 0 && (
               <EmptyState
                 icon={PackageSearch}
                 title="Aucun article ajoute"
-                description="Ajoutez les produits que vous souhaitez expedier."
+                description="Ajoutez au moins un produit que vous souhaitez expedier."
               />
             )}
             {articles.map((a, i) => (
@@ -893,6 +909,15 @@ export default function ExtrapaysFormPage() {
                     <input type="number" min="0" className="input-field mt-1.5" value={c.hauteur} onChange={(e) => updateColisField(i, 'hauteur', e.target.value)} />
                   </label>
                 </div>
+                <label className="block text-sm font-medium text-surface-700">
+                  Designation du contenu
+                  <input
+                    className="input-field mt-1.5"
+                    placeholder="Ex: Vetements et accessoires"
+                    value={c.designation}
+                    onChange={(e) => updateColisField(i, 'designation', e.target.value)}
+                  />
+                </label>
                 {c.articles.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.articles.map((a, ai) => (
@@ -910,8 +935,11 @@ export default function ExtrapaysFormPage() {
                   onClick={() => openProductSheetForColis(i)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-surface-300 py-2.5 text-sm font-medium text-primary-600"
                 >
-                  <Plus size={16} /> Ajouter un produit (optionnel)
+                  <Plus size={16} /> Ajouter un produit
                 </button>
+                {c.articles.length === 0 && (
+                  <p className="text-xs text-amber-600">Ajoutez au moins un produit pour ce colis.</p>
+                )}
               </div>
             ))}
             <button
