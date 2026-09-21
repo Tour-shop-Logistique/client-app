@@ -29,6 +29,8 @@ export default function AgencyListPage() {
       setCountrySheetOpen(true);
       return;
     }
+    // The country may arrive late (taken from the profile once the session is restored).
+    setCountrySheetOpen(false);
     dispatch(fetchAgencies({ code_pays: country.code }));
   }, [dispatch, country.code]);
 

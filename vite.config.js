@@ -13,13 +13,13 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         // Registration is done by src/utils/pwaUpdate.js (adds the update polling iOS needs).
         injectRegister: false,
-        includeAssets: ['favicon.svg'],
+        includeAssets: ['favicon.ico', 'favicon-32.png', 'favicon-48.png', 'icons/apple-touch-icon.png'],
         manifest: {
           name: 'TourShop',
           short_name: 'TourShop',
           description: "Expéditions, e-commerce et suivi de colis - TourShop",
           theme_color: '#0284c7',
-          background_color: '#f8fafc',
+          background_color: '#ffffff',
           display: 'standalone',
           orientation: 'portrait',
           start_url: '/',

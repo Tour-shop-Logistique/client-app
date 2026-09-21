@@ -25,6 +25,13 @@ const failure = (err, fallback) => ({
   fieldErrors: err.response?.data?.errors || null,
 });
 
+// On a device that has no country yet (new machine, cleared storage), take the
+// one from the account so the user isn't asked again. A country already chosen
+// on this device is left alone; setCountry ignores an unknown code.
+const adoptProfileCountry = (getState, dispatch, user) => {
+  if (user?.code_pays && !getState().country.code) dispatch(setCountry(user.code_pays));
+};
+
 export const registerClient = createAsyncThunk(
   'auth/registerClient',
   async (form, { dispatch, rejectWithValue }) => {
@@ -67,9 +74,10 @@ export const resendVerification = createAsyncThunk(
 
 export const loginClient = createAsyncThunk(
   'auth/loginClient',
-  async ({ email, telephone, password }, { rejectWithValue }) => {
+  async ({ email, telephone, password }, { getState, dispatch, rejectWithValue }) => {
     try {
       const data = await authService.login({ email, telephone, password });
+      adoptProfileCountry(getState, dispatch, data?.user);
       return data;
     } catch (err) {
       return rejectWithValue(failure(err, 'Les identifiants fournis sont incorrects.'));
@@ -80,9 +88,10 @@ export const loginClient = createAsyncThunk(
 // Restore a session at app boot from a stored token.
 export const restoreSession = createAsyncThunk(
   'auth/restoreSession',
-  async (_, { rejectWithValue }) => {
+  async (_, { getState, dispatch, rejectWithValue }) => {
     try {
       const data = await authService.fetchProfile();
+      adoptProfileCountry(getState, dispatch, data.user);
       return data.user;
     } catch {
       return rejectWithValue(null);
