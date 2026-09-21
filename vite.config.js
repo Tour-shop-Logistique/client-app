@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        // Registration is done by src/utils/pwaUpdate.js (adds the update polling iOS needs).
+        injectRegister: false,
         includeAssets: ['favicon.svg'],
         manifest: {
           name: 'TourShop',
@@ -29,6 +31,9 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
           navigateFallbackDenylist: [/^\/api/],
           runtimeCaching: [
             {

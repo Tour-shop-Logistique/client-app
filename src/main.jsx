@@ -7,10 +7,15 @@ import { store } from './store';
 import { sessionExpired } from './store/slices/authSlice';
 import App from './App.jsx';
 import './index.css';
+// Side-effect import: registers the `beforeinstallprompt` listener before React mounts.
+import './hooks/usePwaInstall';
+import { registerPwaUpdates } from './utils/pwaUpdate';
 
 // The API interceptor fires this on any 401 (revoked/expired Sanctum token,
 // e.g. after reset-password wipes every token) — drop the session store-side.
 window.addEventListener('auth:unauthorized', () => store.dispatch(sessionExpired()));
+
+registerPwaUpdates();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
