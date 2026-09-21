@@ -120,7 +120,13 @@ export default function AuthSheet() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    const result = await dispatch(loginClient({ email: form.email.trim(), password: form.password }));
+    // One field for both: an "@" means email, otherwise a national phone number
+    // (the API wants it without dialing code, exactly as stored at register).
+    const identifier = form.email.trim();
+    const credentials = identifier.includes('@')
+      ? { email: identifier }
+      : { telephone: identifier.replace(/[\s.\-()]/g, '') };
+    const result = await dispatch(loginClient({ ...credentials, password: form.password }));
     if (loginClient.fulfilled.match(result)) finishAuthenticated();
   };
 
@@ -232,12 +238,14 @@ export default function AuthSheet() {
       {mode === 'login' && (
         <form onSubmit={handleLogin} className="space-y-3">
           <label className="block text-sm font-medium text-surface-700">
-            Email
+            Email ou téléphone
             <input
-              type="email" inputMode="email" autoComplete="email"
+              type="text" inputMode="email" autoComplete="username" autoCapitalize="none"
+              placeholder="email@exemple.com ou 0102030405"
               className="input-field mt-1.5" value={form.email} onChange={set('email')} autoFocus required
             />
             <FieldError errors={fieldErrors} name="email" />
+            <FieldError errors={fieldErrors} name="telephone" />
           </label>
           <label className="block text-sm font-medium text-surface-700">
             Mot de passe

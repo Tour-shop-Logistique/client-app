@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Check, ChevronDown, LogIn, MapPinned, Plus, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, MapPinned, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import StepProgress from '../../components/expedition/StepProgress';
@@ -16,7 +16,7 @@ import { getFlagEmoji } from '../../utils/countries';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 
-const STEP_LABELS = ['Trajet', 'Colis', 'Coordonnees', 'Recapitulatif'];
+const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
 const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '' };
 
@@ -126,9 +126,8 @@ function SuccessScreen({ expedition, onNew }) {
 }
 
 // Interville shipment: one commune to another within the same country.
-// Flow: communes + formats (auth) -> simulate-interville (auth) -> store.
-// simulate-interville and formats-colis both require a token, so the whole
-// screen is auth-gated (unlike the guest-first extrapays devis).
+// Flow: communes + formats -> simulate-interville -> store.
+// The devis is usable as a guest; login is only asked when confirming (store).
 export default function IntervilleFormPage() {
   const dispatch = useDispatch();
   const country = useSelector((s) => s.country);
@@ -162,7 +161,7 @@ export default function IntervilleFormPage() {
 
   // Communes of the departure country — public, gives destinataire_commune_id.
   useEffect(() => {
-    if (!isAuthenticated || !country.code) return;
+    if (!country.code) return;
     let cancelled = false;
     setCommunesStatus('loading');
     expeditionService
@@ -180,7 +179,7 @@ export default function IntervilleFormPage() {
 
   // Colis formats of the client's backoffice — default-select the is_default one.
   useEffect(() => {
-    if (!isAuthenticated || !country.code) return;
+    if (!country.code) return;
     let cancelled = false;
     setFormatsStatus('loading');
     expeditionService
@@ -223,7 +222,7 @@ export default function IntervilleFormPage() {
 
   // Simulate the tariff on the recap step (debounced, re-runs if inputs change).
   useEffect(() => {
-    if (step !== 4 || !canSimulate) return undefined;
+    if (step < 3 || !canSimulate) return undefined;
     let cancelled = false;
     setSimStatus('loading');
     setSimError('');
@@ -303,11 +302,23 @@ export default function IntervilleFormPage() {
     setDestinataire((d) => (d.ville === communeNom ? d : { ...d, ville: communeNom }));
   }, [communeNom]);
 
+  // Same for the expediteur: ville de depart = commune of the chosen agence.
+  const agenceVille = agence?.commune || agence?.ville || '';
+  useEffect(() => {
+    if (!agenceVille) return;
+    setExpediteur((e) => (e.ville === agenceVille ? e : { ...e, ville: agenceVille }));
+  }, [agenceVille]);
+
   const canContinueStep1 = Boolean(agence?.id) && Boolean(destinataireCommuneId);
   const canContinueStep2 = colisList.length > 0 && colisList.every((c) => Number(c.poids) >= 0.01);
   const canContinueStep3 = contactIsComplete(expediteur) && contactIsComplete(destinataire);
 
   const handleSubmit = async () => {
+    // The devis is open to guests; login is only required to register.
+    if (!isAuthenticated) {
+      dispatch(openAuthSheet({ mode: 'login', reason: 'expedition' }));
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -340,30 +351,6 @@ export default function IntervilleFormPage() {
   };
 
   if (result) return <SuccessScreen expedition={result} onNew={resetForm} />;
-
-  if (!isAuthenticated) {
-    return (
-      <div>
-        <TopBar title="Expedition Interville" back />
-        <div className="page-container py-4">
-          <EmptyState
-            icon={LogIn}
-            title="Connectez-vous pour continuer"
-            description="La creation d'une expedition interville necessite un compte."
-            action={
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => dispatch(openAuthSheet({ mode: 'login', reason: 'expedition' }))}
-              >
-                Se connecter / Creer un compte
-              </button>
-            }
-          />
-        </div>
-      </div>
-    );
-  }
 
   if (!country.code) {
     return (
@@ -556,24 +543,10 @@ export default function IntervilleFormPage() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
-            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} />
-            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(2)}>Retour</button>
-              <button type="button" className="btn-primary flex-1" disabled={!canContinueStep3} onClick={() => goToStep(4)}>Continuer</button>
-            </div>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-4">
             <div className="card divide-y divide-surface-100 p-4 text-sm">
               <Row label="Agence de depart" value={agence?.nom_agence} />
               <Row label="Commune d'arrivee" value={communeNom} />
               <Row label="Colis" value={`${colisList.length} colis`} />
-              <Row label="Expediteur" value={`${expediteur.nom_prenom} · ${expediteur.telephone}`} />
-              <Row label="Destinataire" value={`${destinataire.nom_prenom} · ${destinataire.telephone}`} />
             </div>
 
             <TarifCard
@@ -582,6 +555,21 @@ export default function IntervilleFormPage() {
               sim={sim}
               onRetry={() => setRetryTick((t) => t + 1)}
             />
+
+            <div className="flex gap-2">
+              <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(2)}>Retour</button>
+              <button type="button" className="btn-primary flex-1" disabled={simStatus === 'loading' || !sim} onClick={() => goToStep(4)}>Continuer</button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-4">
+            <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
+            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined} />
+            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
+
+            {sim?.tarif && <TarifCard status={simStatus} error={simError} sim={sim} onRetry={() => setRetryTick((t) => t + 1)} />}
 
             {submitError && (
               <div className="card border border-red-100 bg-red-50 p-3 text-sm text-red-700">{submitError}</div>
@@ -592,7 +580,7 @@ export default function IntervilleFormPage() {
               <button
                 type="button"
                 className="btn-primary flex-1"
-                disabled={submitting || simStatus === 'loading' || !sim}
+                disabled={submitting || !canContinueStep3 || !sim}
                 onClick={handleSubmit}
               >
                 {submitting ? 'Envoi...' : "Confirmer l'expedition"}
