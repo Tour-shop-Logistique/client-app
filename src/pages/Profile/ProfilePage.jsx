@@ -2,7 +2,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import {
   Gift, FileText, LogOut, MessageCircle, User, ChevronRight,
-  UserCog, KeyRound, MapPinned, Trash2,
+  UserCog, KeyRound, MapPinned, Trash2, ShoppingBag, Store,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -29,6 +29,8 @@ export default function ProfilePage() {
 
   // Account settings — only meaningful once signed in (auth-gated routes).
   const accountLinks = [
+    { to: ROUTES.MARKETPLACE_ORDERS, icon: ShoppingBag, label: 'Mes achats' },
+    { to: ROUTES.MARKETPLACE_SELLER, icon: Store, label: 'Ma boutique' },
     { to: ROUTES.PROFILE_EDIT, icon: UserCog, label: 'Modifier mon profil' },
     { to: ROUTES.PROFILE_PASSWORD, icon: KeyRound, label: 'Changer mon mot de passe' },
     { to: ROUTES.PROFILE_ADDRESSES, icon: MapPinned, label: 'Mes adresses favorites' },

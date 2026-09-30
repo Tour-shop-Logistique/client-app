@@ -4,13 +4,21 @@ import BottomSheet from '../common/BottomSheet';
 import LoadingSpinner from '../common/LoadingSpinner';
 import EmptyState from '../common/EmptyState';
 
+// Retire les accents/diacritiques pour permettre une recherche insensible aux accents
+// (ex: "vetement" retrouve "vêtement").
+const normalize = (str) =>
+  (str || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+
 export default function ProductSelectSheet({ open, onClose, products, status, onSelect }) {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalize(query.trim());
     if (!q) return products;
-    return products.filter((p) => p.designation.toLowerCase().includes(q));
+    return products.filter((p) => normalize(p.designation).includes(q));
   }, [products, query]);
 
   return (

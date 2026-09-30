@@ -26,6 +26,7 @@ import { flushPendingAuthAction, clearPendingAuthAction } from '../../hooks/useR
 const REASON_LABELS = {
   expedition: 'Connectez-vous pour valider votre expédition.',
   marketplace_order: 'Connectez-vous pour valider votre commande.',
+  marketplace: 'Connectez-vous pour acheter et vendre sur l’e-commerce.',
   default: 'Connectez-vous ou créez un compte pour continuer.',
 };
 

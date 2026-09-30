@@ -9,8 +9,18 @@ export const ROUTES = {
   MARKETPLACE: '/marketplace',
   MARKETPLACE_PRODUCT: '/marketplace/produits/:id',
   MARKETPLACE_CART: '/marketplace/panier',
+  MARKETPLACE_FAVORITES: '/marketplace/favoris',
+  MARKETPLACE_ORDERS: '/marketplace/achats',
+  MARKETPLACE_ORDER: '/marketplace/achats/:id',
+  MARKETPLACE_SELLER: '/marketplace/vendeur',
   MARKETPLACE_SELL: '/marketplace/vendre',
   MARKETPLACE_MY_LISTINGS: '/marketplace/mes-annonces',
+  MARKETPLACE_LISTING_EDIT: '/marketplace/mes-annonces/:id',
+  MARKETPLACE_SALES: '/marketplace/ventes',
+  MARKETPLACE_SALE: '/marketplace/ventes/:id',
+  MARKETPLACE_PAYMENT_METHODS: '/marketplace/moyens-paiement',
+  MARKETPLACE_BALANCE: '/marketplace/solde',
+  MARKETPLACE_SUBSCRIPTION: '/marketplace/abonnement',
   AGENCIES: '/agences',
   AGENCY_DETAIL: '/agences/:id',
   PROFILE: '/profil',
@@ -27,4 +37,7 @@ export const ROUTES = {
 export const trackingPath = (id) => `/expeditions/${id}/suivi`;
 export const expeditionDetailPath = (id) => `/expeditions/${id}`;
 export const productPath = (id) => `/marketplace/produits/${id}`;
+export const orderPath = (id) => `/marketplace/achats/${id}`;
+export const salePath = (id) => `/marketplace/ventes/${id}`;
+export const listingEditPath = (id) => `/marketplace/mes-annonces/${id}`;
 export const agencyPath = (id) => `/agences/${id}`;

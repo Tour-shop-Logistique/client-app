@@ -1,7 +1,13 @@
 import { createSlice } from '@reduxjs/toolkit';
+import { loadJson } from '../persist';
+
+// Une annonce marketplace est un article unique (pas de stock ni de quantite) :
+// le panier est une liste d'annonces, envoyee telle quelle a panier/valider.
+// Item : { id, titre, prix, devise, photo, vendeur: { id, nom, prenoms } }
+export const CART_KEY = 'marketplace_cart';
 
 const initialState = {
-  items: [], // { productId, title, price, image, quantity }
+  items: loadJson(CART_KEY, []),
 };
 
 const cartSlice = createSlice({
@@ -9,21 +15,17 @@ const cartSlice = createSlice({
   initialState,
   reducers: {
     addToCart(state, action) {
-      const { productId, quantity = 1, ...rest } = action.payload;
-      const existing = state.items.find((item) => item.productId === productId);
-      if (existing) {
-        existing.quantity += quantity;
-      } else {
-        state.items.push({ productId, quantity, ...rest });
+      if (!state.items.some((item) => item.id === action.payload.id)) {
+        state.items.push(action.payload);
       }
     },
-    updateQuantity(state, action) {
-      const { productId, quantity } = action.payload;
-      const item = state.items.find((i) => i.productId === productId);
-      if (item) item.quantity = Math.max(1, quantity);
-    },
     removeFromCart(state, action) {
-      state.items = state.items.filter((item) => item.productId !== action.payload);
+      state.items = state.items.filter((item) => item.id !== action.payload);
+    },
+    // Retire les annonces transformees en commandes (ou devenues indisponibles).
+    removeManyFromCart(state, action) {
+      const ids = new Set(action.payload);
+      state.items = state.items.filter((item) => !ids.has(item.id));
     },
     clearCart(state) {
       state.items = [];
@@ -31,5 +33,7 @@ const cartSlice = createSlice({
   },
 });
 
-export const { addToCart, updateQuantity, removeFromCart, clearCart } = cartSlice.actions;
+export const { addToCart, removeFromCart, removeManyFromCart, clearCart } = cartSlice.actions;
+export const selectCartCount = (state) => state.cart.items.length;
+export const selectInCart = (id) => (state) => state.cart.items.some((item) => item.id === id);
 export default cartSlice.reducer;

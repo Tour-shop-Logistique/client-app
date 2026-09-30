@@ -21,15 +21,13 @@ export const FEATURES = {
   agencies: true,             // GET /api/agences, GET /api/agences/{id}      (documented)
   profile: true,              // GET /api/profil + auth flow                  (documented)
   referral: true,             // GET /api/client/parrainage/*  (mon-code, solde, historique, filleuls) (documented)
+  marketplace: true,          // /marketplace/acheteur|vendeur/*, /marketplace/solde, /abonnement/* (MARKETPLACE_ET_ABONNEMENT_API.md)
 
   // --- Not connected yet ------------------------------------------------
   // Delivery-offer / confirm-delivery / rating / invoice-download endpoints
   // (/expeditions/{id}/...) are not documented; client API only exposes
   // show / list / cancel / statistics.
   expeditionTracking: false,
-
-  // No /marketplace/* endpoint is documented anywhere.
-  marketplace: false,
 
   // Depends on /expeditions/{id}/facture (undocumented).
   invoices: false,

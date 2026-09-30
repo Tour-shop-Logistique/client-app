@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { store } from './store';
 import { sessionExpired } from './store/slices/authSlice';
+import { abonnementBloqueDetected } from './store/slices/marketplaceSlice';
 import App from './App.jsx';
 import './index.css';
 // Side-effect import: registers the `beforeinstallprompt` listener before React mounts.
@@ -14,6 +15,8 @@ import { registerPwaUpdates } from './utils/pwaUpdate';
 // The API interceptor fires this on any 401 (revoked/expired Sanctum token,
 // e.g. after reset-password wipes every token) — drop the session store-side.
 window.addEventListener('auth:unauthorized', () => store.dispatch(sessionExpired()));
+// 403 ABONNEMENT_BLOQUE sur une route vendeur : le bandeau d'abonnement s'affiche.
+window.addEventListener('marketplace:abonnement-bloque', () => store.dispatch(abonnementBloqueDetected()));
 
 registerPwaUpdates();
 

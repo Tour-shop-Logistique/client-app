@@ -38,6 +38,11 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       window.dispatchEvent(new Event('auth:unauthorized'));
     }
+    // Vendeur/livreur en retard d'abonnement marketplace : a distinguer d'un 403
+    // d'autorisation classique (MARKETPLACE_ET_ABONNEMENT_API.md, 9.6).
+    if (error.response?.status === 403 && error.response?.data?.code === 'ABONNEMENT_BLOQUE') {
+      window.dispatchEvent(new Event('marketplace:abonnement-bloque'));
+    }
     return Promise.reject(error);
   }
 );

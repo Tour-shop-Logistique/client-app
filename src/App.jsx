@@ -22,8 +22,7 @@ import ExpeditionDetailPage from './pages/Expedition/ExpeditionDetailPage';
 import ProductListPage from './pages/Marketplace/ProductListPage';
 import ProductDetailPage from './pages/Marketplace/ProductDetailPage';
 import CartPage from './pages/Marketplace/CartPage';
-import SellPage from './pages/Marketplace/SellPage';
-import MyListingsPage from './pages/Marketplace/MyListingsPage';
+import SellerOnly from './components/marketplace/SellerOnly';
 import AgencyListPage from './pages/Agencies/AgencyListPage';
 import AgencyDetailPage from './pages/Agencies/AgencyDetailPage';
 import ProfilePage from './pages/Profile/ProfilePage';
@@ -38,6 +37,20 @@ const EditProfilePage = lazy(() => import('./pages/Profile/EditProfilePage'));
 const ChangePasswordPage = lazy(() => import('./pages/Profile/ChangePasswordPage'));
 const FavoriteAddressesPage = lazy(() => import('./pages/Profile/FavoriteAddressesPage'));
 const DeleteAccountPage = lazy(() => import('./pages/Profile/DeleteAccountPage'));
+
+// Marketplace : achats, espace vendeur et abonnement (secondaires, charges a la demande).
+const FavoritesPage = lazy(() => import('./pages/Marketplace/FavoritesPage'));
+const OrdersPage = lazy(() => import('./pages/Marketplace/OrdersPage'));
+const OrderDetailPage = lazy(() => import('./pages/Marketplace/OrderDetailPage'));
+const SellerHubPage = lazy(() => import('./pages/Marketplace/SellerHubPage'));
+const SellPage = lazy(() => import('./pages/Marketplace/SellPage'));
+const MyListingsPage = lazy(() => import('./pages/Marketplace/MyListingsPage'));
+const ListingEditPage = lazy(() => import('./pages/Marketplace/ListingEditPage'));
+const SalesPage = lazy(() => import('./pages/Marketplace/SalesPage'));
+const SaleDetailPage = lazy(() => import('./pages/Marketplace/SaleDetailPage'));
+const PaymentMethodsPage = lazy(() => import('./pages/Marketplace/PaymentMethodsPage'));
+const BalancePage = lazy(() => import('./pages/Marketplace/BalancePage'));
+const SubscriptionPage = lazy(() => import('./pages/Marketplace/SubscriptionPage'));
 
 // Renders the real page only if its backend is wired (src/config/features.js),
 // otherwise the "Page non disponible" screen.
@@ -86,8 +99,18 @@ export default function App() {
         <Route path={ROUTES.MARKETPLACE} element={gated('marketplace', <ProductListPage />)} />
         <Route path={ROUTES.MARKETPLACE_PRODUCT} element={gated('marketplace', <ProductDetailPage />)} />
         <Route path={ROUTES.MARKETPLACE_CART} element={gated('marketplace', <CartPage />)} />
+        <Route path={ROUTES.MARKETPLACE_FAVORITES} element={gated('marketplace', <FavoritesPage />)} />
+        <Route path={ROUTES.MARKETPLACE_ORDERS} element={gated('marketplace', <OrdersPage />)} />
+        <Route path={ROUTES.MARKETPLACE_ORDER} element={gated('marketplace', <OrderDetailPage />)} />
+        <Route path={ROUTES.MARKETPLACE_SELLER} element={gated('marketplace', <SellerHubPage />)} />
         <Route path={ROUTES.MARKETPLACE_SELL} element={gated('marketplace', <SellPage />)} />
-        <Route path={ROUTES.MARKETPLACE_MY_LISTINGS} element={gated('marketplace', <MyListingsPage />)} />
+        <Route path={ROUTES.MARKETPLACE_MY_LISTINGS} element={gated('marketplace', <SellerOnly><MyListingsPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_LISTING_EDIT} element={gated('marketplace', <SellerOnly><ListingEditPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_SALES} element={gated('marketplace', <SellerOnly><SalesPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_SALE} element={gated('marketplace', <SellerOnly><SaleDetailPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_PAYMENT_METHODS} element={gated('marketplace', <SellerOnly><PaymentMethodsPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_BALANCE} element={gated('marketplace', <SellerOnly><BalancePage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_SUBSCRIPTION} element={gated('marketplace', <SubscriptionPage />)} />
 
         <Route path={ROUTES.AGENCIES} element={gated('agencies', <AgencyListPage />)} />
         <Route path={ROUTES.AGENCY_DETAIL} element={gated('agencies', <AgencyDetailPage />)} />
