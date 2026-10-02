@@ -1,0 +1,133 @@
+{
+  "projectId": "4c35ae75-309b-48af-8736-4117a2b928b4",
+  "shape": "package",
+  "pkg": "client-app",
+  "globalName": "TousShopClient",
+  "entry": "./.design-sync/ds-entry.js",
+  "buildCmd": "npx tailwindcss -c .design-sync/tailwind.ds.config.js -i .design-sync/ds.css -o .design-sync/.cache/ds.css",
+  "cssEntry": ".design-sync/.cache/ds.css",
+  "runtimeFontPrefixes": [
+    "Inter",
+    "Poppins"
+  ],
+  "provider": {
+    "component": "DsProvider"
+  },
+  "componentSrcMap": {
+    "BottomSheet": "src/components/common/BottomSheet.jsx",
+    "BottomNav": "src/components/common/BottomNav.jsx",
+    "TopBar": "src/components/common/TopBar.jsx",
+    "EmptyState": "src/components/common/EmptyState.jsx",
+    "LoadingSpinner": "src/components/common/LoadingSpinner.jsx",
+    "StepProgress": "src/components/expedition/StepProgress.jsx",
+    "ContactFields": "src/components/expedition/ContactFields.jsx",
+    "DestinationCountrySheet": "src/components/expedition/DestinationCountrySheet.jsx",
+    "ProductSelectSheet": "src/components/expedition/ProductSelectSheet.jsx",
+    "SegmentedTabs": "src/components/marketplace/SegmentedTabs.jsx",
+    "StatusBadge": "src/components/marketplace/StatusBadge.jsx",
+    "OrderTimeline": "src/components/marketplace/OrderTimeline.jsx",
+    "PersonRow": "src/components/marketplace/OrderParts.jsx",
+    "OrderItemsCard": "src/components/marketplace/OrderParts.jsx",
+    "PaymentInfoCard": "src/components/marketplace/OrderParts.jsx",
+    "DeliveryInfoCard": "src/components/marketplace/OrderParts.jsx",
+    "DeliveryCodeCard": "src/components/marketplace/OrderParts.jsx",
+    "ImageGallery": "src/components/marketplace/ImageGallery.jsx",
+    "PhotoPicker": "src/components/marketplace/FilePickers.jsx",
+    "ProofPicker": "src/components/marketplace/FilePickers.jsx",
+    "AnimatedNumber": "src/components/marketplace/AnimatedNumber.jsx"
+  },
+  "dtsPropsFor": {
+    "BottomSheet": "/** Renders nothing when false. Portals into #sheet-root (provided by DsProvider). */\n  open: boolean;\n  onClose: () => void;\n  title: React.ReactNode;\n  children?: React.ReactNode;",
+    "BottomNav": "/** No props: fixed bottom tab bar (Accueil, Colis, E-commerce, Agences, Profil). Needs a router (DsProvider); the active tab follows the current route. */",
+    "TopBar": "title: React.ReactNode;\n  /** Shows a back chevron (navigate(-1)). Needs a router (DsProvider). */\n  back?: boolean;\n  /** Right-side slot (icon buttons...). */\n  right?: React.ReactNode;",
+    "EmptyState": "/** lucide icon component, rendered in a primary-50 circle. */\n  icon?: React.ComponentType<{ size?: number; className?: string }>;\n  title: React.ReactNode;\n  description?: React.ReactNode;\n  /** Call-to-action element (e.g. <button className=\"btn-primary\">). */\n  action?: React.ReactNode;",
+    "LoadingSpinner": "/** Default \"Chargement...\". */\n  label?: string;\n  className?: string;",
+    "StepProgress": "/** Current step, 1-based. */\n  step: number;\n  total: number;\n  labels?: string[];\n  /** With labels: renders clickable step chips instead of the \"Etape n/total\" line. */\n  onStepClick?: (step: number) => void;\n  /** Furthest step the user may jump to (defaults to step). */\n  maxStepReached?: number;",
+    "ContactFields": "/** Card title, e.g. \"Expediteur\" / \"Destinataire\". */\n  title: React.ReactNode;\n  data: { nom_prenom: string; telephone: string; adresse: string; ville: string; email?: string; societe?: string; code_postal?: string; etat?: string; quartier?: string };\n  onChange: (data: ContactFieldsProps['data']) => void;\n  /** Offer a commune <select> for ville. */\n  communes?: { id: string | number; nom: string }[];\n  /** Lock ville to this read-only value. */\n  villeFixed?: string;",
+    "DestinationCountrySheet": "open: boolean;\n  onClose: () => void;\n  /** Rows from GET pays-disponibles: ISO code + one boolean per expedition type. */\n  destinations: { code_pays: string; nom?: string; ld?: boolean; groupage_afrique?: boolean; groupage_ca?: boolean; groupage_dhd_aerien?: boolean; groupage_dhd_maritime?: boolean }[];\n  status: 'idle' | 'loading' | 'error';\n  /** Filters to types usable with this mode. */\n  mode?: 'livraison_domicile' | 'recuperation_agence';\n  /** Code shown with a check mark. */\n  currentCode?: string;\n  onSelect: (code: string) => void;\n  onRetry?: () => void;",
+    "ProductSelectSheet": "open: boolean;\n  onClose: () => void;\n  products: { id: string | number; designation: string; reference: string; category?: { nom: string } }[];\n  status: 'idle' | 'loading' | 'error';\n  onSelect: (product: ProductSelectSheetProps['products'][number]) => void;",
+    "SegmentedTabs": "tabs: { key: string; label: React.ReactNode; count?: number }[];\n  /** Active tab key. */\n  value: string;\n  onChange: (key: string) => void;\n  /** Unique id per tab group on a page (animated pill layoutId). Default \"tabs\". */\n  id?: string;",
+    "StatusBadge": "/** One of the exported dictionaries: COMMANDE_STATUTS, LIVRAISON_STATUTS, ANNONCE_STATUTS, ECHEANCE_STATUTS, PAIEMENT_ABONNEMENT_STATUTS. */\n  map: Record<string, { label: string; short?: string; tone: 'neutral' | 'success' | 'warning' | 'info' | 'danger' }>;\n  /** Key in map, e.g. \"payee\". Unknown values render as a neutral pill. */\n  value: string;\n  /** Use the entry's short label when it has one. */\n  short?: boolean;\n  className?: string;",
+    "OrderTimeline": "/** statut drives the Commande -> Paiement -> Livraison -> Reçue steps. */\n  commande: { statut: 'en_attente_paiement' | 'paiement_a_confirmer' | 'payee' | 'livree'; mode_livraison?: string; livraison_marketplace?: object | null };",
+    "PersonRow": "label: React.ReactNode;\n  /** Renders nothing when null. */\n  person: { prenoms?: string; nom?: string } | null;",
+    "OrderItemsCard": "commande: { items: { id: string | number; titre_snapshot: string; prix_unitaire: number }[]; montant_articles: number };",
+    "PaymentInfoCard": "/** Renders nothing without payment_method_choisi. */\n  commande: { payment_method_choisi?: 'mobile_money' | 'cash' | 'bank_transfer' | 'card' | 'other'; reference_paiement?: string; paiement_declare_le?: string; preuve_paiement_path?: string };\n  title?: string;",
+    "DeliveryInfoCard": "/** Renders nothing without mode_livraison or livraison_marketplace. */\n  commande: { mode_livraison?: 'reseau_livreurs' | 'livreur_direct' | 'hors_plateforme'; livraison_marketplace?: { statut?: 'en_attente' | 'assignee' | 'en_cours' | 'terminee'; mode?: string; montant_final?: number } | null };",
+    "DeliveryCodeCard": "/** 4-digit handover code; renders nothing when empty. */\n  code?: string | number;",
+    "ImageGallery": "/** Empty array renders an ImageOff placeholder. */\n  photos: { id?: string | number; url: string }[];\n  /** Element layered over the main image (badges, favorite button). */\n  overlay?: React.ReactNode;",
+    "PhotoPicker": "/** Selected images; the first is the cover. */\n  files: File[];\n  onChange: (files: File[]) => void;\n  /** Default 10. */\n  max?: number;",
+    "ProofPicker": "file: File | null;\n  onChange: (file: File | null) => void;\n  label?: string;",
+    "AnimatedNumber": "/** Counts up from 0 to value. */\n  value: number;\n  /** e.g. (n) => n.toLocaleString('fr-FR') + ' FCFA'. */\n  format?: (n: number) => React.ReactNode;\n  className?: string;"
+  },
+  "overrides": {
+    "BottomSheet": {
+      "cardMode": "single",
+      "viewport": "420x560"
+    },
+    "DestinationCountrySheet": {
+      "cardMode": "single",
+      "viewport": "420x640"
+    },
+    "ProductSelectSheet": {
+      "cardMode": "single",
+      "viewport": "420x600"
+    },
+    "BottomNav": {
+      "cardMode": "single",
+      "primaryStory": "Accueil",
+      "viewport": "448x140"
+    },
+    "TopBar": {
+      "cardMode": "column"
+    },
+    "EmptyState": {
+      "cardMode": "column"
+    },
+    "LoadingSpinner": {
+      "cardMode": "column"
+    },
+    "StepProgress": {
+      "cardMode": "column"
+    },
+    "ContactFields": {
+      "cardMode": "column"
+    },
+    "SegmentedTabs": {
+      "cardMode": "column"
+    },
+    "StatusBadge": {
+      "cardMode": "column"
+    },
+    "OrderTimeline": {
+      "cardMode": "column"
+    },
+    "PersonRow": {
+      "cardMode": "column"
+    },
+    "OrderItemsCard": {
+      "cardMode": "column"
+    },
+    "PaymentInfoCard": {
+      "cardMode": "column"
+    },
+    "DeliveryInfoCard": {
+      "cardMode": "column"
+    },
+    "DeliveryCodeCard": {
+      "cardMode": "column"
+    },
+    "ImageGallery": {
+      "cardMode": "column"
+    },
+    "PhotoPicker": {
+      "cardMode": "column"
+    },
+    "ProofPicker": {
+      "cardMode": "column"
+    },
+    "AnimatedNumber": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

@@ -1,0 +1,4 @@
+/* Design-sync stylesheet source: the app's fonts (index.html) + its Tailwind entry.
+   Compiled by buildCmd into .design-sync/.cache/ds.css (see tailwind.ds.config.js). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap');
+@import '../src/index.css';

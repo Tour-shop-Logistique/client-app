@@ -10,7 +10,7 @@ import { isDestinationCompatible, destinationBadges } from '../../utils/expediti
 const normalize = (s) =>
   s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[-'\s]+/g, ' ')
     .trim();
