@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ShieldCheck } from 'lucide-react';
 import TopBar from '../../components/common/TopBar';
+import PageIntro from '../../components/common/PageIntro';
 import { changePassword } from '../../store/slices/authSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { ROUTES } from '../../routes';
@@ -48,15 +50,16 @@ export default function ChangePasswordPage() {
   return (
     <div>
       <TopBar title="Changer mon mot de passe" back />
-      <div className="page-container py-4">
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="page-container space-y-4 py-4">
+        <PageIntro
+          icon={ShieldCheck}
+          tone="amber"
+          title="Sécurité du compte"
+          text="Changer le mot de passe déconnecte toutes vos sessions. Vous devrez vous reconnecter avec le nouveau."
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <p className="mb-4 text-sm text-surface-500">
-          Par sécurité, changer le mot de passe déconnecte toutes vos sessions. Vous devrez vous
-          reconnecter avec le nouveau mot de passe.
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="card space-y-3 p-4">
           <label className="block text-sm font-medium text-surface-700">
             Mot de passe actuel
             <input

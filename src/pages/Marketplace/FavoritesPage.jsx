@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, ShoppingCart, Check, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Check, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import CartButton from '../../components/marketplace/CartButton';
+import { EmptyHeartArt } from '../../components/illustrations';
 import { ProductImage, FavoriteButton } from '../../components/marketplace/ProductCard';
 import { addToCart } from '../../store/slices/cartSlice';
 import { formatMoney } from '../../utils/marketplace';
@@ -29,13 +30,9 @@ export default function FavoritesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-12 text-center shadow-card"
           >
-            <motion.span
-              animate={{ scale: [1, 1.12, 1] }}
-              transition={{ repeat: Infinity, duration: 1.6 }}
-              className="flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-500"
-            >
-              <Heart size={30} />
-            </motion.span>
+            <span className="animate-float">
+              <EmptyHeartArt />
+            </span>
             <p className="text-title text-surface-900">Aucun favori</p>
             <p className="text-body text-surface-500">Touchez le cœur d’un article pour le retrouver ici.</p>
             <Link to={ROUTES.MARKETPLACE} className="btn-shop">

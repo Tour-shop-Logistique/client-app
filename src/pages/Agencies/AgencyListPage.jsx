@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { TILE_URL, TILE_ATTRIBUTION } from '../../utils/mapTiles';
 import { MapPinned, Search, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import '../../utils/leafletIcons';
@@ -86,10 +87,7 @@ export default function AgencyListPage() {
         {showMap && (
           <div className="card h-56 overflow-hidden">
             <MapContainer center={center} zoom={12} scrollWheelZoom={false} className="h-full w-full">
-              <TileLayer
-                attribution='&copy; OpenStreetMap contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+              <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={19} />
               {filtered
                 .filter((a) => a.latitude && a.longitude)
                 .map((a) => (

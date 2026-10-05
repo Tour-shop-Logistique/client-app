@@ -3,18 +3,58 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
 import {
-  Trash2, ShoppingBag, Store, Info, ShieldCheck, ArrowRight, Heart, Loader2, CheckCircle2, Wallet, AlertCircle,
+  Trash2, Store, Info, ShieldCheck, ArrowRight, Heart, Loader2, CheckCircle2, Wallet, AlertCircle, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import BottomSheet from '../../components/common/BottomSheet';
 import { ProductImage } from '../../components/marketplace/ProductCard';
+import AddressFields from '../../components/marketplace/AddressFields';
+import { EmptyCartArt } from '../../components/illustrations';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import marketplaceService from '../../services/marketplaceService';
 import { removeFromCart, removeManyFromCart, clearCart } from '../../store/slices/cartSlice';
 import { dropFromCatalogue } from '../../store/slices/marketplaceSlice';
-import { formatMoney, personName, initials, apiErrorMessage } from '../../utils/marketplace';
+import {
+  formatMoney, personName, initials, apiErrorMessage, EMPTY_ADDRESS,
+} from '../../utils/marketplace';
 import { ROUTES, productPath, orderPath } from '../../routes';
+
+// Derniere adresse de livraison utilisee, pre-remplie au prochain achat.
+const ADDRESS_KEY = 'marketplace_adresse_livraison';
+const loadAddress = () => {
+  try {
+    return JSON.parse(localStorage.getItem(ADDRESS_KEY)) || null;
+  } catch {
+    return null;
+  }
+};
+const saveAddress = (addr) => {
+  try {
+    localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr));
+  } catch {
+    // non bloquant
+  }
+};
+
+const REQUIRED_ADDRESS = ['nom', 'telephone', 'adresse', 'ville'];
+
+const addressErrors = (addr) =>
+  Object.fromEntries(REQUIRED_ADDRESS.filter((k) => !String(addr[k] ?? '').trim()).map((k) => [k, 'Champ requis']));
+
+// Corps `adresse_livraison` de panier/valider (champs optionnels omis si vides).
+const toAdresseLivraison = (addr) => {
+  const out = {};
+  ['nom', 'telephone', 'adresse', 'ville', 'quartier', 'instructions'].forEach((k) => {
+    const v = String(addr[k] ?? '').trim();
+    if (v) out[k] = v;
+  });
+  if (addr.latitude != null && addr.longitude != null) {
+    out.latitude = addr.latitude;
+    out.longitude = addr.longitude;
+  }
+  return out;
+};
 
 // Ligne de panier, glisser vers la gauche pour supprimer.
 function CartLine({ item, own, unavailable, onRemove }) {
@@ -71,11 +111,15 @@ export default function CartPage() {
   const navigate = useNavigate();
   const { requireAuth } = useRequireAuth();
   const items = useSelector((s) => s.cart.items);
-  const userId = useSelector((s) => s.auth.user?.id);
+  const user = useSelector((s) => s.auth.user);
+  const userId = user?.id;
   const favorites = useSelector((s) => s.marketplace.favorites);
   const [submitting, setSubmitting] = useState(false);
   const [unavailable, setUnavailable] = useState(() => new Set());
   const [createdOrders, setCreatedOrders] = useState(null);
+  const [addressOpen, setAddressOpen] = useState(false);
+  const [address, setAddress] = useState(() => loadAddress() || EMPTY_ADDRESS);
+  const [addrErrors, setAddrErrors] = useState({});
 
   // Le serveur cree une commande par vendeur : on presente le panier ainsi.
   const groups = useMemo(() => {
@@ -93,27 +137,55 @@ export default function CartPage() {
   const total = purchasable.reduce((sum, i) => sum + Number(i.prix), 0);
   const blocked = items.length > purchasable.length;
 
+  // 1. Connexion si besoin, puis saisie de l'adresse de livraison (requise).
   const handleCheckout = () => {
-    requireAuth(async () => {
+    requireAuth(() => {
       if (!purchasable.length) return;
-      setSubmitting(true);
-      try {
-        const commandes = await marketplaceService.validerPanier(purchasable.map((i) => i.id));
-        const ids = purchasable.map((i) => i.id);
-        dispatch(removeManyFromCart(ids));
-        dispatch(dropFromCatalogue(ids));
-        setCreatedOrders(commandes);
-      } catch (err) {
-        const message = apiErrorMessage(err, 'Impossible de valider le panier.');
-        // "Article(s) déjà vendu(s) ou indisponible(s) : A, B" -> on marque ces lignes.
-        const titles = message.includes(':') ? message.split(':').slice(1).join(':').split(',').map((t) => t.trim()) : [];
-        const hit = items.filter((i) => titles.includes(i.titre)).map((i) => i.id);
-        if (hit.length) setUnavailable((prev) => new Set([...prev, ...hit]));
-        toast.error(message);
-      } finally {
-        setSubmitting(false);
-      }
+      setAddress((a) => ({
+        ...a,
+        nom: a.nom || (user ? personName(user) : ''),
+        telephone: a.telephone || user?.telephone || '',
+      }));
+      setAddrErrors({});
+      setAddressOpen(true);
     }, 'marketplace_order');
+  };
+
+  // 2. Validation du panier avec l'adresse (une seule pour toutes les commandes).
+  const submitOrder = async () => {
+    const errs = addressErrors(address);
+    setAddrErrors(errs);
+    if (Object.keys(errs).length) return;
+    setSubmitting(true);
+    try {
+      const commandes = await marketplaceService.validerPanier(purchasable.map((i) => i.id), toAdresseLivraison(address));
+      saveAddress(address);
+      const ids = purchasable.map((i) => i.id);
+      dispatch(removeManyFromCart(ids));
+      dispatch(dropFromCatalogue(ids));
+      setAddressOpen(false);
+      setCreatedOrders(commandes);
+    } catch (err) {
+      // Erreurs Laravel `adresse_livraison.ville` -> champ correspondant.
+      const fieldErrs = Object.entries(err?.response?.data?.errors ?? {})
+        .filter(([k]) => k.startsWith('adresse_livraison.'))
+        .map(([k, v]) => [k.replace('adresse_livraison.', ''), [v].flat()[0]]);
+      if (fieldErrs.length) {
+        setAddrErrors(Object.fromEntries(fieldErrs));
+        return;
+      }
+      const message = apiErrorMessage(err, 'Impossible de valider le panier.');
+      // "Article(s) déjà vendu(s) ou indisponible(s) : A, B" -> on marque ces lignes.
+      const titles = message.includes(':') ? message.split(':').slice(1).join(':').split(',').map((t) => t.trim()) : [];
+      const hit = items.filter((i) => titles.includes(i.titre)).map((i) => i.id);
+      if (hit.length) {
+        setUnavailable((prev) => new Set([...prev, ...hit]));
+        setAddressOpen(false);
+      }
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -145,9 +217,9 @@ export default function CartPage() {
                 initial={{ rotate: -10, scale: 0.8 }}
                 animate={{ rotate: 0, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 10 }}
-                className="flex h-20 w-20 items-center justify-center rounded-3xl bg-shop-100 text-shop-800"
+                className="animate-float"
               >
-                <ShoppingBag size={36} />
+                <EmptyCartArt />
               </motion.span>
               <div>
                 <p className="text-title text-surface-900">Votre panier est vide</p>
@@ -265,7 +337,7 @@ export default function CartPage() {
       </div>
 
       {items.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom))] z-20">
+        <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20">
           <div className="mx-auto max-w-md border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
             {blocked && (
               <p className="mb-2 text-center text-caption text-amber-700">
@@ -276,15 +348,40 @@ export default function CartPage() {
               type="button"
               whileTap={{ scale: 0.97 }}
               className="btn-shop w-full py-3.5 text-base"
-              disabled={submitting || purchasable.length === 0}
+              disabled={purchasable.length === 0}
               onClick={handleCheckout}
             >
-              {submitting ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}
-              {submitting ? 'Validation…' : `Valider la commande · ${formatMoney(total)}`}
+              <ShieldCheck size={18} />
+              {`Valider la commande · ${formatMoney(total)}`}
             </motion.button>
           </div>
         </div>
       )}
+
+      {/* Adresse de livraison (requise par panier/valider) */}
+      <BottomSheet open={addressOpen} onClose={() => !submitting && setAddressOpen(false)} title="Adresse de livraison">
+        <div className="space-y-4">
+          <p className="flex gap-2 text-caption text-surface-500">
+            <MapPin size={15} className="mt-0.5 shrink-0 text-shop-700" />
+            Le livreur vous apportera {groups.length > 1 ? 'toutes vos commandes' : 'votre commande'} à cette adresse.
+          </p>
+          <AddressFields
+            value={address}
+            onChange={(a) => {
+              setAddress(a);
+              if (Object.keys(addrErrors).length) setAddrErrors({});
+            }}
+            required={REQUIRED_ADDRESS}
+            errors={addrErrors}
+            withInstructions
+            idPrefix="livraison"
+          />
+          <motion.button type="button" whileTap={{ scale: 0.97 }} className="btn-shop w-full py-3.5" disabled={submitting} onClick={submitOrder}>
+            {submitting ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}
+            {submitting ? 'Validation…' : `Confirmer la commande · ${formatMoney(total)}`}
+          </motion.button>
+        </div>
+      </BottomSheet>
 
       {/* Confirmation : une commande par vendeur, chacune a payer */}
       <BottomSheet open={Boolean(createdOrders)} onClose={() => navigate(ROUTES.MARKETPLACE_ORDERS)} title="Commande validée">

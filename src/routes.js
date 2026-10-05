@@ -34,7 +34,6 @@ export const ROUTES = {
   REGISTER: '/inscription',
 };
 
-export const trackingPath = (id) => `/expeditions/${id}/suivi`;
 export const expeditionDetailPath = (id) => `/expeditions/${id}`;
 export const productPath = (id) => `/marketplace/produits/${id}`;
 export const orderPath = (id) => `/marketplace/achats/${id}`;

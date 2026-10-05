@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  ArrowRight,
+  Truck,
   Package,
   User,
   MapPin,
@@ -10,16 +10,24 @@ import {
   Boxes,
   Ban,
   AlertTriangle,
+  MessageCircle,
+  Route,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import BottomSheet from '../../components/common/BottomSheet';
+import TrackingTimeline from '../../components/expedition/TrackingTimeline';
+import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
+import DeliverySection from '../../components/expedition/DeliverySection';
+import RatingSection from '../../components/expedition/RatingSection';
 import expeditionService from '../../services/expeditionService';
+import { useRealtimeExpedition } from '../../hooks/useRealtimeUpdates';
 import { cancelExpedition, resetCancelState } from '../../store/slices/expeditionSlice';
 import { formatDate, formatDateTime, formatPrice } from '../../utils/format';
-import { getStatutMeta, getTypeLabel, isCancelable } from '../../utils/expeditionStatus';
+import { EN_COURS_STATUSES, getStatutMeta, getTypeLabel, isCancelable } from '../../utils/expeditionStatus';
+import { BoxArt, LiveDot } from '../../components/illustrations';
 import { ROUTES } from '../../routes';
 
 const val = (v) => (v === null || v === undefined || v === '' ? null : v);
@@ -43,13 +51,14 @@ const contact = (exp, who) => {
   };
 };
 
-function Section({ icon, title, children, right }) {
+// `tint` : pastille d'icône du kit visuel (une couleur par type d'information).
+function Section({ icon, title, children, right, tint = 'bg-primary-100 text-primary-600' }) {
   return (
     <section className="card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-primary-600">
-          {icon}
-          <h2 className="text-sm font-semibold text-surface-900">{title}</h2>
+      <div className="mb-3.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <span className={`icon-tile h-9 w-9 rounded-xl ${tint}`}>{icon}</span>
+          <h2 className="font-heading text-[15px] font-semibold text-surface-900">{title}</h2>
         </div>
         {right}
       </div>
@@ -93,22 +102,28 @@ function ColisItem({ colis, index }) {
   const hasDims = dims.some((d) => d > 0);
   const articles = colis.articles ?? [];
   return (
-    <div className="rounded-xl border border-surface-100 p-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-surface-900">
+    <div className="rounded-2xl bg-surface-50 p-3">
+      <div className="flex items-center gap-3">
+        <BoxArt size={40} />
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-surface-900">
           {colis.code_colis || `Colis ${index + 1}`}
         </p>
         {val(colis.poids) && (
-          <span className="text-xs font-medium text-surface-600">{colis.poids} kg</span>
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-surface-700 shadow-card">{colis.poids} kg</span>
         )}
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-surface-500">
+      <div className="ml-[52px] mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-surface-500">
         {hasDims && <span>{dims.map((d) => d || 0).join(' × ')} cm</span>}
         {Number(colis.prix_emballage) > 0 && (
           <span>Emballage : {formatPrice(colis.prix_emballage)}</span>
         )}
         {articles.length > 0 && <span>{articles.length} article(s)</span>}
       </div>
+      {colis.photo_url && (
+        <a href={colis.photo_url} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-lg bg-surface-50">
+          <img src={colis.photo_url} alt={`Photo du ${colis.code_colis || `colis ${index + 1}`}`} className="max-h-48 w-full object-cover" loading="lazy" />
+        </a>
+      )}
     </div>
   );
 }
@@ -123,6 +138,14 @@ export default function ExpeditionDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [motif, setMotif] = useState('');
+
+  // Temps reel (canal client.{id}) : statut, paiement, etapes du livreur.
+  // Rechargement silencieux du detail, et des missions via `liveTick`.
+  const [liveTick, setLiveTick] = useState(0);
+  useRealtimeExpedition(id, useCallback(() => {
+    expeditionService.clientShow(id).then((res) => setExp(res.data ?? res)).catch(() => {});
+    setLiveTick((t) => t + 1);
+  }, [id]));
 
   useEffect(() => {
     let alive = true;
@@ -205,6 +228,8 @@ export default function ExpeditionDetailPage() {
   const villeDep = val(expediteur.ville) || val(exp.ville_depart) || val(exp.agence?.ville);
   const villeDest = val(destinataire.ville) || val(exp.ville_destination);
   const colis = exp.colis ?? [];
+  const closedWithoutDelivery = rawStatut === 'cancelled' || rawStatut === 'refused';
+  const agencePhone = val(exp.agence?.telephone) ? String(exp.agence.telephone).replace(/\D/g, '') : null;
 
   return (
     <div>
@@ -219,7 +244,8 @@ export default function ExpeditionDetailPage() {
                 <p className="text-xs uppercase tracking-wide text-white/70">Référence</p>
                 <p className="truncate text-lg font-bold">{exp.reference || '—'}</p>
               </div>
-              <span className="shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold">
+                {EN_COURS_STATUSES.includes(rawStatut) && <LiveDot className="bg-shop-300" />}
                 {statut.label}
               </span>
             </div>
@@ -229,11 +255,20 @@ export default function ExpeditionDetailPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 p-4 text-sm font-medium text-surface-800">
-            <MapPin size={15} className="shrink-0 text-surface-400" />
-            <span className="truncate">{villeDep || exp.code_pays_depart || '—'}</span>
-            <ArrowRight size={15} className="shrink-0 text-surface-400" />
-            <span className="truncate">{villeDest || exp.code_pays_destination || '—'}</span>
+          <div className="flex items-center gap-2.5 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-caption text-surface-500">Départ</p>
+              <p className="truncate text-[15px] font-semibold text-surface-900">{villeDep || exp.code_pays_depart || '—'}</p>
+            </div>
+            <div className="flex flex-1 items-center gap-1 text-primary-600" aria-hidden="true">
+              <span className="flex-1 border-t-2 border-dashed border-primary-200" />
+              <Truck size={19} strokeWidth={2.2} />
+              <span className="flex-1 border-t-2 border-dashed border-surface-300" />
+            </div>
+            <div className="min-w-0 flex-1 text-right">
+              <p className="text-caption text-surface-500">Arrivée</p>
+              <p className="truncate text-[15px] font-semibold text-surface-900">{villeDest || exp.code_pays_destination || '—'}</p>
+            </div>
           </div>
         </div>
 
@@ -251,7 +286,30 @@ export default function ExpeditionDetailPage() {
           </div>
         )}
 
-        <Section icon={<Building2 size={16} />} title="Agence de départ">
+        {/* Demande refusée par l'agence (notification `demande_refusee`, motif
+            inclus — NOTIFICATIONS_A_INTEGRER.md famille 6). Nom du champ motif
+            non documenté : lecture défensive. */}
+        {rawStatut === 'refused' && (
+          <div className="card border border-red-100 bg-red-50/50 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+              <Ban size={15} /> Demande refusée par l'agence
+            </div>
+            {val(exp.motif_refus ?? exp.motif_rejet ?? exp.motif_annulation) && (
+              <p className="mt-1 text-sm text-red-600">Motif : {exp.motif_refus ?? exp.motif_rejet ?? exp.motif_annulation}</p>
+            )}
+            <p className="mt-1 text-xs text-red-500">Vous pouvez créer une nouvelle demande auprès d'une autre agence.</p>
+          </div>
+        )}
+
+        {!closedWithoutDelivery && (
+          <Section icon={<Route size={17} />} title="Suivi" right={<ExpeditionStatusBadge statut={rawStatut} />}>
+            <TrackingTimeline expedition={exp} />
+          </Section>
+        )}
+
+        {!closedWithoutDelivery && <DeliverySection expedition={exp} refreshKey={liveTick} />}
+
+        <Section icon={<Building2 size={17} />} title="Agence de départ" tint="bg-teal-100 text-teal-600">
           <p className="text-sm font-semibold text-surface-900">
             {exp.agence?.nom_agence || '—'}
           </p>
@@ -260,13 +318,23 @@ export default function ExpeditionDetailPage() {
               {[exp.agence.adresse, exp.agence.ville, exp.agence.pays].filter(Boolean).join(', ')}
             </p>
           )}
+          {agencePhone && (
+            <a
+              href={`https://wa.me/${agencePhone}?text=${encodeURIComponent(`Bonjour, je vous contacte au sujet de l'expédition ${exp.reference || ''}.`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary mt-3 w-full"
+            >
+              <MessageCircle size={16} /> Discuter avec l'agence sur WhatsApp
+            </a>
+          )}
         </Section>
 
-        <Section icon={<User size={16} />} title="Expéditeur">
+        <Section icon={<User size={17} />} title="Expéditeur" tint="bg-violet-100 text-violet-700">
           <ContactBlock person={expediteur} />
         </Section>
 
-        <Section icon={<MapPin size={16} />} title="Destinataire">
+        <Section icon={<MapPin size={17} />} title="Destinataire" tint="bg-orange-100 text-amber-700">
           <ContactBlock person={destinataire} />
         </Section>
 
@@ -286,7 +354,9 @@ export default function ExpeditionDetailPage() {
           )}
         </Section>
 
-        <Section icon={<Package size={16} />} title="Récapitulatif">
+        {rawStatut === 'termined' && <RatingSection expeditionId={exp.id} />}
+
+        <Section icon={<Package size={17} />} title="Récapitulatif" tint="bg-shop-100 text-shop-700">
           <div className="divide-y divide-surface-100">
             <Row label="Type" value={getTypeLabel(exp.type_expedition)} />
             <Row label="Statut" value={statut.label} />

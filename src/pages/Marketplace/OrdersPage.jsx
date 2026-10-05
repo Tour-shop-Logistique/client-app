@@ -8,9 +8,11 @@ import SegmentedTabs from '../../components/marketplace/SegmentedTabs';
 import StatusBadge from '../../components/marketplace/StatusBadge';
 import GuestGate from '../../components/marketplace/GuestGate';
 import marketplaceService from '../../services/marketplaceService';
+import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import { COMMANDE_STATUTS, formatMoney, personName } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { ROUTES, orderPath } from '../../routes';
+import { EmptyCartArt } from '../../components/illustrations';
 
 const TABS = [
   { key: 'all', label: 'Toutes', match: () => true },
@@ -18,13 +20,14 @@ const TABS = [
   { key: 'confirm', label: 'En vérification', match: (c) => c.statut === 'paiement_a_confirmer' },
   { key: 'ship', label: 'En livraison', match: (c) => c.statut === 'payee' },
   { key: 'done', label: 'Livrées', match: (c) => c.statut === 'livree' },
+  { key: 'cancel', label: 'Annulées', match: (c) => c.statut === 'annulee' },
 ];
 
 export function OrderListSkeleton() {
   return (
     <div className="space-y-3">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="h-28 animate-pulse rounded-2xl bg-white shadow-card" />
+        <div key={i} className="h-28 skeleton rounded-2xl shadow-card" />
       ))}
     </div>
   );
@@ -50,6 +53,9 @@ export default function OrdersPage() {
   useEffect(() => {
     if (isAuthenticated) load();
   }, [isAuthenticated, load]);
+
+  // Paiement confirme/infirme, livreur assigne, commande livree : liste a jour.
+  useRealtimeMarketplace(null, load, isAuthenticated);
 
   const tabs = useMemo(
     () => TABS.map((t) => ({ ...t, count: t.key === 'all' ? 0 : (commandes ?? []).filter(t.match).length })),
@@ -77,8 +83,8 @@ export default function OrdersPage() {
 
             {commandes !== null && !error && visible.length === 0 && (
               <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-12 text-center shadow-card">
-                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 text-primary-600">
-                  <ShoppingBag size={28} />
+                <span className="animate-float">
+                  <EmptyCartArt />
                 </span>
                 <p className="text-title text-surface-900">{tab === 'all' ? 'Aucun achat pour l’instant' : 'Rien ici'}</p>
                 {tab === 'all' && (
@@ -100,8 +106,11 @@ export default function OrdersPage() {
                     exit={{ opacity: 0, scale: 0.96 }}
                   >
                     <Link to={orderPath(c.id)} className="block rounded-2xl bg-white p-4 shadow-card transition hover:shadow-lg active:scale-[0.99]">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                      <div className="flex items-start gap-3">
+                        <span className="icon-tile h-11 w-11 rounded-[14px] bg-shop-100 text-shop-700">
+                          <ShoppingBag size={20} />
+                        </span>
+                        <div className="min-w-0 flex-1">
                           <p className="line-clamp-1 text-body font-semibold text-surface-900">
                             {c.items?.map((it) => it.titre_snapshot).join(', ') || 'Commande'}
                           </p>
@@ -112,7 +121,7 @@ export default function OrdersPage() {
                         </div>
                         <StatusBadge map={COMMANDE_STATUTS} value={c.statut} short />
                       </div>
-                      <div className="mt-3 flex items-center justify-between">
+                      <div className="mt-3 flex items-center justify-between border-t border-surface-100 pt-3">
                         <p className="font-heading text-lg font-bold text-surface-900">{formatMoney(c.montant_articles)}</p>
                         {c.statut === 'en_attente_paiement' ? (
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-shop-400 px-3 py-1.5 text-caption font-bold text-shop-950">

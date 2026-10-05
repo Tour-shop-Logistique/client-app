@@ -43,8 +43,13 @@ const vendeurMoyensPaiement = async (vendeurId) => {
 };
 
 // POST /marketplace/acheteur/panier/valider — scinde en une commande par vendeur.
-const validerPanier = async (annonceIds) => {
-  const { data } = await api.post('/marketplace/acheteur/panier/valider', { annonce_ids: annonceIds });
+// `adresseLivraison` REQUISE : { nom, telephone, adresse, ville, quartier?,
+// latitude?, longitude?, instructions? } — une seule adresse pour tout le panier.
+const validerPanier = async (annonceIds, adresseLivraison) => {
+  const { data } = await api.post('/marketplace/acheteur/panier/valider', {
+    annonce_ids: annonceIds,
+    adresse_livraison: adresseLivraison,
+  });
   return data.commandes ?? [];
 };
 
@@ -70,9 +75,7 @@ const commandeShow = async (id) => {
 
 const mesAnnonces = async () => {
   const { data } = await api.get('/marketplace/vendeur/annonces/list');
-  console.log('mesAnnonces', data.annonces);
   return data.annonces ?? [];
-  
 };
 
 const annonceShow = async (id) => {
@@ -80,9 +83,11 @@ const annonceShow = async (id) => {
   return data.annonce;
 };
 
-// Cree en `brouillon`. Les photos ne s'ajoutent QU'A la creation (max 10, 5 Mo).
-const creerAnnonce = async ({ titre, description, prix, photos = [] }) => {
-  const fd = toFormData({ titre, description, prix }, { photos });
+// Cree en `brouillon`. `retrait` = champs `retrait_*` (adresse de retrait, section 2,
+// copiee sur la commande quand le vendeur choisit une livraison par livreur).
+// Les photos ne s'ajoutent QU'A la creation (max 10, 5 Mo).
+const creerAnnonce = async ({ titre, description, prix, photos = [], retrait = {} }) => {
+  const fd = toFormData({ titre, description, prix, ...retrait }, { photos });
   const { data } = await api.post('/marketplace/vendeur/annonces/store', fd, multipart);
   return data.annonce;
 };
@@ -163,6 +168,8 @@ const livraisonReseau = async (id) => {
   return data.livraison;
 };
 
+// La livraison passe `proposee` : le livreur a 15 min pour accepter. S'il refuse
+// ou ne repond pas, la commande revient `payee` et le vendeur re-choisit.
 const livraisonDirect = async (id, { livreurId, montant }) => {
   const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/direct`, {
     livreur_id: livreurId,
@@ -180,6 +187,27 @@ const livraisonHorsPlateforme = async (id) => {
 const marquerLivree = async (id) => {
   const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/marquer-livree`);
   return data.commande;
+};
+
+// GET /marketplace/vendeur/livreurs/recherche?telephone= — numero exact, livreur
+// valide KYC du meme pays -> { id, nom, prenoms, type_vehicule, ville, disponible }.
+// 404 sinon (sans dire si le numero existe). `id` = `livreur_id` de livraison/direct.
+const rechercherLivreur = async (telephone) => {
+  const { data } = await api.get('/marketplace/vendeur/livreurs/recherche', { params: { telephone } });
+  return data.livreur;
+};
+
+// Annulation d'une commande pas encore payee (acheteur ou vendeur), `motif`
+// optionnel. Diffuse CommandeMarketplace/annulee aux deux parties. Sans
+// declaration de paiement, la commande expire seule apres 48 h.
+const annulerCommande = async (id, motif) => {
+  const { data } = await api.post(`/marketplace/acheteur/commandes/${id}/annuler`, { motif: motif || undefined });
+  return data;
+};
+
+const annulerVente = async (id, motif) => {
+  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/annuler`, { motif: motif || undefined });
+  return data;
 };
 
 // Offres actives des livreurs (mode reseau), triees par montant croissant.
@@ -232,6 +260,9 @@ const marketplaceService = {
   livraisonDirect,
   livraisonHorsPlateforme,
   marquerLivree,
+  rechercherLivreur,
+  annulerCommande,
+  annulerVente,
   offresLivraison,
   accepterOffre,
   solde,

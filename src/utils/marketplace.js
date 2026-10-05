@@ -76,10 +76,17 @@ export const COMMANDE_STATUTS = {
   paiement_a_confirmer: { label: 'Paiement à confirmer', short: 'À confirmer', tone: 'info' },
   payee: { label: 'Payée', short: 'Payée', tone: 'success' },
   livree: { label: 'Livrée', short: 'Livrée', tone: 'success' },
+  annulee: { label: 'Annulée', short: 'Annulée', tone: 'neutral' },
 };
+
+// Annulable (acheteur ou vendeur) tant que la commande n'est pas payee.
+export const isCommandeAnnulable = (commande) => ['en_attente_paiement', 'paiement_a_confirmer'].includes(commande?.statut);
 
 export const LIVRAISON_STATUTS = {
   en_attente: { label: 'En attente de livreur', tone: 'warning' },
+  proposee: { label: 'En attente du livreur', tone: 'warning' },
+  refusee: { label: 'Refusée par le livreur', tone: 'danger' },
+  expiree: { label: 'Sans réponse du livreur', tone: 'danger' },
   assignee: { label: 'Livreur assigné', tone: 'info' },
   en_cours: { label: 'En cours de livraison', tone: 'info' },
   terminee: { label: 'Livrée', tone: 'success' },
@@ -121,13 +128,33 @@ export const TONE_CLASSES = {
   danger: 'bg-red-50 text-red-700',
 };
 
+// Livraison encore portee par un livreur (ou en attente de son accord).
+// Refusee / expiree : la commande revient `payee`, le vendeur re-choisit.
+export const isLivraisonActive = (liv) => Boolean(liv) && !['refusee', 'expiree'].includes(liv.statut);
+
+// Adresse snapshot de la commande : `livraison_*` (acheteur) ou `retrait_*` (vendeur).
+export const commandeAddress = (commande, prefix) => {
+  const get = (k) => commande?.[`${prefix}_${k}`] ?? null;
+  const addr = {
+    nom: get('nom'),
+    telephone: get('telephone'),
+    adresse: get('adresse'),
+    quartier: get('quartier'),
+    ville: get('ville'),
+    latitude: get('latitude'),
+    longitude: get('longitude'),
+    instructions: get('instructions'),
+  };
+  return addr.adresse || addr.ville || addr.nom ? addr : null;
+};
+
 // Etapes de la frise commande (acheteur et vendeur).
 export const orderSteps = (commande) => {
   const s = commande?.statut;
   const liv = commande?.livraison_marketplace;
   const order = ['en_attente_paiement', 'paiement_a_confirmer', 'payee', 'livree'];
   const idx = order.indexOf(s);
-  const shipping = s === 'livree' ? 'done' : s === 'payee' && (commande?.mode_livraison || liv) ? 'current' : 'todo';
+  const shipping = s === 'livree' ? 'done' : s === 'payee' && (commande?.mode_livraison === 'hors_plateforme' || isLivraisonActive(liv)) ? 'current' : 'todo';
   return [
     { key: 'commande', label: 'Commande', state: 'done' },
     { key: 'paiement', label: 'Paiement', state: idx >= 2 ? 'done' : 'current' },
@@ -157,3 +184,32 @@ export const apiErrorMessage = (err, fallback = 'Une erreur est survenue.') => {
   const first = data?.errors && typeof data.errors === 'object' ? Object.values(data.errors).flat()[0] : null;
   return first || fallback;
 };
+
+// --- Adresses (retrait vendeur / livraison acheteur) -------------------------
+
+export const EMPTY_ADDRESS = {
+  nom: '', telephone: '', adresse: '', quartier: '', ville: '', latitude: null, longitude: null, instructions: '',
+};
+
+// { nom, ... } -> { retrait_nom, ... } (annonce) ; ignore les champs vides.
+export const toRetraitPayload = (addr) => {
+  const out = {};
+  ['nom', 'telephone', 'adresse', 'quartier', 'ville', 'latitude', 'longitude'].forEach((k) => {
+    const v = addr?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') out[`retrait_${k}`] = typeof v === 'string' ? v.trim() : v;
+  });
+  return out;
+};
+
+export const fromRetrait = (annonce) => ({
+  ...EMPTY_ADDRESS,
+  nom: annonce?.retrait_nom ?? '',
+  telephone: annonce?.retrait_telephone ?? '',
+  adresse: annonce?.retrait_adresse ?? '',
+  quartier: annonce?.retrait_quartier ?? '',
+  ville: annonce?.retrait_ville ?? '',
+  latitude: annonce?.retrait_latitude ?? null,
+  longitude: annonce?.retrait_longitude ?? null,
+});
+
+export const hasRetraitAddress = (annonce) => Boolean(annonce?.retrait_adresse || annonce?.retrait_ville);

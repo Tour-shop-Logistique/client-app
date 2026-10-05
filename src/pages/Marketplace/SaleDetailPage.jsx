@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   CheckCircle2, XCircle, Loader2, Users, UserCheck, Home, Truck, Trophy, RefreshCw, PackageCheck, PackageX, Radio, Info,
+  Timer, UserX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -11,11 +12,59 @@ import OrderTimeline from '../../components/marketplace/OrderTimeline';
 import StatusBadge from '../../components/marketplace/StatusBadge';
 import { OrderItemsCard, PaymentInfoCard, DeliveryInfoCard, PersonRow } from '../../components/marketplace/OrderParts';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
+import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import marketplaceService from '../../services/marketplaceService';
-import { COMMANDE_STATUTS, formatMoney, personName, initials, isAbonnementBloque } from '../../utils/marketplace';
+import {
+  COMMANDE_STATUTS, formatMoney, personName, initials, isAbonnementBloque, isLivraisonActive, isCommandeAnnulable,
+} from '../../utils/marketplace';
+import CancelOrderButton from '../../components/marketplace/CancelOrderButton';
 import { ROUTES } from '../../routes';
 
 const OFFERS_REFRESH_MS = 20000;
+
+// Secondes restantes avant `expire_le` (null si inconnu).
+function useSecondsLeft(expireLe) {
+  const compute = useCallback(() => {
+    const t = Date.parse(expireLe ?? '');
+    return Number.isFinite(t) ? Math.max(0, Math.floor((t - Date.now()) / 1000)) : null;
+  }, [expireLe]);
+  const [left, setLeft] = useState(compute);
+  useEffect(() => {
+    setLeft(compute());
+    if (!expireLe) return undefined;
+    const t = setInterval(() => setLeft(compute()), 1000);
+    return () => clearInterval(t);
+  }, [compute, expireLe]);
+  return left;
+}
+
+// Affectation directe : le livreur a 15 min pour accepter (section 6, livraison/direct).
+function DirectProposalPanel({ livraison, onExpired }) {
+  const left = useSecondsLeft(livraison.expire_le);
+  useEffect(() => {
+    if (left === 0) onExpired?.();
+  }, [left, onExpired]);
+  return (
+    <section className="card flex items-center gap-3 p-4">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+        <Timer size={20} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-body font-semibold text-surface-900">En attente de l’accord du livreur</p>
+        <p className="text-caption text-surface-500">
+          {left === 0
+            ? 'Délai écoulé : vérification en cours…'
+            : 'Sans réponse sous 15 minutes, vous pourrez choisir un autre mode de livraison.'}
+        </p>
+      </div>
+      {left != null && left > 0 && (
+        <span className="rounded-full bg-amber-50 px-2.5 py-1 font-mono text-caption font-bold text-amber-800">
+          {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+        </span>
+      )}
+    </section>
+  );
+}
 
 const DELIVERY_MODES = [
   {
@@ -25,7 +74,7 @@ const DELIVERY_MODES = [
     text: 'Les livreurs de votre pays proposent un prix, vous choisissez la meilleure offre.',
     badge: 'Recommandé',
   },
-  { key: 'direct', icon: UserCheck, title: 'Un livreur que je connais', text: 'Vous désignez un livreur TourShop et fixez le montant.' },
+  { key: 'direct', icon: UserCheck, title: 'Un livreur que je connais', text: 'Vous désignez un livreur TourShop et fixez le montant ; il a 15 min pour accepter.' },
   { key: 'hors', icon: Home, title: 'Je livre moi-même', text: 'Livraison organisée hors de l’application, sans code de remise.' },
 ];
 
@@ -98,9 +147,33 @@ function PaymentConfirmPanel({ commande, onDone, handleError }) {
 function DeliveryChoicePanel({ commande, onDone, handleError }) {
   const [mode, setMode] = useState('reseau');
   const [busy, setBusy] = useState(false);
-  const [direct, setDirect] = useState({ livreurId: '', montant: '' });
+  const [direct, setDirect] = useState({ telephone: '', montant: '' });
+  // Livreur retrouve par son numero (GET /marketplace/vendeur/livreurs/recherche).
+  const [livreur, setLivreur] = useState(null);
+  const [search, setSearch] = useState({ status: 'idle', error: null });
 
-  const directValid = /^[0-9a-f-]{36}$/i.test(direct.livreurId.trim()) && direct.montant !== '' && Number(direct.montant) >= 0;
+  const directValid = Boolean(livreur?.id) && direct.montant !== '' && Number(direct.montant) >= 0;
+
+  const findLivreur = async () => {
+    const telephone = direct.telephone.trim();
+    if (telephone.length < 6) {
+      setSearch({ status: 'error', error: 'Saisissez le numéro de téléphone complet du livreur.' });
+      return;
+    }
+    setSearch({ status: 'loading', error: null });
+    setLivreur(null);
+    try {
+      setLivreur(await marketplaceService.rechercherLivreur(telephone));
+      setSearch({ status: 'idle', error: null });
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setSearch({ status: 'error', error: 'Aucun livreur TourShop validé avec ce numéro dans votre pays.' });
+      } else {
+        setSearch({ status: 'idle', error: null });
+        handleError(err, 'Recherche impossible pour le moment.');
+      }
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -109,8 +182,8 @@ function DeliveryChoicePanel({ commande, onDone, handleError }) {
         await marketplaceService.livraisonReseau(commande.id);
         toast.success('Livraison diffusée aux livreurs', { description: 'Les offres vont arriver.' });
       } else if (mode === 'direct') {
-        await marketplaceService.livraisonDirect(commande.id, { livreurId: direct.livreurId.trim(), montant: Number(direct.montant) });
-        toast.success('Livreur assigné');
+        await marketplaceService.livraisonDirect(commande.id, { livreurId: livreur.id, montant: Number(direct.montant) });
+        toast.success('Proposition envoyée au livreur', { description: 'Il a 15 minutes pour accepter.' });
       } else {
         await marketplaceService.livraisonHorsPlateforme(commande.id);
         toast.success('Livraison hors plateforme choisie');
@@ -156,20 +229,69 @@ function DeliveryChoicePanel({ commande, onDone, handleError }) {
         })}
       </div>
 
+      {mode !== 'hors' && (
+        <p className="flex gap-2 rounded-xl bg-surface-50 p-3 text-caption text-surface-600">
+          <Info size={14} className="mt-0.5 shrink-0" />
+          <span>
+            L’adresse de retrait de l’annonce est transmise au livreur.{' '}
+            <Link to={ROUTES.MARKETPLACE_MY_LISTINGS} className="font-semibold text-primary-700">Vérifier mes annonces</Link>
+          </span>
+        </p>
+      )}
+
       <AnimatePresence initial={false}>
         {mode === 'direct' && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="space-y-3 pt-1">
-              <label className="block text-caption font-medium text-surface-600">
-                Identifiant du livreur
-                <input
-                  className="input-field mt-1 font-mono text-sm"
-                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                  value={direct.livreurId}
-                  onChange={(e) => setDirect((d) => ({ ...d, livreurId: e.target.value }))}
-                />
-                <span className="mt-1 block text-[11px] text-surface-400">Demandez-le au livreur (visible dans son application).</span>
-              </label>
+              <div>
+                <label htmlFor="direct-telephone" className="block text-caption font-medium text-surface-600">
+                  Téléphone du livreur
+                </label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    id="direct-telephone"
+                    className="input-field flex-1"
+                    inputMode="tel"
+                    autoComplete="off"
+                    placeholder="Ex : 0705060708"
+                    value={direct.telephone}
+                    onChange={(e) => {
+                      setDirect((d) => ({ ...d, telephone: e.target.value }));
+                      setLivreur(null);
+                      setSearch({ status: 'idle', error: null });
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); findLivreur(); } }}
+                  />
+                  <button type="button" className="btn-secondary shrink-0" onClick={findLivreur} disabled={search.status === 'loading'}>
+                    {search.status === 'loading' ? <Loader2 size={16} className="animate-spin" /> : 'Rechercher'}
+                  </button>
+                </div>
+                {search.error && <p className="mt-1 text-[11px] text-red-600">{search.error}</p>}
+                {!livreur && !search.error && (
+                  <p className="mt-1 text-[11px] text-surface-400">Le numéro exact avec lequel le livreur est inscrit sur TourShop.</p>
+                )}
+                {livreur && (
+                  <div className="mt-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700">
+                      <Truck size={16} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-surface-900">
+                        {[livreur.prenoms, livreur.nom].filter(Boolean).join(' ') || 'Livreur TourShop'}
+                      </p>
+                      <p className="truncate text-[11px] capitalize text-surface-500">
+                        {[livreur.type_vehicule, livreur.ville].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${livreur.disponible ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {livreur.disponible ? 'Disponible' : 'Hors ligne'}
+                    </span>
+                  </div>
+                )}
+                {livreur && !livreur.disponible && (
+                  <p className="mt-1 text-[11px] text-amber-700">Ce livreur est hors ligne : il ne pourra accepter qu’en repassant disponible.</p>
+                )}
+              </div>
               <label className="block text-caption font-medium text-surface-600">
                 Montant de la livraison (FCFA)
                 <input
@@ -194,8 +316,9 @@ function DeliveryChoicePanel({ commande, onDone, handleError }) {
   );
 }
 
-// Offres des livreurs (mode reseau, livraison en attente), rafraichies en continu.
-function OffersPanel({ commande, onDone, handleError }) {
+// Offres des livreurs (mode reseau, livraison en attente), rafraichies en continu
+// et a chaque offre recue en temps reel (`refreshKey`).
+function OffersPanel({ commande, onDone, handleError, refreshKey }) {
   const [offres, setOffres] = useState(null);
   const [accepting, setAccepting] = useState(null);
 
@@ -214,7 +337,7 @@ function OffersPanel({ commande, onDone, handleError }) {
     load();
     const t = setInterval(load, OFFERS_REFRESH_MS);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, refreshKey]);
 
   const accept = async (offre) => {
     setAccepting(offre.id);
@@ -244,7 +367,7 @@ function OffersPanel({ commande, onDone, handleError }) {
         </button>
       </div>
 
-      {offres === null && <div className="h-16 animate-pulse rounded-2xl bg-surface-100" />}
+      {offres === null && <div className="h-16 skeleton rounded-2xl" />}
 
       {offres?.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-50 py-8 text-center">
@@ -321,6 +444,7 @@ export default function SaleDetailPage() {
   const { id } = useParams();
   const handleError = useMarketplaceError();
   const [commande, setCommande] = useState(undefined);
+  const [offersTick, setOffersTick] = useState(0);
 
   // commandes/show (accessible au vendeur) inclut acheteur, preuve et offres.
   const load = useCallback(() => {
@@ -334,11 +458,21 @@ export default function SaleDetailPage() {
     load();
   }, [load]);
 
+  // Temps reel : paiement declare, offre recue, livreur qui accepte/refuse, course demarree…
+  useRealtimeMarketplace(id, useCallback((data, meta) => {
+    if (meta.model === 'LivraisonMarketplaceOffre') setOffersTick((t) => t + 1);
+    load();
+  }, [load]));
+
   const liv = commande?.livraison_marketplace;
-  const needsChoice = commande?.statut === 'payee' && !commande.mode_livraison && !liv;
-  const waitingOffers = commande?.statut === 'payee' && liv?.mode === 'reseau' && liv?.statut === 'en_attente';
-  const selfDelivery = commande?.statut === 'payee' && commande.mode_livraison === 'hors_plateforme';
-  const courierAssigned = commande?.statut === 'payee' && liv && liv.statut !== 'en_attente';
+  const payee = commande?.statut === 'payee';
+  // Apres un refus / une expiration, la commande revient `payee` : nouveau choix possible.
+  const needsChoice = payee && commande.mode_livraison !== 'hors_plateforme' && !isLivraisonActive(liv);
+  const courierDeclined = needsChoice && liv && !isLivraisonActive(liv);
+  const waitingOffers = payee && liv?.mode === 'reseau' && liv?.statut === 'en_attente';
+  const waitingCourier = payee && liv?.statut === 'proposee';
+  const selfDelivery = payee && commande.mode_livraison === 'hors_plateforme';
+  const courierAssigned = payee && isLivraisonActive(liv) && !['en_attente', 'proposee'].includes(liv.statut);
 
   return (
     <div>
@@ -356,8 +490,8 @@ export default function SaleDetailPage() {
       <div className="page-container space-y-4 py-4">
         {commande === undefined && (
           <div className="space-y-3">
-            <div className="h-28 animate-pulse rounded-2xl bg-white shadow-card" />
-            <div className="h-48 animate-pulse rounded-2xl bg-white shadow-card" />
+            <div className="h-28 skeleton rounded-2xl shadow-card" />
+            <div className="h-48 skeleton rounded-2xl shadow-card" />
           </div>
         )}
 
@@ -392,13 +526,25 @@ export default function SaleDetailPage() {
               <PaymentConfirmPanel commande={commande} onDone={load} handleError={handleError} />
             )}
 
+            {courierDeclined && (
+              <div className="flex gap-2.5 rounded-2xl bg-red-50 p-3.5 text-caption text-red-800">
+                <UserX size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  {liv.statut === 'expiree' ? 'Le livreur n’a pas répondu dans les 15 minutes.' : 'Le livreur a refusé la livraison.'}
+                  {liv.motif_refus && liv.motif_refus !== 'Expiré' ? ` Motif : « ${liv.motif_refus} ».` : ''} Choisissez un autre mode de livraison.
+                </span>
+              </div>
+            )}
             {needsChoice && <DeliveryChoicePanel commande={commande} onDone={load} handleError={handleError} />}
-            {waitingOffers && <OffersPanel commande={commande} onDone={load} handleError={handleError} />}
+            {waitingCourier && <DirectProposalPanel livraison={liv} onExpired={load} />}
+            {waitingOffers && <OffersPanel commande={commande} onDone={load} handleError={handleError} refreshKey={offersTick} />}
             {selfDelivery && <MarkDeliveredPanel commande={commande} onDone={load} handleError={handleError} />}
             {courierAssigned && (
               <div className="flex gap-2.5 rounded-2xl bg-primary-50 p-3.5 text-caption text-primary-900">
                 <Truck size={16} className="mt-0.5 shrink-0" />
-                Le livreur récupère l’article chez vous, puis valide la remise avec le code de l’acheteur.
+                {liv.statut === 'en_cours'
+                  ? 'Le livreur a récupéré l’article et le livre à l’acheteur.'
+                  : 'Le livreur récupère l’article à votre adresse de retrait, puis valide la remise avec le code de l’acheteur.'}
               </div>
             )}
 
@@ -420,12 +566,21 @@ export default function SaleDetailPage() {
               </section>
             )}
 
-            <DeliveryInfoCard commande={commande} />
+            <DeliveryInfoCard commande={commande} showPickup />
             <OrderItemsCard commande={commande} />
             {commande.statut !== 'paiement_a_confirmer' && <PaymentInfoCard commande={commande} title="Paiement" />}
             <div className="card p-4">
               <PersonRow label="Acheteur" person={commande.acheteur} />
             </div>
+            {commande.statut === 'annulee' && (
+              <div className="flex gap-2.5 rounded-2xl bg-surface-100 p-3.5 text-caption text-surface-600">
+                <Info size={16} className="mt-0.5 shrink-0" />
+                <span>Commande annulée{commande.motif_annulation ? ` : « ${commande.motif_annulation} »` : ''}.</span>
+              </div>
+            )}
+            {isCommandeAnnulable(commande) && (
+              <CancelOrderButton commandeId={commande.id} role="vendeur" onDone={load} handleError={handleError} />
+            )}
           </motion.div>
         )}
       </div>

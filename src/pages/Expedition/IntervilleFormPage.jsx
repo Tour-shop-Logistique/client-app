@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Check, ChevronDown, MapPinned, Plus, Trash2 } from 'lucide-react';
+import { Camera, ChevronDown, MapPinned, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import StepProgress from '../../components/expedition/StepProgress';
+import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
 import EmptyState from '../../components/common/EmptyState';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
+import PickupOption from '../../components/expedition/PickupOption';
+import { ProofPicker } from '../../components/marketplace/FilePickers';
 import { EMPTY_CONTACT, contactIsComplete, contactPayload } from '../../utils/contact';
+import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import expeditionService from '../../services/expeditionService';
 import { getFlagEmoji } from '../../utils/countries';
@@ -18,13 +22,14 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 
 const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
-const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '' };
+const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '', photo: null };
 
 const formatHint = (f) => (f.poids_max != null ? `jusqu'a ${f.poids_max} kg` : 'poids libre');
 
 // Builds the `colis[]` array shared by simulate-interville and store — only the
-// fields the API expects, empty/zero optionals dropped.
-const buildColis = (colisList) =>
+// fields the API expects, empty/zero optionals dropped. The optional photo is
+// only sent to `store` (`withPhoto`), never to the JSON simulation.
+const buildColis = (colisList, { withPhoto = false } = {}) =>
   colisList.map((c) => {
     const item = { poids: Number(c.poids) };
     if (Number(c.longueur) > 0) item.longueur = Number(c.longueur);
@@ -32,6 +37,7 @@ const buildColis = (colisList) =>
     if (Number(c.hauteur) > 0) item.hauteur = Number(c.hauteur);
     if (c.format_colis_id) item.format_colis_id = c.format_colis_id;
     if (Number(c.prix_emballage) > 0) item.prix_emballage = Number(c.prix_emballage);
+    if (withPhoto && c.photo) item.photo = c.photo;
     return item;
   });
 
@@ -85,25 +91,21 @@ function TarifCard({ status, error, sim, onRetry }) {
   );
 }
 
-function SuccessScreen({ expedition, onNew }) {
+function SuccessScreen({ expedition, pickupMode, onNew }) {
   const navigate = useNavigate();
   return (
     <div>
       <TopBar title="Expedition Interville" />
       <div className="page-container space-y-4 py-4">
-        <div className="card flex flex-col items-center gap-2 border border-primary-100 bg-primary-50/60 p-6 text-center">
-          <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white">
-            <Check size={28} />
-          </span>
-          <p className="text-base font-bold text-surface-900">Demande enregistree avec succes.</p>
-          <p className="text-sm text-surface-500">
-            Reference <span className="font-semibold text-surface-900">{expedition.reference}</span>
-          </p>
-          <p className="text-lg font-bold text-primary-700">{formatPrice(expedition.montant_expedition)}</p>
-          <p className="text-xs text-surface-400">
-            En attente d'acceptation par l'agence de depart.
-          </p>
-        </div>
+        <SuccessHero title="Demande enregistrée !" subtitle="En attente d'acceptation par l'agence de départ.">
+          <CopyReference reference={expedition.reference} />
+          <p className="mt-3 font-heading text-lg font-bold text-surface-900">{formatPrice(expedition.montant_expedition)}</p>
+          {pickupMode && (
+            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
+              {PICKUP_MODE_MESSAGE[pickupMode]}
+            </p>
+          )}
+        </SuccessHero>
 
         <div className="flex gap-2">
           <button type="button" className="btn-secondary flex-1" onClick={() => navigate(ROUTES.EXPEDITION_HISTORY)}>
@@ -144,6 +146,7 @@ export default function IntervilleFormPage() {
   const [colisList, setColisList] = useState([{ ...EMPTY_COLIS }]);
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
+  const [pickup, setPickup] = useState(EMPTY_PICKUP);
 
   const [communes, setCommunes] = useState([]);
   const [communesStatus, setCommunesStatus] = useState('idle');
@@ -182,8 +185,9 @@ export default function IntervilleFormPage() {
     if (!country.code) return;
     let cancelled = false;
     setFormatsStatus('loading');
+    // Invité : formats du pays choisi (route publique, A2) ; connecté : pays du compte.
     expeditionService
-      .getColisFormats()
+      .getColisFormats(isAuthenticated ? undefined : country.code)
       .then((d) => {
         if (cancelled) return;
         const list = d.formats ?? [];
@@ -281,6 +285,7 @@ export default function IntervilleFormPage() {
       telephone: user?.telephone || '',
     });
     setDestinataire(EMPTY_CONTACT);
+    setPickup(EMPTY_PICKUP);
     setSim(null);
     setSimStatus('idle');
   };
@@ -328,7 +333,8 @@ export default function IntervilleFormPage() {
         destinataire_commune_id: destinataireCommuneId,
         ...contactPayload('expediteur', expediteur),
         ...contactPayload('destinataire', destinataire),
-        colis: buildColis(colisList),
+        colis: buildColis(colisList, { withPhoto: true }),
+        ...pickupPayload(pickup),
       };
       const res = await expeditionService.storeExpedition(payload);
       if (res?.success && res.expedition) {
@@ -350,7 +356,7 @@ export default function IntervilleFormPage() {
     }
   };
 
-  if (result) return <SuccessScreen expedition={result} onNew={resetForm} />;
+  if (result) return <SuccessScreen expedition={result} pickupMode={pickup.domicile ? pickup.mode : null} onNew={resetForm} />;
 
   if (!country.code) {
     return (
@@ -523,6 +529,14 @@ export default function IntervilleFormPage() {
                   Emballage (FCFA, optionnel)
                   <input type="number" min="0" className="input-field mt-1.5" value={c.prix_emballage} onChange={(e) => setColisField(i, 'prix_emballage', e.target.value)} />
                 </label>
+
+                <ProofPicker
+                  file={c.photo}
+                  onChange={(f) => setColisField(i, 'photo', f)}
+                  label="Photo du colis"
+                  icon={Camera}
+                  removeLabel="Retirer la photo du colis"
+                />
               </div>
             ))}
 
@@ -568,6 +582,13 @@ export default function IntervilleFormPage() {
             <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
             <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined} />
             <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
+            <PickupOption
+              value={pickup}
+              onChange={setPickup}
+              agence={agence}
+              communeId={agence?.commune_id || communes.find((c) => c.nom === agenceVille)?.id}
+              address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
+            />
 
             {sim?.tarif && <TarifCard status={simStatus} error={simError} sim={sim} onRetry={() => setRetryTick((t) => t + 1)} />}
 

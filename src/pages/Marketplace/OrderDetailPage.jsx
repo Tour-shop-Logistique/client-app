@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Wallet, Smartphone, Banknote, Copy, Check, Loader2, Hourglass, Truck, PartyPopper, PackageX, RefreshCw, Send,
+  Wallet, Smartphone, Banknote, Copy, Check, Loader2, Hourglass, Truck, PartyPopper, PackageX, RefreshCw, Send, AlertTriangle, Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -15,7 +15,11 @@ import {
   OrderItemsCard, PaymentInfoCard, DeliveryInfoCard, DeliveryCodeCard, PersonRow,
 } from '../../components/marketplace/OrderParts';
 import marketplaceService from '../../services/marketplaceService';
-import { COMMANDE_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage, copyText } from '../../utils/marketplace';
+import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
+import {
+  COMMANDE_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage, copyText, isLivraisonActive, isCommandeAnnulable,
+} from '../../utils/marketplace';
+import CancelOrderButton from '../../components/marketplace/CancelOrderButton';
 import { ROUTES } from '../../routes';
 
 const METHOD_ICONS = { mobile_money: Smartphone, cash: Banknote };
@@ -76,8 +80,8 @@ function DeclarePaymentPanel({ commande, onDeclared }) {
 
       {moyens === null ? (
         <div className="space-y-2">
-          <div className="h-16 animate-pulse rounded-2xl bg-surface-100" />
-          <div className="h-16 animate-pulse rounded-2xl bg-surface-100" />
+          <div className="h-16 skeleton rounded-2xl" />
+          <div className="h-16 skeleton rounded-2xl" />
         </div>
       ) : (
         <div className="space-y-2" role="radiogroup">
@@ -161,12 +165,16 @@ const HEADLINES = {
   paiement_a_confirmer: { icon: Hourglass, title: 'Vérification en cours', text: 'Le vendeur vérifie la réception de votre paiement.', cls: 'bg-primary-50 text-primary-900' },
   payee: { icon: Truck, title: 'Paiement confirmé', text: 'Le vendeur organise la livraison de votre commande.', cls: 'bg-emerald-50 text-emerald-900' },
   livree: { icon: PartyPopper, title: 'Commande livrée', text: 'Merci pour votre achat !', cls: 'bg-emerald-50 text-emerald-900' },
+  annulee: { icon: Ban, title: 'Commande annulée', text: 'Cette commande a été annulée.', cls: 'bg-surface-100 text-surface-700' },
 };
+
+const showError = (err, fallback) => toast.error(apiErrorMessage(err, fallback));
 
 export default function OrderDetailPage() {
   const { id } = useParams();
   const isAuthenticated = useSelector((s) => s.auth.isAuthenticated);
   const [commande, setCommande] = useState(undefined);
+  const [infirme, setInfirme] = useState(false);
 
   const load = useCallback(() => {
     marketplaceService
@@ -179,6 +187,13 @@ export default function OrderDetailPage() {
     if (isAuthenticated) load();
   }, [isAuthenticated, load]);
 
+  // Temps reel : paiement confirme / infirme, livreur assigne, course demarree, livree.
+  useRealtimeMarketplace(id, useCallback((data, meta) => {
+    if (meta.model === 'CommandeMarketplace' && meta.action === 'paiement_infirme') setInfirme(true);
+    if (meta.model === 'CommandeMarketplace' && meta.action === 'paiement_declare') setInfirme(false);
+    load();
+  }, [load]), isAuthenticated);
+
   if (!isAuthenticated) {
     return (
       <div>
@@ -190,8 +205,12 @@ export default function OrderDetailPage() {
     );
   }
 
+  const liv = commande?.livraison_marketplace;
   const headline = HEADLINES[commande?.statut];
-  const awaitingShipping = commande?.statut === 'payee' && !commande.mode_livraison && !commande.livraison_marketplace;
+  const awaitingShipping = commande?.statut === 'payee' && commande.mode_livraison !== 'hors_plateforme' && !(isLivraisonActive(liv) && liv.statut !== 'proposee');
+  const onTheWay = commande?.statut === 'payee' && liv?.statut === 'en_cours';
+  // Paiement deja declare puis infirme par le vendeur : re-declarer.
+  const paymentRejected = commande?.statut === 'en_attente_paiement' && (infirme || Boolean(commande.paiement_declare_le));
 
   return (
     <div>
@@ -209,8 +228,8 @@ export default function OrderDetailPage() {
       <div className="page-container space-y-4 py-4">
         {commande === undefined && (
           <div className="space-y-3">
-            <div className="h-24 animate-pulse rounded-2xl bg-white shadow-card" />
-            <div className="h-40 animate-pulse rounded-2xl bg-white shadow-card" />
+            <div className="h-24 skeleton rounded-2xl shadow-card" />
+            <div className="h-40 skeleton rounded-2xl shadow-card" />
           </div>
         )}
 
@@ -235,7 +254,10 @@ export default function OrderDetailPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{headline.title}</p>
                     <p className="text-caption opacity-80">
-                      {awaitingShipping ? 'Le vendeur va choisir le mode de livraison.' : headline.text}
+                      {onTheWay
+                        ? 'Le livreur a récupéré votre article : il est en route. Préparez votre code.'
+                        : awaitingShipping ? 'Le vendeur va choisir le mode de livraison.'
+                          : commande.statut === 'annulee' && commande.motif_annulation ? `Motif : « ${commande.motif_annulation} »` : headline.text}
                     </p>
                   </div>
                 </div>
@@ -249,10 +271,26 @@ export default function OrderDetailPage() {
                 <OrderTimeline commande={commande} />
               </div>
 
-              {commande.statut !== 'livree' && <DeliveryCodeCard code={commande.code_validation_livraison} />}
+              {!['livree', 'annulee'].includes(commande.statut) && <DeliveryCodeCard code={commande.code_validation_livraison} />}
+
+              {paymentRejected && (
+                <div className="flex gap-3 rounded-2xl bg-red-50 p-4 text-red-900">
+                  <AlertTriangle size={20} className="shrink-0" />
+                  <div>
+                    <p className="text-body font-semibold">Le vendeur n’a pas reçu votre paiement</p>
+                    <p className="text-caption">Vérifiez votre transaction puis re-déclarez un paiement ci-dessous (vous pouvez changer de moyen).</p>
+                  </div>
+                </div>
+              )}
 
               {commande.statut === 'en_attente_paiement' && (
-                <DeclarePaymentPanel commande={commande} onDeclared={() => load()} />
+                <DeclarePaymentPanel
+                  commande={commande}
+                  onDeclared={() => {
+                    setInfirme(false);
+                    load();
+                  }}
+                />
               )}
 
               <DeliveryInfoCard commande={commande} />
@@ -262,6 +300,15 @@ export default function OrderDetailPage() {
               <div className="card p-4">
                 <PersonRow label="Vendeur" person={commande.vendeur} />
               </div>
+
+              {commande.statut === 'en_attente_paiement' && (
+                <p className="px-1 text-caption text-surface-500">
+                  Sans déclaration de paiement sous 48 h, la commande est annulée automatiquement.
+                </p>
+              )}
+              {isCommandeAnnulable(commande) && (
+                <CancelOrderButton commandeId={commande.id} role="acheteur" onDone={load} handleError={showError} />
+              )}
             </motion.div>
           </AnimatePresence>
         )}

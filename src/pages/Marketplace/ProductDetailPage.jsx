@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronLeft, Share2, ShoppingCart, Zap, Check, Wallet, Smartphone, Banknote, Truck, KeyRound,
-  ShieldCheck, ChevronDown, PackageX, Settings2, CalendarDays,
+  ShieldCheck, ChevronDown, Settings2, CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageGallery from '../../components/marketplace/ImageGallery';
@@ -20,6 +20,7 @@ import {
 } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { ROUTES, productPath, listingEditPath } from '../../routes';
+import { EmptyParcelArt } from '../../components/illustrations';
 
 const METHOD_ICONS = { mobile_money: Smartphone, cash: Banknote };
 
@@ -33,12 +34,12 @@ const HOW_IT_WORKS = [
 function DetailSkeleton() {
   return (
     <div>
-      <div className="aspect-square w-full animate-pulse bg-surface-200" />
+      <div className="aspect-square w-full skeleton" />
       <div className="page-container space-y-3 py-5">
-        <div className="h-7 w-32 animate-pulse rounded bg-surface-200" />
-        <div className="h-4 w-full animate-pulse rounded bg-surface-100" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-surface-100" />
-        <div className="h-20 w-full animate-pulse rounded-2xl bg-surface-100" />
+        <div className="h-7 w-32 skeleton rounded" />
+        <div className="h-4 w-full skeleton rounded" />
+        <div className="h-4 w-2/3 skeleton rounded" />
+        <div className="h-20 w-full skeleton rounded-2xl" />
       </div>
     </div>
   );
@@ -170,8 +171,8 @@ export default function ProductDetailPage() {
       <div className="relative">
         <div className="h-16">{floatingBar}</div>
         <div className="page-container flex flex-col items-center gap-3 py-16 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-100 text-surface-500">
-            <PackageX size={30} />
+          <span className="animate-float">
+            <EmptyParcelArt />
           </span>
           <p className="text-title text-surface-900">Article indisponible</p>
           <p className="text-body text-surface-500">Cet article a peut-être été vendu ou retiré par le vendeur.</p>
@@ -272,7 +273,7 @@ export default function ProductDetailPage() {
         <section className="card p-4">
           <h2 className="mb-3 text-body font-semibold text-surface-900">Paiements acceptés par le vendeur</h2>
           {moyens === null ? (
-            <div className="h-10 animate-pulse rounded-xl bg-surface-100" />
+            <div className="h-10 skeleton rounded-xl" />
           ) : moyens.length === 0 ? (
             <p className="text-caption text-surface-500">Le vendeur n’a pas encore indiqué ses moyens de paiement. Vous pourrez les voir au moment de payer.</p>
           ) : (
@@ -344,7 +345,7 @@ export default function ProductDetailPage() {
       )}
 
       {/* Barre d'achat collante (au-dessus de la barre de navigation) */}
-      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom))] z-20">
+      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20">
         <div className="mx-auto max-w-md border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
           {own ? (
             <Link to={listingEditPath(annonce.id)} className="btn-secondary w-full">

@@ -7,13 +7,13 @@ Ce document décrit deux modules backend destinés à être intégrés dans l'ap
 
 Toutes les routes sont préfixées par l'URL de base de l'API et nécessitent un token Sanctum (`Authorization: Bearer {token}`), sauf mention contraire. Toutes les réponses sont au format JSON avec une enveloppe `{"success": bool, ...}`.
 
-**Périmètre** : ce document couvre uniquement le module Marketplace (vente entre clients) et son Abonnement. Le **parcours complet du livreur** (inscription/onboarding, missions d'expédition Interville/Extraville classiques, notifications générales) n'est **pas** couvert ici — c'est un chantier de documentation séparé, pas encore réalisé. La [section 7](#7-rôle-du-livreur-dans-le-module-marketplace-pas-son-parcours-complet) documente uniquement ce qu'un livreur fait *dans* Marketplace (livrer des articles vendus entre clients), qui n'est qu'une petite partie de son usage réel de l'app.
+**Périmètre** : ce document couvre uniquement le module Marketplace (vente entre clients) et son Abonnement. Le **parcours complet du livreur** (inscription/onboarding, missions d'expédition Interville/Extraville classiques, notifications générales) est documenté séparément dans `docs/PARCOURS_LIVREUR_API.md`. La [section 7](#7-rôle-du-livreur-dans-le-module-marketplace-pas-son-parcours-complet) documente uniquement ce qu'un livreur fait *dans* Marketplace (livrer des articles vendus entre clients), qui n'est qu'une petite partie de son usage réel de l'app.
 
 ---
 
 ## Sommaire
 
-- [1. Concepts clés](#1-concepts-clés)
+- [1. Concepts clés](#1-concepts-clés) (1.6 : affectation directe, le livreur doit accepter)
 - [2. Marketplace — Vendeur (annonces)](#2-marketplace--vendeur-annonces)
 - [3. Marketplace — Vendeur (moyens de paiement acceptés)](#3-marketplace--vendeur-moyens-de-paiement-acceptés)
 - [4. Marketplace — Acheteur (catalogue, panier, achats)](#4-marketplace--acheteur-catalogue-panier-achats)
@@ -36,7 +36,7 @@ Toutes les routes sont préfixées par l'URL de base de l'API et nécessitent un
 |---|---|---|
 | Vendeur | `CLIENT` | Publier des annonces, configurer ses moyens de paiement, recevoir des commandes, confirmer la réception d'un paiement, choisir le mode de livraison |
 | Acheteur | `CLIENT` | Parcourir le catalogue, acheter, déclarer un paiement, suivre sa commande |
-| Livreur | `LIVREUR` | Voir les livraisons disponibles (mode réseau), proposer un prix, livrer, valider par code |
+| Livreur | `LIVREUR` | Voir les livraisons disponibles (mode réseau, filtrées par ville), proposer un prix, accepter/refuser une affectation directe, livrer avec preuve, valider par code |
 
 Un même compte `CLIENT` peut être vendeur et acheteur — ce n'est pas un rôle séparé, c'est contextuel selon qui a créé l'annonce/la commande. **Un vendeur voit ses propres annonces dans son catalogue acheteur** (pour prévisualiser le rendu côté client), mais ne peut pas les acheter (voir [section 4](#4-marketplace--acheteur-catalogue-panier-achats)).
 
@@ -63,7 +63,11 @@ Une fois la commande **payée** (c'est-à-dire confirmée par le vendeur, voir [
 
 ### 1.4 Code de validation de livraison
 
-Pour les modes `reseau_livreurs` et `livreur_direct`, un code à 4 chiffres (`code_validation_livraison`) est généré automatiquement sur la commande dès qu'un livreur est assigné. **L'acheteur doit communiquer ce code au livreur** à la remise. Le livreur saisit ce code pour valider la livraison — sans ce code, il ne peut pas clôturer.
+Pour les modes `reseau_livreurs` et `livreur_direct`, un code à 4 chiffres (`code_validation_livraison`) est généré automatiquement sur la commande dès qu'un livreur **accepte** la livraison (voir 1.6 ci-dessous — pas dès l'affectation du vendeur en mode direct). **L'acheteur doit communiquer ce code au livreur** à la remise. Le livreur saisit ce code pour valider la livraison — sans ce code, il ne peut pas clôturer.
+
+### 1.6 Affectation directe : le livreur doit accepter (nouveau)
+
+En mode `livreur_direct`, le vendeur choisit un livreur et fixe un montant, mais la livraison passe d'abord au statut **`proposee`** (pas `assignee`) — le livreur dispose de **15 minutes** pour l'accepter ou la refuser (voir [section 7.4](#74-accepter-ou-refuser-une-affectation-directe-nouveau)). En mode réseau, ce palier n'existe pas : proposer une offre de prix vaut déjà accord implicite du livreur, l'acceptation par le vendeur assigne directement.
 
 Pour `hors_plateforme`, il n'y a pas de code : le vendeur confirme lui-même que la commande est livrée.
 
@@ -136,10 +140,24 @@ Crée une annonce en statut `brouillon`. Il faut appeler `/publier` ensuite pour
 | `description` | string | non | max 5000 |
 | `prix` | number | oui | ≥ 0 |
 | `photos` | file[] | non | max 10 fichiers, `image` jpeg/png/jpg/webp, max 5 Mo chacun |
+| `retrait_nom` | string | non | nouveau — nom de contact pour le retrait |
+| `retrait_telephone` | string | non | max 20 |
+| `retrait_adresse` | string | non | max 255 |
+| `retrait_quartier` | string | non | max 100 |
+| `retrait_ville` | string | non | max 100 |
+| `retrait_latitude` | numérique | non | -90 à 90 |
+| `retrait_longitude` | numérique | non | -180 à 180 |
+
+**Nouveau — adresse de retrait** : saisie une fois sur l'annonce, copiée (snapshot) sur chaque commande au moment où le vendeur choisit un mode de livraison (réseau ou direct) — voir sections 6 et 7. Sans elle, le livreur ne connaissait ni l'adresse ni le contact pour récupérer l'article. Tous les champs restent optionnels pour ne pas bloquer la création d'annonce (mais fortement recommandés avant de choisir un mode de livraison livreur).
 
 **Requête**
 ```json
-{ "titre": "Canapé 3 places", "description": "Bon état, peu servi", "prix": 75000 }
+{
+  "titre": "Canapé 3 places", "description": "Bon état, peu servi", "prix": 75000,
+  "retrait_nom": "Kouassi Jean", "retrait_telephone": "+2250701020304",
+  "retrait_adresse": "Rue des Jardins", "retrait_ville": "Abidjan", "retrait_quartier": "Cocody",
+  "retrait_latitude": 5.3599, "retrait_longitude": -3.9870
+}
 ```
 
 **Réponse 201**
@@ -157,6 +175,9 @@ Crée une annonce en statut `brouillon`. Il faut appeler `/publier` ensuite pour
     "statut": "brouillon",
     "code_pays": "CI",
     "backoffice_id": "5b1e2b2a-1111-4a3b-9c1a-000000000099",
+    "retrait_nom": "Kouassi Jean", "retrait_telephone": "+2250701020304",
+    "retrait_adresse": "Rue des Jardins", "retrait_ville": "Abidjan", "retrait_quartier": "Cocody",
+    "retrait_latitude": 5.3599, "retrait_longitude": -3.9870,
     "photos": []
   }
 }
@@ -166,9 +187,9 @@ Crée une annonce en statut `brouillon`. Il faut appeler `/publier` ensuite pour
 
 ### PUT `/marketplace/vendeur/annonces/update/{id}`
 
-Modifie `titre`, `description`, `prix` (tous optionnels, `sometimes`). Ne modifie pas les photos (voir suppression de photo ci-dessous ; il n'y a pas de route d'ajout de photo séparée — les photos s'ajoutent uniquement à la création).
+Modifie `titre`, `description`, `prix`, et désormais `retrait_nom`/`retrait_telephone`/`retrait_adresse`/`retrait_quartier`/`retrait_ville`/`retrait_latitude`/`retrait_longitude` (tous optionnels, `sometimes`). Ne modifie pas les photos (voir suppression de photo ci-dessous ; il n'y a pas de route d'ajout de photo séparée — les photos s'ajoutent uniquement à la création).
 
-**Requête** : `{ "prix": 70000 }`
+**Requête** : `{ "prix": 70000, "retrait_ville": "Bouaké" }`
 
 **Réponse 200** : `{ "success": true, "message": "Annonce mise à jour.", "annonce": {...} }`
 
@@ -338,9 +359,21 @@ Valide un panier d'annonces. **Si le panier contient des articles de plusieurs v
 
 **Corps**
 ```json
-{ "annonce_ids": ["5b1e2b2a-1111-4a3b-9c1a-000000000001", "5b1e2b2a-1111-4a3b-9c1a-000000000002"] }
+{
+  "annonce_ids": ["5b1e2b2a-1111-4a3b-9c1a-000000000001", "5b1e2b2a-1111-4a3b-9c1a-000000000002"],
+  "adresse_livraison": {
+    "nom": "Fatou Diallo",
+    "telephone": "+2250705060708",
+    "adresse": "Rue du Docteur Blanchard",
+    "ville": "Abidjan",
+    "quartier": "Zone 4",
+    "latitude": 5.2970,
+    "longitude": -3.9960,
+    "instructions": "Sonner au portail bleu"
+  }
+}
 ```
-`annonce_ids` : requis, tableau non vide, chaque id doit exister dans `annonces_marketplace`.
+`annonce_ids` : requis, tableau non vide, chaque id doit exister dans `annonces_marketplace`. `adresse_livraison` : **requis** (nouveau) — `nom`, `telephone`, `adresse`, `ville` requis ; `quartier`, `latitude`/`longitude`, `instructions` optionnels. **Une seule adresse pour tout le panier**, même s'il est scindé en plusieurs commandes (l'acheteur ne livre qu'à une adresse par validation). Sans ce champ, impossible pour le livreur de savoir où livrer — absent avant ce chantier.
 
 **Réponse 201**
 ```json
@@ -354,6 +387,10 @@ Valide un panier d'annonces. **Si le panier contient des articles de plusieurs v
       "vendeur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000010",
       "montant_articles": 150000,
       "statut": "en_attente_paiement",
+      "livraison_nom": "Fatou Diallo", "livraison_telephone": "+2250705060708",
+      "livraison_adresse": "Rue du Docteur Blanchard", "livraison_ville": "Abidjan", "livraison_quartier": "Zone 4",
+      "livraison_latitude": 5.2970, "livraison_longitude": -3.9960,
+      "livraison_instructions": "Sonner au portail bleu",
       "items": [
         { "id": "...", "annonce_marketplace_id": "5b1e2b2a-1111-4a3b-9c1a-000000000001", "titre_snapshot": "Canapé 3 places", "prix_unitaire": 75000 }
       ]
@@ -371,6 +408,8 @@ Valide un panier d'annonces. **Si le panier contient des articles de plusieurs v
 ```json
 { "success": false, "message": "Vous ne pouvez pas acheter votre propre annonce : Canapé 3 places" }
 ```
+
+**Erreur 422** si `adresse_livraison` absente ou incomplète : format Laravel Validator standard (`errors.adresse_livraison.*`).
 
 > Le frontend doit gérer le cas multi-commandes : après validation du panier, il faut faire déclarer le paiement de **chaque commande séparément** (une par vendeur).
 
@@ -589,20 +628,21 @@ Choisit un livreur directement et fixe le montant. La commande doit être en sta
 ```json
 {
   "success": true,
-  "message": "Livreur assigné.",
+  "message": "Livraison proposée au livreur.",
   "livraison": {
     "id": "5b1e2b2a-5555-4a3b-9c1a-000000000002",
     "commande_marketplace_id": "5b1e2b2a-3333-4a3b-9c1a-000000000001",
     "mode": "direct",
-    "statut": "assignee",
+    "statut": "proposee",
     "livreur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000030",
     "montant_propose_vendeur": 1500,
     "montant_final": 1500,
-    "assignee_le": "2026-09-24T10:10:00.000000Z"
+    "proposee_le": "2026-09-24T10:10:00.000000Z",
+    "expire_le": "2026-09-24T10:25:00.000000Z"
   }
 }
 ```
-`code_validation_livraison` est généré sur la commande. **Déclenche aussi le démarrage de l'abonnement marketplace du livreur** (première assignation = même règle que l'acceptation d'offre en mode réseau).
+⚠️ **Changement de comportement** : la livraison passe désormais en `proposee`, pas `assignee`. Le livreur doit explicitement accepter avant que la livraison ne lui soit réellement confiée (délai 15 minutes, voir section 7.4). `code_validation_livraison` et le démarrage de l'abonnement marketplace du livreur sont **différés jusqu'à son acceptation** — ils n'ont plus lieu à cet appel. Si le livreur refuse ou ne répond pas dans le délai, la commande revient en statut `payee` et le vendeur peut re-choisir un mode de livraison.
 
 ### POST `/marketplace/vendeur/ventes/{id}/livraison/hors-plateforme`
 
@@ -640,27 +680,43 @@ Le vendeur accepte une offre. Toutes les autres offres actives sur cette livrais
 
 ## 7. Rôle du livreur DANS le module Marketplace (pas son parcours complet)
 
-⚠️ **Cette section ne couvre que ce qu'un livreur fait dans le module Marketplace** (livrer les articles vendus entre clients). Elle ne documente ni son inscription/onboarding, ni ses missions d'expédition classiques (Interville/Extraville), ni ses notifications générales — ce parcours complet fait l'objet d'un **chantier de documentation séparé, pas encore réalisé**.
+⚠️ **Cette section ne couvre que ce qu'un livreur fait dans le module Marketplace** (livrer les articles vendus entre clients). Elle ne documente ni son inscription/onboarding, ni ses missions d'expédition classiques (Interville/Extraville), ni ses notifications générales — ce parcours complet est documenté dans `docs/PARCOURS_LIVREUR_API.md`.
 
-Base : `/marketplace/livreur`. **Protégé par le middleware d'abonnement** (voir section 9) : un livreur en retard de paiement reçoit 403 `ABONNEMENT_BLOQUE` sur toutes ces routes.
+Base : `/marketplace/livreur`. **Protégé par le middleware d'abonnement** (voir section 9) pour les actions actives (proposer/accepter/refuser/démarrer/valider) : un livreur en retard de paiement reçoit 403 `ABONNEMENT_BLOQUE`. Le solde informatif (7.6) reste accessible même bloqué.
 
-> Ne pas confondre avec les routes `expedition/livreur/missions-disponibles` (offres de livraison sur les expéditions Interville classiques) : système totalement distinct, aucun rapport avec la marketplace, non documenté ici.
+> Ne pas confondre avec les routes `expedition/livreur/missions-disponibles` (offres de livraison sur les expéditions Interville classiques) : système totalement distinct, aucun rapport avec la marketplace, documenté dans `PARCOURS_LIVREUR_API.md`.
 
-### GET `/marketplace/livreur/livraisons-disponibles`
+### 7.1 GET `/marketplace/livreur/livraisons-disponibles`
 
-Liste les `LivraisonMarketplace` en mode réseau, statut `en_attente`, avec `commande:id,vendeur_id,montant_articles`.
+Liste les `LivraisonMarketplace` en mode réseau, statut `en_attente`, **filtrées par ville de retrait du livreur** (ou ville/position passées en requête — voir tableau ci-dessous), avec adresses minimales (ville/quartier seulement, pas de contact ni adresse exacte — confidentialité tant que non assignée).
+
+**Query params optionnels**
+| Paramètre | Type | Effet |
+|---|---|---|
+| `ville` | string | Remplace la ville du profil livreur pour cette requête |
+| `latitude`, `longitude` | numérique | Calcule `distance_km` jusqu'au point de retrait, filtre sur `zone_de_livraison_km` du profil, trie par distance croissante |
 
 **Réponse 200**
 ```json
 {
   "success": true,
   "livraisons": [
-    { "id": "5b1e2b2a-5555-4a3b-9c1a-000000000001", "mode": "reseau", "statut": "en_attente", "commande": { "id": "...", "vendeur_id": "...", "montant_articles": 150000 } }
+    {
+      "id": "5b1e2b2a-5555-4a3b-9c1a-000000000001",
+      "mode": "reseau",
+      "statut": "en_attente",
+      "retrait": { "ville": "Abidjan", "quartier": "Cocody" },
+      "livraison": { "ville": "Abidjan", "quartier": "Marcory" },
+      "commande": { "id": "...", "montant_articles": 150000, "nombre_articles": 2 },
+      "distance_km": 3.2,
+      "created_at": "2026-10-02T09:00:00.000000Z"
+    }
   ]
 }
 ```
+Un livreur sans `ville` renseignée sur son profil continue de voir toutes les livraisons disponibles (pas de régression).
 
-### POST `/marketplace/livreur/livraisons/{id}/proposer`
+### 7.2 POST `/marketplace/livreur/livraisons/{id}/proposer`
 
 Propose ou met à jour un prix sur une livraison en attente (mode réseau uniquement, la livraison doit encore être `en_attente`, sinon 404).
 
@@ -670,27 +726,66 @@ Idempotent : si le livreur avait déjà une offre active sur cette livraison, so
 
 **Réponse 201** : `{ "success": true, "message": "Offre enregistrée.", "offre": { "id": "...", "livraison_marketplace_id": "...", "livreur_id": "...", "montant_propose": 1500, "statut": "active" } }`
 
-### DELETE `/marketplace/livreur/livraisons/{id}/offre`
+### 7.3 DELETE `/marketplace/livreur/livraisons/{id}/offre`
 
 Retire l'offre active du livreur connecté sur cette livraison (statut passe à `retiree`).
 
 **Réponse 200** : `{ "success": true, "message": "Offre retirée." }`
 
-### POST `/marketplace/livreur/livraisons/{id}/demarrer`
+### 7.4 Accepter ou refuser une affectation directe (nouveau)
 
-Le livreur démarre la course (il est allé récupérer l'article chez le vendeur). La livraison doit lui être assignée (statut `assignee`), sinon 422 : `"Cette livraison ne peut pas être démarrée."`. Passe la livraison en statut `en_cours`.
+Quand le vendeur affecte directement un livreur (sans passer par le réseau d'offres, voir section 6 `livraison/direct`), la livraison passe désormais au statut **`proposee`** (pas `assignee`) avec un délai d'acceptation de **15 minutes**. Le livreur doit explicitement accepter ou refuser — contrairement au mode réseau où proposer une offre vaut déjà accord implicite.
+
+**POST `/marketplace/livreur/livraisons/{id}/accepter`**
+
+Passe la livraison en `assignee`, génère le code de validation sur la commande et **démarre l'abonnement marketplace du livreur** (idempotent) — ces deux effets sont désormais différés jusqu'à cette acceptation, ils n'ont plus lieu à l'affectation par le vendeur.
+
+**Réponse 200** : `{ "success": true, "message": "Livraison acceptée.", "livraison": { "id": "...", "statut": "assignee", "acceptee_le": "...", "...": "..." } }`
+
+**Erreurs**
+| Cas | Code | Message |
+|---|---|---|
+| Livraison pas `proposee` à ce livreur | 404 | `Livraison non trouvée.` |
+| Délai dépassé (`expire_le` passé) | 422 | `Cette proposition a expiré.` |
+| `users.disponible = false` | 422 | `Vous devez être disponible pour accepter une livraison.` |
+
+**POST `/marketplace/livreur/livraisons/{id}/refuser`**
+
+Corps : `{ "motif": "Trop loin" }` (optionnel, max 255). Passe la livraison en `refusee`, remet la commande en statut `payee` — le vendeur peut alors choisir à nouveau un mode de livraison (réseau ou direct avec un autre livreur).
+
+**Réponse 200** : `{ "success": true, "message": "Livraison refusée." }`
+
+**Expiration automatique** : sans réponse du livreur dans les 15 minutes, une tâche planifiée serveur traite la livraison comme refusée (`motif_refus = "Expiré"`), sans action de l'app.
+
+### 7.5 POST `/marketplace/livreur/livraisons/{id}/demarrer`
+
+Le livreur démarre la course (il va récupérer l'article chez le vendeur). La livraison doit lui être assignée (statut `assignee`), sinon 422 : `"Cette livraison ne peut pas être démarrée."`. Passe la livraison en statut `en_cours`.
+
+**Corps (multipart/form-data, nouveau — preuve de retrait optionnelle)**
+| Champ | Type | Requis |
+|---|---|---|
+| `photo` | fichier image (jpeg/png/jpg/webp, max 5 Mo) | non |
+| `signature` | string (base64) | non |
+| `latitude` | numérique (-90 à 90) | non |
+| `longitude` | numérique (-180 à 180) | non |
+
+Si au moins un champ est fourni, une preuve structurée (étape `retrait`) est enregistrée et horodatée côté serveur — visible par le vendeur (section 6).
 
 **Réponse 200** : `{ "success": true, "message": "Livraison démarrée.", "livraison": { "...": "...", "statut": "en_cours" } }`
 
-### POST `/marketplace/livreur/livraisons/{id}/valider`
+### 7.6 POST `/marketplace/livreur/livraisons/{id}/valider`
 
-Valide la livraison par code + preuve photo optionnelle.
+Valide la livraison par code + preuve.
 
-**Corps (multipart/form-data si preuve)**
+**Corps (multipart/form-data)**
 | Champ | Type | Requis | Contraintes |
 |---|---|---|---|
 | `code` | string | oui | doit correspondre exactement à `code_validation_livraison` de la commande |
-| `preuve` | file | non | image jpeg/png/jpg/webp, max 5 Mo |
+| `preuve` | file | non | **ancien nom, conservé pour compatibilité** — alias de `photo` |
+| `photo` | file | non | image jpeg/png/jpg/webp, max 5 Mo (nouveau nom, aligné sur le reste de l'API) |
+| `signature` | string (base64) | non | nouveau |
+| `latitude` | numérique (-90 à 90) | non | nouveau |
+| `longitude` | numérique (-180 à 180) | non | nouveau |
 
 **Erreur 422 si code incorrect** : `{ "success": false, "message": "Code de validation incorrect." }`
 
@@ -707,11 +802,11 @@ Valide la livraison par code + preuve photo optionnelle.
   }
 }
 ```
-Déclenche le crédit informatif du solde vendeur (commission 10 % déduite).
+Si `signature`/`latitude`/`longitude` fournis (avec ou sans photo), une seconde preuve structurée (étape `remise`) est enregistrée en plus de l'ancien `preuve_livraison_path`. Déclenche le crédit informatif du solde vendeur (commission 10 % déduite).
 
-### GET `/marketplace/livreur/livraisons/mes-livraisons`
+### 7.7 GET `/marketplace/livreur/livraisons/mes-livraisons`
 
-Historique des livraisons assignées au livreur connecté (tous statuts), avec `commande:id,vendeur_id,acheteur_id,montant_articles`.
+Historique des livraisons assignées au livreur connecté (tous statuts), avec adresses et contacts complets (voir 7.8 pour le détail).
 
 **Réponse 200**
 ```json
@@ -720,14 +815,39 @@ Historique des livraisons assignées au livreur connecté (tous statuts), avec `
   "livraisons": [
     {
       "id": "5b1e2b2a-5555-4a3b-9c1a-000000000001",
-      "commande_marketplace_id": "5b1e2b2a-3333-4a3b-9c1a-000000000001",
       "mode": "reseau",
       "statut": "terminee",
-      "livreur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000030",
       "montant_final": 1500,
-      "assignee_le": "2026-09-24T10:20:00.000000Z",
-      "commande": { "id": "5b1e2b2a-3333-4a3b-9c1a-000000000001", "vendeur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000010", "acheteur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000020", "montant_articles": 75000 }
+      "retrait": { "nom": "Kouassi Jean", "telephone": "+2250701020304", "adresse": "Rue des Jardins", "quartier": "Cocody", "ville": "Abidjan", "latitude": 5.3599, "longitude": -3.9870 },
+      "livraison": { "nom": "Fatou Diallo", "telephone": "+2250705060708", "adresse": "Rue du Docteur Blanchard", "quartier": "Zone 4", "ville": "Abidjan", "latitude": 5.2970, "longitude": -3.9960, "instructions": "Sonner au portail bleu" },
+      "commande": { "id": "5b1e2b2a-3333-4a3b-9c1a-000000000001", "montant_articles": 75000, "items": [{ "titre_snapshot": "Canapé 3 places", "prix_unitaire": 75000 }] },
+      "created_at": "2026-09-24T10:00:00.000000Z",
+      "assignee_le": "2026-09-24T10:20:00.000000Z"
     }
+  ]
+}
+```
+
+### 7.8 GET `/marketplace/livreur/livraisons/{id}` (nouveau — détail)
+
+Détail d'une livraison assignée au livreur connecté, même forme qu'un élément de `mes-livraisons` ci-dessus (adresses/contacts/articles complets). **404 si la livraison n'est pas assignée au livreur connecté** — ces informations ne sont jamais exposées à un autre livreur.
+
+### 7.9 Solde marketplace informatif du livreur (nouveau)
+
+Distinct du solde réel des missions classiques (`users.solde_livreur`, voir `PARCOURS_LIVREUR_API.md` 4.7) — ici c'est le même principe que le solde vendeur (section 8) : **purement informatif, aucun argent réel transite par la plateforme**. Accessible même si le livreur est bloqué pour abonnement (hors middleware).
+
+**GET `/marketplace/livreur/solde`**
+```json
+{ "success": true, "solde_marketplace": 4500 }
+```
+
+**GET `/marketplace/livreur/solde/historique`**
+Une ligne par livraison marketplace terminée, montant = commission informative calculée pour le livreur (actuellement 0 % par défaut, configurable).
+```json
+{
+  "success": true,
+  "historique": [
+    { "livraison_id": "5b1e2b2a-5555-4a3b-9c1a-000000000001", "montant": 0, "date": "2026-09-24T11:00:00.000000Z" }
   ]
 }
 ```
@@ -1065,7 +1185,14 @@ Si rejeté : GET /abonnement/historique → dernier paiement.statut = "rejete", 
 | Tentative d'achat de sa propre annonce | 422 | `{ success: false, message: "Vous ne pouvez pas acheter votre propre annonce : ..." }` |
 | Code de validation de livraison incorrect | 422 | `{ success: false, message: "Code de validation incorrect." }` |
 | Article déjà vendu au moment de valider le panier | 422 | `{ success: false, message: "Article(s) déjà vendu(s) ou indisponible(s) : ..." }` |
+| Adresse de livraison manquante ou incomplète (`panier/valider`) | 422 | `{ success: false, errors: { "adresse_livraison.*": [...] } }` |
+| Livraison proposée introuvable, déjà traitée ou pas à ce livreur | 404 | `{ success: false, message: "Livraison non trouvée." }` |
+| Proposition de livraison expirée (délai 15 min dépassé) | 422 | `{ success: false, message: "Cette proposition a expiré." }` |
 | Erreur serveur inattendue | 500 | `{ success: false, message: "Erreur serveur.", errors: "..." }` |
+
+### Limitation connue : bascule interville d'une livraison marketplace
+
+Le cahier des charges (workflow 8.4, étape 8) prévoit qu'une livraison marketplace sur un trajet intervilles bascule vers le système de missions d'expédition (workflow 8.1 puis 8.3 pour le dernier segment). **Ce comportement n'est pas implémenté à ce jour** : une `LivraisonMarketplace` reste toujours un segment unique porté par un seul livreur, du retrait chez le vendeur jusqu'à la remise à l'acheteur, quelle que soit la distance réelle entre les deux villes. Aucune relation entre `LivraisonMarketplace` et `Mission`/`Expedition` n'existe dans le code. Si ce besoin devient prioritaire, il nécessitera une clarification métier (comment découper les deux segments, qui porte le second) avant implémentation.
 
 **Notifications temps réel** : plusieurs actions diffusent un événement WebSocket (paiement déclaré, paiement confirmé, nouvelle livraison disponible, offre acceptée/refusée, livraison démarrée/livrée) sur des canaux nommés `client.{id}`, `livreur.{id}`, `livreurs.reseau`. Si l'app cliente/livreur écoute déjà ces canaux pour le système d'expédition classique, le même mécanisme s'applique ici — se rapprocher de l'équipe backend pour la liste exacte des noms d'événements si un affichage temps réel est prévu côté marketplace.
 

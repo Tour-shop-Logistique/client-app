@@ -4,6 +4,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
+import PageIntro from '../../components/common/PageIntro';
 import { deleteAccount } from '../../store/slices/authSlice';
 import { ROUTES } from '../../routes';
 
@@ -42,18 +43,16 @@ export default function DeleteAccountPage() {
   return (
     <div>
       <TopBar title="Supprimer mon compte" back />
-      <div className="page-container py-4">
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="page-container space-y-4 py-4">
+        <PageIntro
+          icon={AlertTriangle}
+          tone="danger"
+          title="Action définitive"
+          text="La suppression désactive votre compte : vous ne pourrez plus vous connecter et vos données ne seront plus accessibles depuis l'application."
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <p>
-            La suppression désactive votre compte : vous ne pourrez plus vous connecter et vos
-            données ne seront plus accessibles depuis l'application. Cette action est définitive.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="card space-y-4 p-4">
           <label className="block text-sm font-medium text-surface-700">
             Confirmez avec votre mot de passe
             <input
@@ -63,9 +62,9 @@ export default function DeleteAccountPage() {
             <FieldError errors={fieldErrors} name="password" />
           </label>
 
-          <label className="flex items-start gap-2 text-sm text-surface-700">
+          <label className="flex items-start gap-2.5 rounded-xl bg-surface-50 p-3 text-sm text-surface-700">
             <input
-              type="checkbox" className="mt-0.5"
+              type="checkbox" className="mt-0.5 h-4 w-4 accent-red-600"
               checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)}
             />
             Je comprends que mon compte sera désactivé de façon définitive.

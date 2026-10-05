@@ -31,6 +31,9 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // Notifications Web Push (colis livre, parrainage, abonnement…) :
+          // le service worker genere importe ce script qui affiche les push recus.
+          importScripts: ['push-sw.js'],
           cleanupOutdatedCaches: true,
           skipWaiting: true,
           clientsClaim: true,

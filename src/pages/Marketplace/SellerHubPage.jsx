@@ -6,6 +6,7 @@ import {
   ChevronLeft, Tag, Receipt, Wallet, CreditCard, BadgeCheck, Plus, ChevronRight, Info, Truck, Hourglass, Store, Lock,
 } from 'lucide-react';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
+import { ShopBagArt, EmptyTagArt } from '../../components/illustrations';
 import AnimatedNumber from '../../components/marketplace/AnimatedNumber';
 import GuestGate from '../../components/marketplace/GuestGate';
 import marketplaceService from '../../services/marketplaceService';
@@ -51,9 +52,9 @@ export default function SellerHubPage() {
   const echeance = abonnement.echeanceCourante;
 
   const kpis = [
-    { label: 'En ligne', value: online, icon: Tag },
-    { label: 'Ventes', value: ventes.length, icon: Receipt },
-    { label: 'Livrées', value: delivered, icon: BadgeCheck },
+    { label: 'En ligne', value: online, icon: Tag, color: 'bg-shop-100 text-shop-700' },
+    { label: 'Ventes', value: ventes.length, icon: Receipt, color: 'bg-primary-100 text-primary-600' },
+    { label: 'Livrées', value: delivered, icon: BadgeCheck, color: 'bg-emerald-100 text-emerald-700' },
   ];
 
   const todos = [
@@ -65,13 +66,14 @@ export default function SellerHubPage() {
   ].filter(Boolean);
 
   const menu = [
-    { to: ROUTES.MARKETPLACE_MY_LISTINGS, icon: Tag, label: 'Mes annonces', sub: `${annonces.length} annonce${annonces.length > 1 ? 's' : ''}` },
-    { to: ROUTES.MARKETPLACE_SALES, icon: Receipt, label: 'Mes ventes', sub: `${ventes.length} commande${ventes.length > 1 ? 's' : ''}` },
-    { to: ROUTES.MARKETPLACE_PAYMENT_METHODS, icon: CreditCard, label: 'Moyens de paiement', sub: `${moyens.filter((m) => m.actif).length} actif(s)` },
-    { to: ROUTES.MARKETPLACE_BALANCE, icon: Wallet, label: 'Solde & historique', sub: 'Ventes cumulées' },
+    { to: ROUTES.MARKETPLACE_MY_LISTINGS, icon: Tag, color: 'bg-shop-100 text-shop-700', label: 'Mes annonces', sub: `${annonces.length} annonce${annonces.length > 1 ? 's' : ''}` },
+    { to: ROUTES.MARKETPLACE_SALES, icon: Receipt, color: 'bg-primary-100 text-primary-600', label: 'Mes ventes', sub: `${ventes.length} commande${ventes.length > 1 ? 's' : ''}` },
+    { to: ROUTES.MARKETPLACE_PAYMENT_METHODS, icon: CreditCard, color: 'bg-violet-100 text-violet-700', label: 'Moyens de paiement', sub: `${moyens.filter((m) => m.actif).length} actif(s)` },
+    { to: ROUTES.MARKETPLACE_BALANCE, icon: Wallet, color: 'bg-teal-100 text-teal-600', label: 'Solde & historique', sub: 'Ventes cumulées' },
     {
       to: ROUTES.MARKETPLACE_SUBSCRIPTION,
       icon: BadgeCheck,
+      color: 'bg-amber-100 text-amber-700',
       label: 'Abonnement',
       sub: abonnement.abonnement ? ECHEANCE_STATUTS[echeance?.statut]?.label ?? 'À jour' : 'Non démarré',
     },
@@ -79,19 +81,20 @@ export default function SellerHubPage() {
 
   return (
     <div className="pb-6">
-      <div className="brand-gradient safe-top relative overflow-hidden pb-16">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -bottom-20 left-6 h-40 w-40 rounded-full bg-shop-400/20" />
-        <div className="page-container relative flex h-14 items-center justify-between">
-          <button type="button" onClick={() => navigate(-1)} className="-ml-2 rounded-full p-2 hover:bg-white/10" aria-label="Retour">
-            <ChevronLeft size={22} />
+      <div className="brand-gradient safe-top relative overflow-hidden rounded-b-[2rem] pb-16">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-white/[0.07]" />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-shop-400/20" />
+        <div className="page-container relative flex h-16 items-center justify-between">
+          <button type="button" onClick={() => navigate(-1)} className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white/15 transition active:scale-90" aria-label="Retour">
+            <ChevronLeft size={21} strokeWidth={2.4} />
           </button>
-          <span className="font-heading text-base font-semibold">Ma boutique</span>
-          <Link to={ROUTES.MARKETPLACE} className="rounded-full p-2 hover:bg-white/10" aria-label="Voir le catalogue">
+          <span className="font-heading text-lg font-bold">Ma boutique</span>
+          <Link to={ROUTES.MARKETPLACE} className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white/15 transition active:scale-90" aria-label="Voir le catalogue">
             <Store size={20} />
           </Link>
         </div>
-        <div className="page-container relative mt-2">
+        <ShopBagArt size={78} className="pointer-events-none absolute right-5 top-[5.5rem] animate-float" />
+        <div className="page-container relative mt-2 pr-24">
           <p className="text-caption text-white/75">Bonjour {user ? personName(user) : ''}</p>
           <p className="mt-3 flex items-center gap-1.5 text-caption text-white/75">
             Ventes cumulées <Info size={12} />
@@ -111,9 +114,11 @@ export default function SellerHubPage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className="card flex flex-col items-center gap-1 py-3.5"
+              className="flex flex-col items-center gap-1 rounded-[1.4rem] bg-white py-3.5 shadow-[0_16px_36px_-14px_rgba(15,23,42,0.28)]"
             >
-              <k.icon size={18} className="text-shop-700" />
+              <span className={`icon-tile mb-0.5 h-9 w-9 rounded-xl ${k.color}`}>
+                <k.icon size={17} />
+              </span>
               <span className="font-heading text-xl font-bold text-surface-900">{loading ? '–' : <AnimatedNumber value={k.value} />}</span>
               <span className="text-caption text-surface-500">{k.label}</span>
             </motion.div>
@@ -148,24 +153,24 @@ export default function SellerHubPage() {
         )}
 
         <Link to={ROUTES.MARKETPLACE_SELL} className="block">
-          <motion.div whileTap={{ scale: 0.98 }} className="shop-gradient relative flex items-center gap-3 overflow-hidden rounded-2xl p-4">
-            <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-white/25" />
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/50">
-              <Plus size={22} />
+          <motion.div whileTap={{ scale: 0.98 }} className="relative flex h-28 items-center gap-3 overflow-hidden rounded-3xl bg-gradient-to-br from-shop-200 to-shop-400 p-4 text-shop-950">
+            <div className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/30" />
+            <span className="relative icon-tile h-11 w-11 rounded-[14px] bg-white/50">
+              <Plus size={22} strokeWidth={2.6} />
             </span>
-            <span className="flex-1">
-              <span className="block font-semibold">Nouvelle annonce</span>
+            <span className="relative flex-1">
+              <span className="block font-heading text-base font-semibold">Nouvelle annonce</span>
               <span className="block text-caption text-shop-900">Photos, prix, c’est en ligne.</span>
             </span>
-            <ChevronRight size={18} />
+            <EmptyTagArt className="pointer-events-none relative -mr-8 h-24 w-auto animate-float" />
           </motion.div>
         </Link>
 
         <section className="card divide-y divide-surface-100 overflow-hidden">
           {menu.map((m) => (
             <Link key={m.to} to={m.to} className="flex items-center gap-3 p-4 transition hover:bg-surface-50">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-100 text-surface-700">
-                <m.icon size={18} />
+              <span className={`icon-tile h-10 w-10 rounded-[13px] ${m.color}`}>
+                <m.icon size={19} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-body font-semibold text-surface-900">{m.label}</span>

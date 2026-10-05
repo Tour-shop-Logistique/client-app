@@ -6,6 +6,8 @@ const ICONS = { commande: ClipboardList, paiement: Wallet, livraison: Truck, rec
 
 // Frise horizontale Commande -> Paiement -> Livraison -> Recue.
 export default function OrderTimeline({ commande }) {
+  // Commande annulee (acheteur, vendeur ou expiration 48 h) : pas de progression.
+  if (commande?.statut === 'annulee') return null;
   const steps = orderSteps(commande);
   const doneCount = steps.filter((s) => s.state === 'done').length;
   const progress = Math.min(1, (doneCount - 1 + (steps.some((s) => s.state === 'current') ? 0.5 : 0)) / (steps.length - 1));

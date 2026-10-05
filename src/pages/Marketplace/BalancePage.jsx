@@ -60,7 +60,7 @@ export default function BalancePage() {
           {historique === null && (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-16 animate-pulse rounded-2xl bg-white shadow-card" />
+                <div key={i} className="h-16 skeleton rounded-2xl shadow-card" />
               ))}
             </div>
           )}

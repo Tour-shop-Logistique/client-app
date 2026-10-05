@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Trash2, Loader2, Save, Rocket, EyeOff, Info, ExternalLink, PackageX } from 'lucide-react';
+import { Trash2, Loader2, Save, Rocket, EyeOff, Info, ExternalLink, PackageX, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import StatusBadge from '../../components/marketplace/StatusBadge';
+import AddressFields from '../../components/marketplace/AddressFields';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
-import { ANNONCE_STATUTS, annoncePhotos, handleMediaError } from '../../utils/marketplace';
+import {
+  ANNONCE_STATUTS, annoncePhotos, handleMediaError, fromRetrait, toRetraitPayload, hasRetraitAddress,
+} from '../../utils/marketplace';
 import { ROUTES, productPath } from '../../routes';
 
 export default function ListingEditPage() {
@@ -15,6 +18,7 @@ export default function ListingEditPage() {
   const handleError = useMarketplaceError();
   const [annonce, setAnnonce] = useState(undefined);
   const [form, setForm] = useState({ titre: '', prix: '', description: '' });
+  const [retrait, setRetrait] = useState(() => fromRetrait(null));
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState(null);
@@ -25,6 +29,7 @@ export default function ListingEditPage() {
       .then((a) => {
         setAnnonce(a);
         setForm({ titre: a.titre ?? '', prix: String(a.prix ?? ''), description: a.description ?? '' });
+        setRetrait(fromRetrait(a));
       })
       .catch((err) => {
         setAnnonce(null);
@@ -37,8 +42,8 @@ export default function ListingEditPage() {
       <div>
         <TopBar title="Modifier l’annonce" back />
         <div className="page-container space-y-3 py-4">
-          <div className="h-24 animate-pulse rounded-2xl bg-white shadow-card" />
-          <div className="h-48 animate-pulse rounded-2xl bg-white shadow-card" />
+          <div className="h-24 skeleton rounded-2xl shadow-card" />
+          <div className="h-48 skeleton rounded-2xl shadow-card" />
         </div>
       </div>
     );
@@ -67,6 +72,11 @@ export default function ListingEditPage() {
   if (form.titre.trim() !== (annonce.titre ?? '')) changes.titre = form.titre.trim();
   if (form.description !== (annonce.description ?? '')) changes.description = form.description;
   if (form.prix !== '' && Number(form.prix) !== Number(annonce.prix)) changes.prix = Number(form.prix);
+  // Adresse de retrait : champs `sometimes`, seulement ceux modifies.
+  const retraitPayload = toRetraitPayload(retrait);
+  Object.entries(retraitPayload).forEach(([key, v]) => {
+    if (String(v) !== String(annonce[key] ?? '')) changes[key] = v;
+  });
   const dirty = Object.keys(changes).length > 0;
   const invalid = !form.titre.trim() || form.prix === '' || Number(form.prix) < 0;
 
@@ -217,6 +227,23 @@ export default function ListingEditPage() {
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
+
+          <section className="card space-y-3 p-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-body font-semibold text-surface-900">
+                <MapPin size={16} className="text-shop-700" /> Adresse de retrait
+              </h2>
+              <p className="text-caption text-surface-500">
+                Copiée sur la commande quand vous choisissez une livraison par livreur.
+              </p>
+            </div>
+            {!hasRetraitAddress(annonce) && (
+              <p className="rounded-xl bg-amber-50 p-3 text-caption text-amber-800">
+                Sans adresse de retrait, le livreur ne saura pas où récupérer l’article.
+              </p>
+            )}
+            <AddressFields value={retrait} onChange={setRetrait} idPrefix="retrait" disabled={locked} />
+          </section>
         </fieldset>
       </div>
 
@@ -226,13 +253,16 @@ export default function ListingEditPage() {
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom))] z-20"
+            className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20"
           >
             <div className="mx-auto flex max-w-md gap-2 border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
               <button
                 type="button"
                 className="btn-secondary flex-1"
-                onClick={() => setForm({ titre: annonce.titre ?? '', prix: String(annonce.prix ?? ''), description: annonce.description ?? '' })}
+                onClick={() => {
+                  setForm({ titre: annonce.titre ?? '', prix: String(annonce.prix ?? ''), description: annonce.description ?? '' });
+                  setRetrait(fromRetrait(annonce));
+                }}
               >
                 Annuler
               </button>

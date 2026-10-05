@@ -1,36 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { Package, Plus, RefreshCw, ChevronRight, ArrowRight } from 'lucide-react';
+import { Package, Plus, RefreshCw, ChevronRight, ArrowRight, Clock, Truck, CheckCircle2 } from 'lucide-react';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
+import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
+import { BoxArt, EmptyParcelArt } from '../../components/illustrations';
 import { fetchExpeditions, fetchExpeditionStats } from '../../store/slices/expeditionSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { formatDate, formatPrice } from '../../utils/format';
-import { getStatutMeta, getTypeLabel, STATUS_FILTERS } from '../../utils/expeditionStatus';
+import {
+  EN_COURS_STATUSES, getProgress, getTypeLabel, STATUS_FILTERS, villeDepart, villeDestination,
+} from '../../utils/expeditionStatus';
 import { ROUTES, expeditionDetailPath } from '../../routes';
-
-const villeDepart = (exp) =>
-  exp.expediteur?.ville || exp.expediteur_ville || exp.ville_depart || exp.agence?.ville || exp.code_pays_depart || '—';
-const villeDestination = (exp) =>
-  exp.destinataire?.ville || exp.destinataire_ville || exp.ville_destination || exp.code_pays_destination || '—';
 
 function StatCards({ stats }) {
   if (!stats) return null;
   const cells = [
-    { label: 'Total', value: stats.total ?? 0 },
-    { label: 'En attente', value: stats.en_attente ?? 0 },
-    { label: 'En cours', value: stats.en_cours ?? 0 },
-    { label: 'Terminées', value: stats.termined ?? 0 },
+    { label: 'Total', value: stats.total ?? 0, icon: Package, color: 'bg-primary-100 text-primary-600' },
+    { label: 'En attente', value: stats.en_attente ?? 0, icon: Clock, color: 'bg-amber-100 text-amber-700' },
+    { label: 'En cours', value: stats.en_cours ?? 0, icon: Truck, color: 'bg-teal-100 text-teal-600' },
+    { label: 'Terminées', value: stats.termined ?? 0, icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700' },
   ];
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-4 gap-1 rounded-[1.4rem] bg-white px-2 py-3.5 shadow-[0_16px_36px_-14px_rgba(15,23,42,0.28)]">
       {cells.map((c) => (
-        <div key={c.label} className="rounded-2xl bg-white p-2.5 text-center shadow-card">
-          <p className="text-xl font-bold text-surface-900">{c.value}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wide leading-tight text-surface-400">
-            {c.label}
-          </p>
+        <div key={c.label} className="flex flex-col items-center gap-1 text-center">
+          <span className={`icon-tile mb-0.5 h-9 w-9 rounded-xl ${c.color}`}>
+            <c.icon size={17} />
+          </span>
+          <p className="font-heading text-lg font-bold leading-tight text-surface-900">{c.value}</p>
+          <p className="text-[11px] font-medium leading-tight text-surface-500">{c.label}</p>
         </div>
       ))}
     </div>
@@ -38,7 +38,6 @@ function StatCards({ stats }) {
 }
 
 function ExpeditionCard({ exp }) {
-  const statut = getStatutMeta(exp.statut_expedition);
   const nbColis = exp.colis?.length ?? 0;
 
   return (
@@ -46,8 +45,8 @@ function ExpeditionCard({ exp }) {
       to={expeditionDetailPath(exp.id)}
       className="group flex items-stretch gap-3 rounded-2xl bg-white p-4 shadow-card transition active:scale-[0.99]"
     >
-      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-primary-50 text-primary-600">
-        <Package size={19} />
+      <span className="icon-tile h-11 w-11 self-start rounded-[14px] bg-primary-100 text-primary-600">
+        <Package size={20} />
       </span>
 
       <div className="min-w-0 flex-1">
@@ -55,29 +54,29 @@ function ExpeditionCard({ exp }) {
           <p className="truncate text-sm font-semibold text-surface-900">
             {exp.reference || 'Demande'}
           </p>
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statut.className}`}>
-            {statut.label}
-          </span>
+          <ExpeditionStatusBadge statut={exp.statut_expedition} />
         </div>
 
-        <div className="mt-1 flex items-center gap-1.5 text-sm text-surface-700">
+        <div className="mt-1 flex items-center gap-1.5 text-sm font-medium text-surface-700">
           <span className="truncate">{villeDepart(exp)}</span>
-          <ArrowRight size={13} className="shrink-0 text-surface-300" />
+          <ArrowRight size={13} className="shrink-0 text-primary-400" />
           <span className="truncate">{villeDestination(exp)}</span>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-surface-400">
-          <span>{formatDate(exp.created_at)}</span>
-          <span className="text-surface-300">•</span>
-          <span className="font-semibold text-surface-600">{formatPrice(exp.montant_expedition)}</span>
-          <span className="text-surface-300">•</span>
-          <span>{getTypeLabel(exp.type_expedition)}</span>
-          {nbColis > 0 && (
-            <>
-              <span className="text-surface-300">•</span>
-              <span>{nbColis} colis</span>
-            </>
-          )}
+        {EN_COURS_STATUSES.includes(exp.statut_expedition) && (
+          <div className="mt-2.5 h-1.5 rounded-full bg-surface-100" aria-hidden="true">
+            <div
+              className="h-1.5 rounded-full bg-gradient-to-r from-primary-600 to-teal-400"
+              style={{ width: `${Math.round(Math.max(getProgress(exp).ratio, 0.08) * 100)}%` }}
+            />
+          </div>
+        )}
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-surface-600">
+          <span className="rounded-full bg-surface-100 px-2 py-0.5">{formatDate(exp.created_at)}</span>
+          <span className="rounded-full bg-surface-100 px-2 py-0.5">{getTypeLabel(exp.type_expedition)}</span>
+          {nbColis > 0 && <span className="rounded-full bg-surface-100 px-2 py-0.5">{nbColis} colis</span>}
+          <span className="ml-auto font-heading text-sm font-bold text-surface-900">{formatPrice(exp.montant_expedition)}</span>
         </div>
       </div>
 
@@ -118,29 +117,35 @@ export default function HistoryPage() {
 
   return (
     <div className="min-h-dvh bg-surface-50 safe-top">
-      <div className="brand-gradient relative overflow-hidden pb-12 pt-4">
-        <div className="pointer-events-none absolute -right-8 -top-14 h-40 w-40 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -bottom-16 left-4 h-32 w-32 rounded-full bg-shop-400/20" />
+      <div className="brand-gradient relative overflow-hidden rounded-b-[2rem] pb-16 pt-5">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-white/[0.07]" />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-shop-400/20" />
 
-        <div className="page-container relative flex items-center justify-between gap-2">
-          <h1 className="font-heading text-lg font-bold text-white">Mes colis</h1>
-          <div className="flex items-center gap-1.5">
-            {isAuthenticated && (
-              <button
-                type="button"
-                onClick={refresh}
-                className="rounded-full bg-white/15 p-2 text-white hover:bg-white/25"
-                aria-label="Rafraîchir"
+        <div className="page-container relative">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="font-heading text-lg font-bold text-white">Mes colis</h1>
+            <div className="flex items-center gap-2">
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={refresh}
+                  className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white/15 text-white"
+                  aria-label="Rafraîchir"
+                >
+                  <RefreshCw size={18} className={status === 'loading' ? 'animate-spin' : ''} />
+                </button>
+              )}
+              <Link
+                to={ROUTES.EXPEDITION_NEW}
+                className="inline-flex h-11 items-center gap-1.5 rounded-[14px] bg-shop-400 px-3.5 text-body font-bold text-shop-950"
               >
-                <RefreshCw size={16} className={status === 'loading' ? 'animate-spin' : ''} />
-              </button>
-            )}
-            <Link
-              to={ROUTES.EXPEDITION_NEW}
-              className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-primary-700"
-            >
-              <Plus size={15} /> Envoyer
-            </Link>
+                <Plus size={17} strokeWidth={2.6} /> Envoyer
+              </Link>
+            </div>
+          </div>
+          <div className="relative mt-4 flex items-end justify-between">
+            <p className="w-48 text-body text-white/85">Suivez chacun de vos envois, étape par étape.</p>
+            <BoxArt size={76} className="-mb-2 animate-float" />
           </div>
         </div>
       </div>
@@ -149,7 +154,7 @@ export default function HistoryPage() {
         {!isAuthenticated && (
           <div className="pt-4">
             <EmptyState
-              icon={Package}
+              illustration={<EmptyParcelArt />}
               title="Connectez-vous pour voir vos colis"
               description="Votre historique apparaît ici dès votre première expédition validée."
               action={
@@ -167,7 +172,7 @@ export default function HistoryPage() {
 
         {isAuthenticated && (
           <>
-            <div className="relative -mt-8">
+            <div className="relative -mt-10">
               <StatCards stats={stats} />
             </div>
 
@@ -177,16 +182,19 @@ export default function HistoryPage() {
                   key={f.key}
                   type="button"
                   onClick={() => setFilter(f.key)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition active:scale-95 ${
                     filter === f.key
-                      ? 'bg-primary-600 text-white shadow-sm'
-                      : 'bg-white text-surface-500 shadow-card'
+                      ? 'bg-navy-800 text-white shadow-[0_8px_16px_-10px_rgba(43,38,80,0.8)]'
+                      : 'bg-white text-surface-600 shadow-card'
                   }`}
                 >
                   {f.label}
                   {counts[f.key] > 0 && (
-                    <span className={filter === f.key ? 'text-white/70' : 'text-surface-300'}>
-                      {' '}
+                    <span
+                      className={`rounded-full px-1.5 py-px text-[11px] ${
+                        filter === f.key ? 'bg-white/20 text-white' : 'bg-surface-100 text-surface-600'
+                      }`}
+                    >
                       {counts[f.key]}
                     </span>
                   )}
@@ -213,7 +221,7 @@ export default function HistoryPage() {
 
             {status !== 'loading' && status !== 'error' && filtered.length === 0 && (
               <EmptyState
-                icon={Package}
+                illustration={<EmptyParcelArt />}
                 title={
                   items.length === 0
                     ? 'Aucune expédition pour le moment'
@@ -227,7 +235,7 @@ export default function HistoryPage() {
                 action={
                   items.length === 0 ? (
                     <Link to={ROUTES.EXPEDITION_NEW} className="btn-primary">
-                      Envoyer un colis
+                      Envoyer mon premier colis
                     </Link>
                   ) : null
                 }

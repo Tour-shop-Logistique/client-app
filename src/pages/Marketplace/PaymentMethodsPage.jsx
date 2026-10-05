@@ -113,8 +113,8 @@ export default function PaymentMethodsPage() {
 
         {moyens === null && (
           <div className="space-y-2">
-            <div className="h-20 animate-pulse rounded-2xl bg-white shadow-card" />
-            <div className="h-20 animate-pulse rounded-2xl bg-white shadow-card" />
+            <div className="h-20 skeleton rounded-2xl shadow-card" />
+            <div className="h-20 skeleton rounded-2xl shadow-card" />
           </div>
         )}
 

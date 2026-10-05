@@ -1,24 +1,27 @@
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 
-export default function TopBar({ title, back = false, right = null }) {
+export default function TopBar({ title, subtitle = null, back = false, right = null }) {
   const navigate = useNavigate();
 
   return (
-    <header className="safe-top sticky top-0 z-30 border-b border-surface-100 bg-white/90 backdrop-blur">
-      <div className="page-container flex h-14 items-center justify-between">
-        <div className="flex items-center gap-1 min-w-0">
+    <header className="safe-top sticky top-0 z-30 bg-surface-50/90 backdrop-blur">
+      <div className="page-container flex h-16 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {back && (
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="-ml-2 rounded-full p-2 text-primary-700 hover:bg-primary-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-white text-surface-900 shadow-card transition active:scale-90"
               aria-label="Retour"
             >
-              <ChevronLeft size={22} />
+              <ChevronLeft size={21} strokeWidth={2.4} />
             </button>
           )}
-          <h1 className="truncate font-heading text-base font-semibold text-surface-900">{title}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate font-heading text-lg font-bold text-surface-900">{title}</h1>
+            {subtitle && <p className="truncate text-caption text-surface-500">{subtitle}</p>}
+          </div>
         </div>
         {right}
       </div>

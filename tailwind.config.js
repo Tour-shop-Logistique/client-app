@@ -104,6 +104,12 @@ export default {
         'fade-in': 'fadeIn 0.3s ease-out forwards',
         'slide-up': 'slideUp 0.3s ease-out forwards',
         'sheet-up': 'sheetUp 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+        // Kit visuel : statut en direct, illustrations vivantes, chargement, succès.
+        'pulse-ring': 'pulseRing 1.6s ease-out infinite',
+        float: 'float 4s ease-in-out infinite',
+        shimmer: 'shimmer 1.4s linear infinite',
+        pop: 'pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+        confetti: 'confetti 2.2s ease-in-out infinite alternate',
       },
       keyframes: {
         fadeIn: {
@@ -117,6 +123,27 @@ export default {
         sheetUp: {
           '0%': { transform: 'translateY(100%)' },
           '100%': { transform: 'translateY(0)' },
+        },
+        pulseRing: {
+          '0%': { transform: 'scale(1)', opacity: '0.7' },
+          '100%': { transform: 'scale(2.6)', opacity: '0' },
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-7px)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200px 0' },
+          '100%': { backgroundPosition: '200px 0' },
+        },
+        pop: {
+          '0%': { transform: 'scale(0)' },
+          '60%': { transform: 'scale(1.15)' },
+          '100%': { transform: 'scale(1)' },
+        },
+        confetti: {
+          '0%': { transform: 'translateY(-6px) rotate(0deg)' },
+          '100%': { transform: 'translateY(8px) rotate(40deg)' },
         },
       },
     },

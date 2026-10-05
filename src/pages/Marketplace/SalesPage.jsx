@@ -8,12 +8,17 @@ import StatusBadge from '../../components/marketplace/StatusBadge';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
-import { COMMANDE_STATUTS, LIVRAISON_STATUTS, formatMoney, personName } from '../../utils/marketplace';
+import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
+import {
+  COMMANDE_STATUTS, LIVRAISON_STATUTS, formatMoney, personName, isLivraisonActive,
+} from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { salePath } from '../../routes';
 import { OrderListSkeleton } from './OrdersPage';
+import { EmptyReceiptArt } from '../../components/illustrations';
 
-const needsShipping = (c) => c.statut === 'payee' && !c.mode_livraison && !c.livraison_marketplace;
+// A expedier : payee, sans livreur actif (jamais choisi, ou refus/expiration).
+const needsShipping = (c) => c.statut === 'payee' && c.mode_livraison !== 'hors_plateforme' && !isLivraisonActive(c.livraison_marketplace);
 
 const TABS = [
   { key: 'all', label: 'Toutes', match: () => true },
@@ -22,6 +27,7 @@ const TABS = [
   { key: 'transit', label: 'En livraison', match: (c) => c.statut === 'payee' && !needsShipping(c) },
   { key: 'wait', label: 'Paiement attendu', match: (c) => c.statut === 'en_attente_paiement' },
   { key: 'done', label: 'Livrées', match: (c) => c.statut === 'livree' },
+  { key: 'cancel', label: 'Annulées', match: (c) => c.statut === 'annulee' },
 ];
 
 export default function SalesPage() {
@@ -44,6 +50,9 @@ export default function SalesPage() {
     load();
   }, [load]);
 
+  // Nouvelle commande, paiement declare, livreur qui accepte/refuse… : liste a jour.
+  useRealtimeMarketplace(null, load);
+
   const tabs = useMemo(
     () => TABS.map((t) => ({ ...t, count: t.key === 'all' ? 0 : (ventes ?? []).filter(t.match).length })),
     [ventes]
@@ -61,8 +70,8 @@ export default function SalesPage() {
 
         {ventes !== null && visible.length === 0 && (
           <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-12 text-center shadow-card">
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-shop-100 text-shop-800">
-              <Receipt size={28} />
+            <span className="animate-float">
+              <EmptyReceiptArt />
             </span>
             <p className="text-title text-surface-900">{tab === 'all' ? 'Aucune vente pour le moment' : 'Rien à traiter ici'}</p>
             <p className="text-body text-surface-500">Les commandes de vos acheteurs apparaîtront ici.</p>
@@ -81,8 +90,11 @@ export default function SalesPage() {
               return (
                 <motion.li key={c.id} layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }} exit={{ opacity: 0 }}>
                   <Link to={salePath(c.id)} className="block rounded-2xl bg-white p-4 shadow-card transition hover:shadow-lg active:scale-[0.99]">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                    <div className="flex items-start gap-3">
+                      <span className="icon-tile h-11 w-11 rounded-[14px] bg-primary-100 text-primary-600">
+                        <Receipt size={20} />
+                      </span>
+                      <div className="min-w-0 flex-1">
                         <p className="line-clamp-1 text-body font-semibold text-surface-900">
                           {c.items?.map((it) => it.titre_snapshot).join(', ') || 'Commande'}
                         </p>
@@ -93,7 +105,7 @@ export default function SalesPage() {
                       </div>
                       <StatusBadge map={COMMANDE_STATUTS} value={c.statut} short />
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-100 pt-3">
                       <p className="font-heading text-lg font-bold text-surface-900">{formatMoney(c.montant_articles)}</p>
                       {action ? (
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-caption font-bold ${action.cls}`}>

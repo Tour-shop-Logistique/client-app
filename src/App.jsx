@@ -1,11 +1,13 @@
 import { useEffect, useState, Suspense, lazy } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import MobileLayout from './layouts/MobileLayout';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { ROUTES } from './routes';
 import authService from './services/authService';
 import { restoreSession } from './store/slices/authSlice';
+import { abonnementBloqueDetected, fetchAbonnementStatut } from './store/slices/marketplaceSlice';
 import { getEcho, disconnectEcho } from './services/echo';
 import { useRealtimeWithNotifications } from './hooks/useRealtimeUpdates';
 import { isFeatureReady } from './config/features';
@@ -16,7 +18,6 @@ import HomePage from './pages/Home/HomePage';
 import NewExpeditionPage from './pages/Expedition/NewExpeditionPage';
 import IntervilleFormPage from './pages/Expedition/IntervilleFormPage';
 import ExtrapaysFormPage from './pages/Expedition/ExtrapaysFormPage';
-import TrackingPage from './pages/Expedition/TrackingPage';
 import HistoryPage from './pages/Expedition/HistoryPage';
 import ExpeditionDetailPage from './pages/Expedition/ExpeditionDetailPage';
 import ProductListPage from './pages/Marketplace/ProductListPage';
@@ -58,6 +59,7 @@ const gated = (featureKey, element) => (isFeatureReady(featureKey) ? element : <
 
 export default function App() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
 
@@ -76,8 +78,30 @@ export default function App() {
   }, [isAuthenticated]);
 
   // Ecoute globale : toasts automatiques sur les evenements temps reel
-  // (statut colis, paiement, offres livreurs) quelle que soit la page.
+  // (statut colis, paiement, offres livreurs, marketplace) quelle que soit la page.
   useRealtimeWithNotifications();
+
+  // Push recu app ouverte (relaye par public/push-sw.js) : toast in-app et
+  // resynchronisation de l'abonnement marketplace s'il est concerne.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMessage = (event) => {
+      if (event.data?.type !== 'push') return;
+      const p = event.data.payload || {};
+      const url = p.data?.url || p.url;
+      toast.info(p.title || 'TourShop', {
+        description: p.body,
+        action: url ? { label: 'Voir', onClick: () => (/^https?:/i.test(url) ? window.location.assign(url) : navigate(url)) } : undefined,
+      });
+      const text = `${p.title || ''} ${p.body || ''} ${p.data?.type || ''}`.toLowerCase();
+      if (/abonnement/.test(text)) {
+        if (/(bloqu|suspendu)/.test(text)) dispatch(abonnementBloqueDetected());
+        if (isAuthenticated) dispatch(fetchAbonnementStatut());
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [dispatch, navigate, isAuthenticated]);
 
   if (showOnboarding) {
     return <WelcomeOnboarding onFinish={() => setShowOnboarding(false)} />;
@@ -92,7 +116,8 @@ export default function App() {
         <Route path={ROUTES.EXPEDITION_NEW} element={gated('expeditionNew', <NewExpeditionPage />)} />
         <Route path={ROUTES.EXPEDITION_INTERVILLE} element={gated('expeditionInterville', <IntervilleFormPage />)} />
         <Route path={ROUTES.EXPEDITION_EXTRAPAYS} element={gated('expeditionExtrapays', <ExtrapaysFormPage />)} />
-        <Route path={ROUTES.EXPEDITION_TRACKING} element={gated('expeditionTracking', <TrackingPage />)} />
+        {/* Ancienne URL de suivi : le suivi fait partie du detail d'expedition. */}
+        <Route path={ROUTES.EXPEDITION_TRACKING} element={gated('expeditionHistory', <ExpeditionDetailPage />)} />
         <Route path={ROUTES.EXPEDITION_HISTORY} element={gated('expeditionHistory', <HistoryPage />)} />
         <Route path={ROUTES.EXPEDITION_DETAIL} element={gated('expeditionHistory', <ExpeditionDetailPage />)} />
 

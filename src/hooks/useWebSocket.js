@@ -23,6 +23,10 @@ const channelRefs = new Map(); // channelName -> instance Echo channel
  * @param {Function} handlers.onExpeditionDelivered - Colis livre.
  * @param {Function} handlers.onDeliveryOfferReceived - Nouvelle offre de livreur recue.
  * @param {Function} handlers.onColisStatusChanged - Changement de statut d'un colis.
+ * @param {Function} handlers.onMissionPublished - Mission express de ma demande ouverte aux livreurs.
+ * @param {Function} handlers.onMissionStep - Etape d'enlevement / de livraison (Mission/etape).
+ * @param {Function} handlers.onMarketplaceEvent - (model, action, data, meta) pour
+ *   CommandeMarketplace | LivraisonMarketplace | LivraisonMarketplaceOffre (WEBSOCKETS.md).
  * @param {boolean} enabled - Active/desactive l'ecoute (defaut: true).
  */
 export function useWebSocket(userId, handlers = {}, enabled = true) {
@@ -36,7 +40,7 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
 
   // Routeur unifie pour tous les evenements `.model.updated`.
   const handleModelUpdate = useCallback((payload) => {
-    console.log('📥 [WebSocket] Message recu :', {
+    if (import.meta.env.DEV) console.log('📥 [WebSocket] Message recu :', {
       model: payload.model,
       action: payload.action,
       count: payload.count,
@@ -45,11 +49,31 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
       at: payload.at,
     });
 
-    const { model, action, data, ids, references, changes, count, at } = payload;
-    const meta = { ids, references, changes, count, at };
+    const { action, ids, references, changes, count, at } = payload;
+    // `model` peut arriver en FQCN ("App\\Models\\Mission") ; `data` toujours en tableau.
+    const model = String(payload.model || '').split('\\').pop();
+    const data = Array.isArray(payload.data) ? payload.data : payload.data ? [payload.data] : [];
+    const meta = { ids: ids || [], references: references || [], changes, count, at, model, action };
     const h = handlersRef.current;
 
     switch (model) {
+      case 'CommandeMarketplace':
+      case 'LivraisonMarketplace':
+      case 'LivraisonMarketplaceOffre':
+        h.onMarketplaceEvent?.(model, action, data, meta);
+        break;
+
+      // Offre d'un livreur sur la mission express de ma demande.
+      case 'MissionOffre':
+        if (action === 'proposee' && h.onDeliveryOfferReceived) h.onDeliveryOfferReceived(data, meta);
+        break;
+
+      case 'Mission':
+        if (action === 'nouvelle_disponible' && h.onMissionPublished) h.onMissionPublished(data, meta);
+        // Etape du dernier kilometre : data = [{ expedition_id, type, etape }].
+        else if (action === 'etape' && h.onMissionStep) h.onMissionStep(data, meta);
+        break;
+
       case 'Expedition':
         if (action === 'created' && h.onExpeditionCreated) {
           h.onExpeditionCreated(data, meta);
@@ -82,6 +106,7 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
         break;
 
       default:
+        // La liste des modeles s'enrichit cote backend sans changer le contrat.
         console.warn(`⚠️ [WebSocket] Modele '${model}' non reconnu, evenement ignore :`, { model, action });
     }
   }, []);

@@ -1,6 +1,7 @@
 import { useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
-import { LogIn, ShieldCheck } from 'lucide-react';
+import { LogIn } from 'lucide-react';
+import { EmptyCartArt } from '../illustrations';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 
 // Toutes les routes marketplace exigent un token Sanctum : un invite voit cet
@@ -16,8 +17,8 @@ export default function GuestGate({
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center gap-4 rounded-3xl bg-white px-6 py-10 text-center shadow-card"
     >
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-shop-100 text-shop-800">
-        <ShieldCheck size={30} />
+      <span className="animate-float">
+        <EmptyCartArt />
       </span>
       <div>
         <p className="text-title text-surface-900">{title}</p>

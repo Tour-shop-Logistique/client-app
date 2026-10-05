@@ -1,10 +1,88 @@
 import { motion } from 'framer-motion';
-import { Package, Truck, KeyRound, Copy, Receipt, User } from 'lucide-react';
+import {
+  Package, Truck, KeyRound, Copy, Receipt, User, MapPin, Phone, Camera, PenLine,
+} from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import {
-  formatMoney, personName, initials, storageUrl, handleMediaError, copyText, LIVRAISON_STATUTS, MODES_LIVRAISON, PAYMENT_METHODS,
+  formatMoney, personName, initials, storageUrl, handleMediaError, copyText, commandeAddress,
+  LIVRAISON_STATUTS, MODES_LIVRAISON, PAYMENT_METHODS,
 } from '../../utils/marketplace';
 import { formatDateTime } from '../../utils/format';
+
+// Adresse snapshot (retrait vendeur / livraison acheteur) avec lien d'itineraire.
+function AddressBlock({ label, address }) {
+  if (!address) return null;
+  const line = [address.adresse, address.quartier, address.ville].filter(Boolean).join(', ');
+  const maps = address.latitude != null && address.longitude != null
+    ? `https://www.google.com/maps/search/?api=1&query=${address.latitude},${address.longitude}`
+    : line ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(line)}` : null;
+  return (
+    <div className="rounded-xl bg-surface-50 p-3">
+      <p className="text-caption text-surface-400">{label}</p>
+      {address.nom && <p className="text-body font-semibold text-surface-900">{address.nom}</p>}
+      {line && (
+        <p className="mt-0.5 flex items-start gap-1.5 text-caption text-surface-600">
+          <MapPin size={13} className="mt-0.5 shrink-0" /> {line}
+        </p>
+      )}
+      {address.telephone && (
+        <a href={`tel:${address.telephone}`} className="mt-0.5 flex items-center gap-1.5 text-caption text-primary-700">
+          <Phone size={13} /> {address.telephone}
+        </a>
+      )}
+      {address.instructions && <p className="mt-1 text-caption italic text-surface-500">« {address.instructions} »</p>}
+      {maps && (
+        <a href={maps} target="_blank" rel="noreferrer" className="mt-1.5 inline-block text-caption font-semibold text-primary-700">
+          Voir sur la carte
+        </a>
+      )}
+    </div>
+  );
+}
+
+// Preuves structurees du livreur (etapes `retrait` et `remise`), si exposees.
+const ETAPE_LABELS = { retrait: 'Retrait chez le vendeur', remise: 'Remise à l’acheteur' };
+
+function ProofsBlock({ commande }) {
+  const liv = commande?.livraison_marketplace;
+  const preuves = Array.isArray(liv?.preuves) ? liv.preuves : [];
+  const legacy = storageUrl(commande?.preuve_livraison_path);
+  if (!preuves.length && !legacy) return null;
+  return (
+    <div className="space-y-2">
+      <p className="flex items-center gap-1.5 text-caption font-semibold text-surface-700">
+        <Camera size={14} /> Preuves du livreur
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {preuves.map((p, i) => {
+          const photo = storageUrl(p.photo_url || p.photo_path || p.photo);
+          return (
+            <figure key={p.id || i} className="overflow-hidden rounded-xl border border-surface-200 bg-white">
+              {photo ? (
+                <a href={photo} target="_blank" rel="noreferrer">
+                  <img src={photo} onError={handleMediaError} alt={ETAPE_LABELS[p.etape] || 'Preuve'} className="h-28 w-full bg-surface-50 object-cover" />
+                </a>
+              ) : (
+                <div className="flex h-28 items-center justify-center bg-surface-50 text-surface-400">
+                  {p.signature ? <PenLine size={22} /> : <MapPin size={22} />}
+                </div>
+              )}
+              <figcaption className="p-2 text-[11px] text-surface-500">
+                <span className="block font-semibold text-surface-700">{ETAPE_LABELS[p.etape] || p.etape || 'Preuve'}</span>
+                {p.created_at && formatDateTime(p.created_at)}
+              </figcaption>
+            </figure>
+          );
+        })}
+        {!preuves.some((p) => p.etape === 'remise') && legacy && (
+          <a href={legacy} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-surface-200">
+            <img src={legacy} onError={handleMediaError} alt="Preuve de livraison" className="h-28 w-full bg-surface-50 object-cover" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function PersonRow({ label, person }) {
   if (!person) return null;
@@ -77,9 +155,22 @@ export function PaymentInfoCard({ commande, title = 'Paiement déclaré' }) {
   );
 }
 
-export function DeliveryInfoCard({ commande }) {
+export function DeliveryInfoCard({ commande, showPickup = false }) {
   const liv = commande?.livraison_marketplace;
-  if (!commande?.mode_livraison && !liv) return null;
+  const dropoff = commandeAddress(commande, 'livraison');
+  const pickup = showPickup ? commandeAddress(commande, 'retrait') : null;
+  if (!commande?.mode_livraison && !liv) {
+    // Avant le choix du mode : seule l'adresse de livraison saisie au panier.
+    if (!dropoff) return null;
+    return (
+      <section className="card space-y-3 p-4">
+        <h2 className="flex items-center gap-2 text-body font-semibold text-surface-900">
+          <Truck size={16} className="text-surface-400" /> Livraison
+        </h2>
+        <AddressBlock label="Adresse de livraison" address={dropoff} />
+      </section>
+    );
+  }
   return (
     <section className="card space-y-3 p-4">
       <div className="flex items-center justify-between gap-2">
@@ -105,6 +196,9 @@ export function DeliveryInfoCard({ commande }) {
           Le vendeur organise lui-même la livraison, en dehors de l’application.
         </p>
       )}
+      <AddressBlock label="Retrait (votre adresse)" address={pickup} />
+      <AddressBlock label="Adresse de livraison" address={dropoff} />
+      <ProofsBlock commande={commande} />
     </section>
   );
 }

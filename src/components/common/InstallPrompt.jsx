@@ -12,7 +12,7 @@ export default function InstallPrompt() {
     <div
       role="dialog"
       aria-label="Installer l'application"
-      className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] z-40 mx-auto max-w-md px-3"
+      className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+1.25rem)] z-40 mx-auto max-w-md px-3"
     >
       <div className="flex items-start gap-3 rounded-2xl bg-white p-3.5 shadow-lg ring-1 ring-surface-200">
         <img src="/icons/icon-192.png" alt="" className="h-11 w-11 shrink-0 rounded-xl" />

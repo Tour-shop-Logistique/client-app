@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BadgeCheck, Lock, Hourglass, AlertTriangle, CalendarClock, Send, Loader2, RefreshCw, XCircle, Sparkles, Smartphone, Banknote, Landmark,
+  BadgeCheck, Lock, Hourglass, AlertTriangle, CalendarClock, Send, Loader2, RefreshCw, XCircle, Sparkles, Smartphone, Banknote, Landmark, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -13,7 +13,7 @@ import { ProofPicker } from '../../components/marketplace/FilePickers';
 import abonnementService from '../../services/abonnementService';
 import { fetchAbonnementStatut } from '../../store/slices/marketplaceSlice';
 import {
-  ECHEANCE_STATUTS, PAIEMENT_ABONNEMENT_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage,
+  ECHEANCE_STATUTS, PAIEMENT_ABONNEMENT_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage, copyText,
 } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { ROUTES } from '../../routes';
@@ -58,12 +58,62 @@ function PeriodProgress({ echeance }) {
   );
 }
 
+// Comptes TourShop sur lesquels payer l'abonnement (GET /abonnement/moyens-paiement,
+// accessible meme bloque). Liste vide tant que le backoffice n'a rien configure.
+function ReceivingAccounts({ moyens }) {
+  if (moyens === null) return <div className="h-16 skeleton rounded-2xl" />;
+  if (moyens.length === 0) {
+    return (
+      <p className="rounded-2xl bg-amber-50 p-3 text-caption text-amber-900">
+        Le moyen de paiement TourShop n’est pas encore configuré pour votre pays. Contactez votre agence pour savoir où payer.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {moyens.map((m, i) => (
+        <li key={`${m.methode}-${m.numero_destinataire || i}`} className="rounded-2xl border border-shop-200 bg-shop-50/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-body font-semibold text-surface-900">{m.libelle || PAYMENT_METHODS[m.methode] || 'Paiement'}</p>
+              {m.numero_destinataire && <p className="font-mono text-body font-bold tracking-wide text-surface-900">{m.numero_destinataire}</p>}
+            </div>
+            {m.numero_destinataire && (
+              <button
+                type="button"
+                onClick={() => copyText(m.numero_destinataire, 'Numéro copié')}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1.5 text-caption font-semibold text-surface-700 shadow-sm"
+              >
+                <Copy size={13} /> Copier
+              </button>
+            )}
+          </div>
+          {m.instructions && <p className="mt-1.5 text-caption text-surface-600">{m.instructions}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Declaration du paiement d'abonnement (9.8). Ne debloque pas : le backoffice valide.
 function DeclareForm({ echeance, onDeclared }) {
   const [methode, setMethode] = useState('mobile_money');
   const [reference, setReference] = useState('');
   const [preuve, setPreuve] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [moyens, setMoyens] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    abonnementService.moyensPaiement()
+      .then((list) => {
+        if (!alive) return;
+        setMoyens(list);
+        if (list[0]?.methode && METHODS.some((m) => m.key === list[0].methode)) setMethode(list[0].methode);
+      })
+      .catch(() => alive && setMoyens([]));
+    return () => { alive = false; };
+  }, []);
 
   const submit = async () => {
     setSubmitting(true);
@@ -83,9 +133,10 @@ function DeclareForm({ echeance, onDeclared }) {
       <div>
         <h2 className="text-body font-semibold text-surface-900">Déclarer mon paiement</h2>
         <p className="text-caption text-surface-500">
-          Payez <strong className="text-surface-900">{formatMoney(echeance.montant)}</strong> sur le compte communiqué par TourShop, puis déclarez-le ici.
+          Payez <strong className="text-surface-900">{formatMoney(echeance.montant)}</strong> sur le compte TourShop ci-dessous, puis déclarez-le ici.
         </p>
       </div>
+      <ReceivingAccounts moyens={moyens} />
       <div className="grid grid-cols-3 gap-2">
         {METHODS.map((m) => {
           const active = methode === m.key;
@@ -181,7 +232,7 @@ export default function SubscriptionPage() {
         }
       />
       <div className="page-container space-y-4 py-4">
-        {!loaded && <div className="h-44 animate-pulse rounded-3xl bg-white shadow-card" />}
+        {!loaded && <div className="h-44 skeleton rounded-3xl shadow-card" />}
 
         {loaded && !abonnement && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">

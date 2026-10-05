@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, MapPinned } from 'lucide-react';
+import { Plus, Trash2, MapPinned, MapPin, Home, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import EmptyState from '../../components/common/EmptyState';
+import PageIntro from '../../components/common/PageIntro';
+import { EmptyAddressArt } from '../../components/illustrations';
 import { updateFavoriteAddresses } from '../../store/slices/authSlice';
 import { ROUTES } from '../../routes';
 
@@ -62,27 +64,37 @@ export default function FavoriteAddressesPage() {
       <div className="page-container space-y-4 py-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        {rows.length === 0 && (
+        {rows.length === 0 ? (
           <EmptyState
-            icon={MapPinned}
+            illustration={<EmptyAddressArt />}
             title="Aucune adresse enregistrée"
             description="Ajoutez vos adresses habituelles pour préremplir vos formulaires d'expédition."
+          />
+        ) : (
+          <PageIntro
+            icon={MapPinned}
+            tone="teal"
+            title="Vos adresses habituelles"
+            text="Elles préremplissent vos formulaires d'expédition."
           />
         )}
 
         {rows.map((row, i) => (
           <div key={i} className="card space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium uppercase tracking-wide text-surface-400">
-                Adresse {i + 1}
+            <div className="flex items-center gap-3">
+              <span className="icon-tile h-10 w-10 rounded-[13px] bg-teal-100 text-teal-600">
+                {/domicile|maison/i.test(row.nom) ? <Home size={18} /> : /bureau|travail/i.test(row.nom) ? <Briefcase size={18} /> : <MapPin size={18} />}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-heading text-[15px] font-semibold text-surface-900">
+                {row.nom.trim() || `Adresse ${i + 1}`}
               </span>
               <button
                 type="button"
                 onClick={() => removeRow(i)}
-                className="rounded-full p-1.5 text-red-500 hover:bg-red-50"
+                className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-red-50 text-red-600 transition active:scale-90"
                 aria-label="Supprimer cette adresse"
               >
-                <Trash2 size={16} />
+                <Trash2 size={17} />
               </button>
             </div>
             <label className="block text-sm font-medium text-surface-700">
@@ -116,7 +128,7 @@ export default function FavoriteAddressesPage() {
           </div>
         ))}
 
-        <button type="button" onClick={addRow} className="btn-secondary w-full">
+        <button type="button" onClick={addRow} className="btn w-full border-2 border-dashed border-teal-300 bg-teal-50 text-teal-700">
           <Plus size={16} /> Ajouter une adresse
         </button>
 

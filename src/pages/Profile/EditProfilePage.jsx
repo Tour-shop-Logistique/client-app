@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { MapPin } from 'lucide-react';
+import { MapPin, UserCog } from 'lucide-react';
 import { toast } from 'sonner';
 import PhoneInput, { isPossiblePhoneNumber, parsePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
 import 'react-phone-number-input/style.css';
 import TopBar from '../../components/common/TopBar';
+import PageIntro from '../../components/common/PageIntro';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import { getFlagEmoji, getCountryName } from '../../utils/countries';
 import { splitPhone, joinPhone } from '../../utils/phone';
@@ -100,10 +101,15 @@ export default function EditProfilePage() {
   return (
     <div>
       <TopBar title="Modifier mon profil" back />
-      <div className="page-container py-4">
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="page-container space-y-4 py-4">
+        <PageIntro
+          icon={UserCog}
+          title="Vos informations"
+          text="Elles servent à vos expéditions et à vos commandes. Seuls les champs modifiés sont envoyés."
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="card space-y-3 p-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm font-medium text-surface-700">
               Nom

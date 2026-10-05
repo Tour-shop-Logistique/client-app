@@ -22,15 +22,9 @@ export const FEATURES = {
   profile: true,              // GET /api/profil + auth flow                  (documented)
   referral: true,             // GET /api/client/parrainage/*  (mon-code, solde, historique, filleuls) (documented)
   marketplace: true,          // /marketplace/acheteur|vendeur/*, /marketplace/solde, /abonnement/* (MARKETPLACE_ET_ABONNEMENT_API.md)
-
-  // --- Not connected yet ------------------------------------------------
-  // Delivery-offer / confirm-delivery / rating / invoice-download endpoints
-  // (/expeditions/{id}/...) are not documented; client API only exposes
-  // show / list / cancel / statistics.
-  expeditionTracking: false,
-
-  // Depends on /expeditions/{id}/facture (undocumented).
-  invoices: false,
+  // Suivi, missions/offres/preuves et evaluation sont dans le detail d'expedition
+  // (feature expeditionHistory) — REPONSE_AUDIT_CAHIER_DES_CHARGES_CLIENT.md.
+  invoices: true,             // GET /expedition/client/factures + /factures/{id}/download (documented)
 };
 
 export const isFeatureReady = (key) => FEATURES[key] !== false;

@@ -20,6 +20,7 @@
     "laravel-echo": "^2.4.0",
     "leaflet": "^1.9.4",
     "libphonenumber-js": "^1.13.13",
+    "lottie-react": "^2.4.2",
     "lucide-react": "^0.563.0",
     "pusher-js": "^8.6.0",
     "react": "^19.1.1",

@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
+  AlertTriangle,
+  Boxes,
   Building2,
-  Check,
+  Calculator,
+  Camera,
+  Ruler,
+  Tag,
+  Weight,
   ChevronDown,
   Globe2,
   Home,
   MapPinned,
-  PackageSearch,
   Plus,
   Trash2,
   User,
@@ -16,12 +21,18 @@ import {
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import StepProgress from '../../components/expedition/StepProgress';
+import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
+import { BoxArt } from '../../components/illustrations';
 import EmptyState from '../../components/common/EmptyState';
+import EmptyParcelAnimation from '../../components/illustrations/EmptyParcelAnimation';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import CitySelectSheet from '../../components/common/CitySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ProductSelectSheet from '../../components/expedition/ProductSelectSheet';
 import DestinationCountrySheet from '../../components/expedition/DestinationCountrySheet';
+import PickupOption from '../../components/expedition/PickupOption';
+import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
+import { ProofPicker } from '../../components/marketplace/FilePickers';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import expeditionService from '../../services/expeditionService';
 import produitService from '../../services/produitService';
@@ -30,7 +41,7 @@ import { getCountryName, getFlagEmoji } from '../../utils/countries';
 import { isDestinationCompatible, destinationBadges } from '../../utils/expedition';
 import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
-import { ROUTES, trackingPath } from '../../routes';
+import { ROUTES, expeditionDetailPath } from '../../routes';
 
 const MODES = [
   {
@@ -99,7 +110,7 @@ function EstimateBar({ total, status }) {
   if (total == null) return null;
   return (
     <div className="mb-4 flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50/60 px-4 py-3">
-      <span className="text-xs font-medium text-primary-700">Estimation du devis</span>
+      <span className="text-xs font-medium text-primary-700">Montant de la simulation</span>
       <span className="text-base font-bold text-primary-800">{formatPrice(total)}</span>
     </div>
   );
@@ -109,9 +120,74 @@ function contactIsComplete(data) {
   return Boolean(data.nom_prenom.trim() && data.telephone.trim() && data.adresse.trim() && data.ville.trim());
 }
 
-function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectType }) {
-  if (status === 'loading') return <p className="text-sm text-surface-500">Calcul du devis...</p>;
-  if (status === 'error') return <p className="text-sm text-red-600">{error}</p>;
+// --- Simulation (devis) -----------------------------------------------------
+// Montant mis en avant + détail de chaque colis, pour que le client voie ce
+// qu'il paie avant de finaliser. Les détails viennent de sa saisie (désignation,
+// dimensions, articles) croisée avec la réponse de /devis (prix par colis).
+
+const fmtKg = (v) => `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kg`;
+const dimsOf = (c) => {
+  const d = [c.longueur, c.largeur, c.hauteur].map((v) => Number(v) || 0);
+  return d.some((v) => v > 0) ? `${d.join(' × ')} cm` : null;
+};
+
+function SimulationLoading() {
+  return (
+    <div className="card flex items-center gap-3 p-4">
+      <BoxArt size={44} className="animate-float" />
+      <div>
+        <p className="text-sm font-semibold text-surface-900">Simulation en cours…</p>
+        <p className="text-caption text-surface-500">Calcul du tarif selon le poids et les dimensions.</p>
+      </div>
+    </div>
+  );
+}
+
+function SimulationError({ message }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-2xl border border-red-100 bg-red-50 p-3.5 text-sm text-red-700">
+      <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+      <p>{message}</p>
+    </div>
+  );
+}
+
+// Carte du montant : total en grand + décomposition base / prestation / emballage.
+function SimulationTotal({ total, lines = [], caption }) {
+  return (
+    <div className="brand-gradient relative overflow-hidden rounded-3xl p-5 shadow-brand">
+      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10" />
+      <p className="relative flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-white/80">
+        <Calculator size={14} /> Montant de la simulation
+      </p>
+      <p className="relative mt-1 font-heading text-3xl font-bold">{formatPrice(total)}</p>
+      {caption && <p className="relative text-caption text-white/80">{caption}</p>}
+      {lines.length > 0 && (
+        <div className="relative mt-4 space-y-1.5 rounded-2xl bg-white/10 p-3 text-sm">
+          {lines.map((l) => (
+            <div key={l.label} className="flex items-center justify-between gap-3">
+              <span className="text-white/85">{l.label}</span>
+              <span className="font-semibold">{formatPrice(l.value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ParcelChip({ icon, children }) {
+  const ChipIcon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-surface-700 shadow-card">
+      <ChipIcon size={12} className="text-primary-600" /> {children}
+    </span>
+  );
+}
+
+function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectType, articles = [], designation }) {
+  if (status === 'loading') return <SimulationLoading />;
+  if (status === 'error') return <SimulationError message={error} />;
   if (!groupes) return null;
   if (groupes.length === 0) {
     return <p className="text-sm text-surface-500">Aucune estimation disponible pour cette selection.</p>;
@@ -119,22 +195,39 @@ function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectTy
 
   const total = computeEstimateTotal('recuperation_agence', groupes, typesChoisis) ?? 0;
   const noneShippable = groupes.every((g) => g.types_eligibles.length === 0);
+  const poidsTotal = articles.reduce((s, a) => s + (Number(a.poids) || 0), 0);
+  const nameOf = (produitId) => articles.find((a) => a.produit_id === produitId)?.designation || 'Article';
 
   return (
     <div className="space-y-3">
-      <div className="card border border-primary-100 bg-primary-50/60 p-4">
-        <p className="text-xs text-primary-700">Estimation totale</p>
-        <p className="text-xl font-bold text-primary-800">{formatPrice(total)}</p>
-      </div>
+      <SimulationTotal
+        total={total}
+        caption={`${articles.length} article${articles.length > 1 ? 's' : ''} · ${fmtKg(poidsTotal)}${designation?.trim() ? ` · ${designation.trim()}` : ''}`}
+      />
       {noneShippable && (
-        <p className="text-sm text-red-600">
-          Aucun tarif disponible pour cette selection vers cette destination. Modifiez vos articles ou la destination.
-        </p>
+        <SimulationError message="Aucun tarif disponible pour cette sélection vers cette destination. Modifiez vos articles ou la destination." />
       )}
       {groupes.map((g) => (
         <div key={g.category_id} className="card p-4 text-sm">
-          <p className="font-semibold text-surface-900">{g.category_nom}</p>
-          <p className="mb-2 text-xs text-surface-500">{g.poids_total} kg</p>
+          <div className="flex items-center gap-3">
+            <span className="icon-tile h-10 w-10 rounded-[13px] bg-shop-100 text-shop-700">
+              <Boxes size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold text-surface-900">{g.category_nom}</p>
+              <p className="text-caption text-surface-500">Poids du groupe : {fmtKg(g.poids_total)}</p>
+            </div>
+          </div>
+          {g.articles?.length > 0 && (
+            <ul className="my-3 space-y-1 rounded-xl bg-surface-50 p-2.5">
+              {g.articles.map((a, i) => (
+                <li key={`${a.produit_id}-${i}`} className="flex items-center justify-between gap-2 text-caption">
+                  <span className="truncate text-surface-700">{nameOf(a.produit_id)}</span>
+                  <span className="shrink-0 font-semibold text-surface-900">{fmtKg(a.poids)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {g.types_eligibles.length === 0 ? (
             <p className="text-xs text-surface-400">Aucun tarif disponible pour cette categorie vers cette destination.</p>
           ) : g.types_eligibles.length === 1 ? (
@@ -171,38 +264,108 @@ function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectTy
   );
 }
 
-function DevisSummaryLD({ status, error, devis }) {
-  if (status === 'loading') return <p className="text-sm text-surface-500">Calcul du devis...</p>;
-  if (status === 'error') return <p className="text-sm text-red-600">{error}</p>;
+function DevisSummaryLD({ status, error, devis, colisList = [] }) {
+  if (status === 'loading') return <SimulationLoading />;
+  if (status === 'error') return <SimulationError message={error} />;
   if (!devis) return null;
+
+  const details = devis.details_colis ?? [];
+  const emballage = details.reduce((s, d) => s + (Number(d.frais_emballage) || 0), 0);
+  const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
+  const lines = [
+    { label: 'Transport', value: devis.montant_base },
+    Number(devis.montant_prestation) > 0 && { label: 'Prestation', value: devis.montant_prestation },
+    emballage > 0 && { label: 'Emballage', value: emballage },
+  ].filter((l) => l && l.value != null);
 
   return (
     <div className="space-y-3">
-      <div className="card border border-primary-100 bg-primary-50/60 p-4">
-        <p className="text-xs text-primary-700">Estimation totale</p>
-        <p className="text-xl font-bold text-primary-800">{formatPrice(devis.montant_expedition)}</p>
-      </div>
-      {devis.details_colis?.length > 1 && (
-        <div className="card p-4 text-sm">
-          <p className="mb-2 font-semibold text-surface-900">Detail par colis</p>
-          <div className="space-y-1.5">
-            {devis.details_colis.map((d, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-surface-600">Colis {i + 1} · {d.poids} kg</span>
-                <span className="font-semibold text-surface-900">{formatPrice(d.total)}</span>
+      <SimulationTotal
+        total={devis.montant_expedition}
+        caption={`${colisList.length} colis · ${fmtKg(poidsTotal)}${devis.type_expedition ? ` · ${typeLabel(devis.type_expedition)}` : ''}`}
+        lines={lines}
+      />
+
+      <div className="space-y-2.5">
+        <p className="font-heading text-[15px] font-semibold text-surface-900">Détail des colis</p>
+        {colisList.map((c, i) => {
+          const d = details[i];
+          const dims = dimsOf(c);
+          return (
+            <div key={i} className="rounded-2xl bg-surface-50 p-3.5 ring-1 ring-surface-100">
+              <div className="flex items-start gap-3">
+                <BoxArt size={42} className="shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-surface-900">
+                    {c.designation?.trim() || `Colis ${i + 1}`}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <ParcelChip icon={Weight}>{fmtKg(c.poids)}</ParcelChip>
+                    {dims && <ParcelChip icon={Ruler}>{dims}</ParcelChip>}
+                    {c.articles?.length > 0 && (
+                      <ParcelChip icon={Tag}>{c.articles.length} article{c.articles.length > 1 ? 's' : ''}</ParcelChip>
+                    )}
+                  </div>
+                </div>
+                {d?.total != null && (
+                  <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{formatPrice(d.total)}</span>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              {c.articles?.length > 0 && (
+                <p className="mt-2 truncate text-caption text-surface-500">
+                  {c.articles.map((a) => a.designation).filter(Boolean).join(', ')}
+                </p>
+              )}
+              {d && (
+                <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-surface-200 pt-2.5 text-caption">
+                  {d.indice_arrondi != null && (
+                    <>
+                      <span className="text-surface-500">Poids taxé</span>
+                      <span className="text-right font-semibold text-surface-800">{fmtKg(d.indice_arrondi)}</span>
+                    </>
+                  )}
+                  {d.montant_base != null && (
+                    <>
+                      <span className="text-surface-500">Transport</span>
+                      <span className="text-right font-semibold text-surface-800">{formatPrice(d.montant_base)}</span>
+                    </>
+                  )}
+                  {Number(d.montant_prestation) > 0 && (
+                    <>
+                      <span className="text-surface-500">Prestation</span>
+                      <span className="text-right font-semibold text-surface-800">{formatPrice(d.montant_prestation)}</span>
+                    </>
+                  )}
+                  {Number(d.frais_emballage) > 0 && (
+                    <>
+                      <span className="text-surface-500">Emballage</span>
+                      <span className="text-right font-semibold text-surface-800">{formatPrice(d.frais_emballage)}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType }) {
-  if (mode === 'livraison_domicile') return <DevisSummaryLD status={status} error={error} devis={devis} />;
+function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType, colisList, articles, designation }) {
+  if (mode === 'livraison_domicile') {
+    return <DevisSummaryLD status={status} error={error} devis={devis} colisList={colisList} />;
+  }
   return (
-    <DevisSummaryGroupage status={status} error={error} groupes={devis} typesChoisis={typesChoisis} onSelectType={onSelectType} />
+    <DevisSummaryGroupage
+      status={status}
+      error={error}
+      groupes={devis}
+      typesChoisis={typesChoisis}
+      onSelectType={onSelectType}
+      articles={articles}
+      designation={designation}
+    />
   );
 }
 
@@ -265,7 +428,7 @@ function ContactFields({ title, data, onChange }) {
   );
 }
 
-function SubmitResultScreen({ result, onNewExpedition }) {
+function SubmitResultScreen({ result, pickupMode, onNewExpedition }) {
   const navigate = useNavigate();
   const isGroupage = Array.isArray(result.resultats);
   const successes = isGroupage ? result.resultats.filter((r) => r.success) : result.expedition ? [{ expedition: result.expedition }] : [];
@@ -275,12 +438,20 @@ function SubmitResultScreen({ result, onNewExpedition }) {
     <div>
       <TopBar title="Expedition Extrapays" />
       <div className="page-container space-y-4 py-4">
-        <div className="card flex flex-col items-center gap-2 border border-primary-100 bg-primary-50/60 p-6 text-center">
-          <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white">
-            <Check size={28} />
-          </span>
-          <p className="text-base font-bold text-surface-900">{result.message}</p>
-        </div>
+        {successes.length > 0 ? (
+          <SuccessHero title="Expédition enregistrée !" subtitle={result.message}>
+            {successes.length === 1 && <CopyReference reference={successes[0].expedition.reference} />}
+            {pickupMode && (
+              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
+                {PICKUP_MODE_MESSAGE[pickupMode]}
+              </p>
+            )}
+          </SuccessHero>
+        ) : (
+          <div className="card p-5 text-center">
+            <p className="text-base font-bold text-surface-900">{result.message}</p>
+          </div>
+        )}
 
         {successes.length > 0 && (
           <div className="space-y-2">
@@ -289,7 +460,7 @@ function SubmitResultScreen({ result, onNewExpedition }) {
               <button
                 key={exp.id}
                 type="button"
-                onClick={() => navigate(trackingPath(exp.id))}
+                onClick={() => navigate(expeditionDetailPath(exp.id))}
                 className="card flex w-full items-center justify-between p-4 text-left"
               >
                 <div className="min-w-0">
@@ -354,6 +525,9 @@ export default function ExtrapaysFormPage() {
   const [typesChoisis, setTypesChoisis] = useState({}); // groupage: { category_id: type_expedition }
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
+  // Enlèvement à domicile : mode livraison_domicile uniquement (pas encore
+  // supporté par le backend en recuperation_agence).
+  const [pickup, setPickup] = useState(EMPTY_PICKUP);
 
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState('idle');
@@ -402,6 +576,7 @@ export default function ExtrapaysFormPage() {
     setTypesChoisis({});
     setExpediteur({ ...EMPTY_CONTACT, nom_prenom: user?.name || '', telephone: user?.phone || '' });
     setDestinataire(EMPTY_CONTACT);
+    setPickup(EMPTY_PICKUP);
     setDevis(null);
     setDevisStatus('idle');
   };
@@ -640,7 +815,10 @@ export default function ExtrapaysFormPage() {
               prix_emballage: 0,
               designation: c.designation.trim(),
               articles: c.articles.map((a) => ({ produit_id: a.produit_id })),
+              // Photo facultative (mode LD uniquement) : envoi multipart.
+              photo: c.photo || undefined,
             })),
+            ...pickupPayload(pickup),
           };
         } else {
           payload = {
@@ -670,7 +848,13 @@ export default function ExtrapaysFormPage() {
   };
 
   if (submitResult) {
-    return <SubmitResultScreen result={submitResult} onNewExpedition={resetForm} />;
+    return (
+      <SubmitResultScreen
+        result={submitResult}
+        pickupMode={mode === 'livraison_domicile' && pickup.domicile ? pickup.mode : null}
+        onNewExpedition={resetForm}
+      />
+    );
   }
 
   if (!country.code) {
@@ -705,7 +889,7 @@ export default function ExtrapaysFormPage() {
           onStepClick={goToStep}
           maxStepReached={maxStepReached}
         />
-        {step >= 4 && <EstimateBar total={estimateTotal} status={devisStatus} />}
+        {step === 5 && <EstimateBar total={estimateTotal} status={devisStatus} />}
 
         {step === 1 && (
           <div className="space-y-4">
@@ -823,9 +1007,15 @@ export default function ExtrapaysFormPage() {
             </label>
             {articles.length === 0 && (
               <EmptyState
-                icon={PackageSearch}
-                title="Aucun article ajoute"
-                description="Ajoutez au moins un produit que vous souhaitez expedier."
+                illustration={<EmptyParcelAnimation />}
+                float={false}
+                title="Aucun article ajouté"
+                description="Ajoutez au moins un produit que vous souhaitez expédier."
+                action={(
+                  <button type="button" onClick={openProductSheetForGroupage} className="btn-primary">
+                    <Plus size={18} /> Ajouter un produit
+                  </button>
+                )}
               />
             )}
             {articles.map((a, i) => (
@@ -853,13 +1043,15 @@ export default function ExtrapaysFormPage() {
                 </button>
               </div>
             ))}
-            <button
-              type="button"
-              onClick={openProductSheetForGroupage}
-              className="card flex w-full items-center justify-center gap-2 p-4 text-sm font-semibold text-primary-600"
-            >
-              <Plus size={18} /> Ajouter un produit
-            </button>
+            {articles.length > 0 && (
+              <button
+                type="button"
+                onClick={openProductSheetForGroupage}
+                className="card flex w-full items-center justify-center gap-2 p-4 text-sm font-semibold text-primary-600"
+              >
+                <Plus size={18} /> Ajouter un produit
+              </button>
+            )}
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(2)}>Retour</button>
               <button type="button" className="btn-primary flex-1" disabled={!canContinueStep3} onClick={() => goToStep(4)}>Continuer</button>
@@ -940,6 +1132,13 @@ export default function ExtrapaysFormPage() {
                 {c.articles.length === 0 && (
                   <p className="text-xs text-amber-600">Ajoutez au moins un produit pour ce colis.</p>
                 )}
+                <ProofPicker
+                  file={c.photo || null}
+                  onChange={(f) => updateColisField(i, 'photo', f)}
+                  label="Photo du colis"
+                  icon={Camera}
+                  removeLabel="Retirer la photo du colis"
+                />
               </div>
             ))}
             <button
@@ -971,7 +1170,7 @@ export default function ExtrapaysFormPage() {
                 <ChevronDown size={16} className="text-surface-400" />
               </button>
             </div>
-            {canComputeDevis && (
+            {canComputeDevis ? (
               <DevisSummary
                 mode={mode}
                 status={devisStatus}
@@ -979,7 +1178,17 @@ export default function ExtrapaysFormPage() {
                 devis={devis}
                 typesChoisis={typesChoisis}
                 onSelectType={handleSelectType}
+                colisList={colisList}
+                articles={articles}
+                designation={groupageDesignation}
               />
+            ) : (
+              !agence && (
+                <div className="flex items-center gap-3 rounded-2xl bg-primary-50 p-3.5 text-body text-surface-600">
+                  <Calculator size={18} className="shrink-0 text-primary-600" />
+                  Choisissez l'agence de départ pour lancer la simulation du tarif.
+                </div>
+              )
             )}
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(3)}>Retour</button>
@@ -993,6 +1202,15 @@ export default function ExtrapaysFormPage() {
             <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
             <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} />
             <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} />
+            {mode === 'livraison_domicile' && (
+              <PickupOption
+                value={pickup}
+                onChange={setPickup}
+                agence={agence}
+                communeId={agence?.commune_id}
+                address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
+              />
+            )}
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(4)}>Retour</button>
               <button type="button" className="btn-primary flex-1" disabled={!canContinueStep5} onClick={() => goToStep(6)}>Continuer</button>
@@ -1013,6 +1231,12 @@ export default function ExtrapaysFormPage() {
                 value={mode === 'livraison_domicile' ? `${colisList.length} colis` : `${articles.length} produit(s)`}
               />
               <Row label="Agence de depart" value={agence?.nom_agence} />
+              {mode === 'livraison_domicile' && (
+                <Row
+                  label="Remise du colis"
+                  value={pickup.domicile ? `Enlevement a domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Depot a l'agence"}
+                />
+              )}
               <Row label="Expediteur" value={`${expediteur.nom_prenom} · ${expediteur.telephone}`} />
               <Row label="Destinataire" value={`${destinataire.nom_prenom} · ${destinataire.telephone}`} />
             </div>
@@ -1024,6 +1248,9 @@ export default function ExtrapaysFormPage() {
               devis={devis}
               typesChoisis={typesChoisis}
               onSelectType={handleSelectType}
+              colisList={colisList}
+              articles={articles}
+              designation={groupageDesignation}
             />
 
             <p className="flex items-center gap-1.5 text-xs text-surface-400">
@@ -1037,7 +1264,11 @@ export default function ExtrapaysFormPage() {
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(5)}>Retour</button>
               <button type="button" className="btn-primary flex-1" disabled={submitting} onClick={handleSubmit}>
-                {submitting ? 'Envoi...' : "Confirmer l'expedition"}
+                {submitting
+                  ? 'Envoi...'
+                  : estimateTotal != null
+                    ? `Confirmer · ${formatPrice(estimateTotal)}`
+                    : "Confirmer l'expedition"}
               </button>
             </div>
           </div>

@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Search, X, Heart, ShoppingBag, Store, Tag, SlidersHorizontal, LayoutGrid, Rows3,
-  PackageSearch, RefreshCw, Clock, History, Truck, ShieldCheck, Wallet, Plus, Globe2, MapPin,
+  RefreshCw, Clock, History, Truck, ShieldCheck, Wallet, Plus, Globe2, MapPin,
   ChevronRight, Flame,
 } from 'lucide-react';
 import CartButton from '../../components/marketplace/CartButton';
@@ -12,6 +12,7 @@ import ProductCard, { ProductCardSkeleton, ProductImage, FavoriteButton } from '
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import GuestGate from '../../components/marketplace/GuestGate';
 import BottomSheet from '../../components/common/BottomSheet';
+import { EmptyCartArt } from '../../components/illustrations';
 import { fetchCatalogue, fetchAbonnementStatut } from '../../store/slices/marketplaceSlice';
 import { ROUTES, productPath } from '../../routes';
 import { annonceCover, formatMoney, personName } from '../../utils/marketplace';
@@ -66,9 +67,9 @@ const QUICK_LINKS = [
 ];
 
 const TRUST = [
-  { icon: Truck, label: 'Livraison', sub: 'par nos livreurs' },
-  { icon: Wallet, label: 'Paiement direct', sub: 'mobile money / cash' },
-  { icon: ShieldCheck, label: 'Suivi', sub: 'de chaque commande' },
+  { icon: Truck, label: 'Livraison', sub: 'par nos livreurs', tint: 'bg-primary-100 text-primary-600' },
+  { icon: Wallet, label: 'Paiement direct', sub: 'mobile money / cash', tint: 'bg-shop-100 text-shop-700' },
+  { icon: ShieldCheck, label: 'Suivi', sub: 'de chaque commande', tint: 'bg-teal-100 text-teal-600' },
 ];
 
 function useDebounced(value, delay = 400) {
@@ -179,9 +180,11 @@ function TrustStrip() {
     <div className="grid grid-cols-3 divide-x divide-surface-100 rounded-2xl bg-white py-3 shadow-card ring-1 ring-surface-100">
       {TRUST.map((t) => (
         <div key={t.label} className="flex flex-col items-center gap-1 px-1 text-center">
-          <t.icon size={18} className="text-primary-600" />
+          <span className={`icon-tile mb-0.5 h-9 w-9 rounded-xl ${t.tint}`}>
+            <t.icon size={18} />
+          </span>
           <p className="text-[12px] font-semibold leading-tight text-surface-800">{t.label}</p>
-          <p className="text-[11px] leading-tight text-surface-400">{t.sub}</p>
+          <p className="text-[11px] leading-tight text-surface-500">{t.sub}</p>
         </div>
       ))}
     </div>
@@ -363,8 +366,10 @@ export default function ProductListPage() {
                 >
                   <div className="flex items-center justify-between pb-3 pt-4">
                     <div>
-                      <p className="text-caption font-medium text-shop-900/80">TourShop</p>
-                      <h1 className="font-heading text-2xl font-bold leading-tight text-shop-950">E-commerce</h1>
+                      <h1 className="font-heading text-2xl font-bold leading-tight text-shop-950">Boutique</h1>
+                      <p className="flex items-center gap-1.5 text-caption font-semibold text-shop-900">
+                        <Truck size={14} strokeWidth={2.4} /> Livraison assurée par TourShop
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Link
@@ -584,8 +589,8 @@ export default function ProductListPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-12 text-center shadow-card"
               >
-                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-shop-100 text-shop-800">
-                  <PackageSearch size={30} />
+                <span className="animate-float">
+                  <EmptyCartArt />
                 </span>
                 <div>
                   <p className="text-title text-surface-900">{searching || priceFilterActive ? 'Aucun résultat' : 'Aucun article pour le moment'}</p>
@@ -641,7 +646,7 @@ export default function ProductListPage() {
           </section>
 
           {/* Bouton flottant "Vendre" */}
-          <div className="pointer-events-none fixed bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-4">
+          <div className="pointer-events-none fixed bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+1.5rem)] left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-4">
             <div className="flex justify-end">
               <Link to={ROUTES.MARKETPLACE_SELL} className="pointer-events-auto">
                 <motion.span

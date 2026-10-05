@@ -11,7 +11,7 @@ const AuthSheet = lazy(() => import('../components/auth/AuthSheet'));
 export default function MobileLayout() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-surface-50">
-      <main className="flex-1 pb-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+1rem)]">
+      <main className="flex-1 pb-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2rem)]">
         <Outlet />
       </main>
       <BottomNav />

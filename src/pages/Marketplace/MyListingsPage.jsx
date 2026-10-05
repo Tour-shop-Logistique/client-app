@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Tag, Plus, Rocket, EyeOff, Pencil, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Rocket, EyeOff, Pencil, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import SegmentedTabs from '../../components/marketplace/SegmentedTabs';
@@ -13,6 +13,7 @@ import marketplaceService from '../../services/marketplaceService';
 import { ANNONCE_STATUTS, annonceCover, formatMoney } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { ROUTES, listingEditPath, productPath } from '../../routes';
+import { EmptyTagArt } from '../../components/illustrations';
 
 const TABS = [
   { key: 'all', label: 'Toutes' },
@@ -147,15 +148,15 @@ export default function MyListingsPage() {
         {annonces === null && (
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-36 animate-pulse rounded-2xl bg-white shadow-card" />
+              <div key={i} className="h-36 skeleton rounded-2xl shadow-card" />
             ))}
           </div>
         )}
 
         {annonces !== null && visible.length === 0 && (
           <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-12 text-center shadow-card">
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-shop-100 text-shop-800">
-              <Tag size={28} />
+            <span className="animate-float">
+              <EmptyTagArt />
             </span>
             <p className="text-title text-surface-900">{tab === 'all' ? 'Aucune annonce' : 'Rien dans cette catégorie'}</p>
             {tab === 'all' ? (

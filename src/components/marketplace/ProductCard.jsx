@@ -163,11 +163,11 @@ export default function ProductCard({ annonce, currentUserId, index = 0 }) {
 export function ProductCardSkeleton() {
   return (
     <div className="overflow-hidden rounded-[1.25rem] bg-white shadow-card ring-1 ring-surface-100">
-      <div className="m-1.5 aspect-[4/5] animate-pulse rounded-2xl bg-surface-200" />
+      <div className="m-1.5 aspect-[4/5] skeleton rounded-2xl" />
       <div className="space-y-2 px-3 pb-3 pt-1.5">
-        <div className="h-3 w-full animate-pulse rounded bg-surface-100" />
-        <div className="h-3 w-2/3 animate-pulse rounded bg-surface-100" />
-        <div className="h-4 w-20 animate-pulse rounded bg-surface-200" />
+        <div className="h-3 w-full skeleton rounded" />
+        <div className="h-3 w-2/3 skeleton rounded" />
+        <div className="h-4 w-20 skeleton rounded" />
       </div>
     </div>
   );

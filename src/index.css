@@ -121,4 +121,34 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Pastille d'icône : fond teinté + icône de la même famille (kit visuel). */
+  .icon-tile {
+    @apply inline-flex shrink-0 items-center justify-center rounded-2xl;
+  }
+
+  /* Squelette de chargement avec reflet. */
+  .skeleton {
+    @apply animate-shimmer rounded-md;
+    background: linear-gradient(90deg, #eef2f6 0%, #f8fafc 40%, #eef2f6 80%);
+    background-size: 400px 100%;
+  }
+
+  /* Les éléments SVG animés tournent/grossissent autour de leur propre centre. */
+  .svg-origin {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+}
+
+/* Accessibilité : aucune animation décorative si l'utilisateur les a réduites. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-ring,
+  .animate-float,
+  .animate-shimmer,
+  .animate-pop,
+  .animate-confetti,
+  .skeleton {
+    animation: none !important;
+  }
 }

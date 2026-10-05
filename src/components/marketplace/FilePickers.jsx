@@ -106,8 +106,12 @@ export function PhotoPicker({ files, onChange, max = 10 }) {
   );
 }
 
-// Preuve de paiement (capture d'ecran, optionnelle).
-export function ProofPicker({ file, onChange, label = 'Capture de la transaction' }) {
+// Image unique optionnelle : preuve de paiement (capture d'ecran) ou photo d'un
+// colis (`icon` Camera, `capture="environment"` pour ouvrir l'appareil photo).
+export function ProofPicker({
+  file, onChange, label = 'Capture de la transaction', icon = Receipt, removeLabel = 'Retirer la preuve', capture,
+}) {
+  const Icon = icon;
   const inputRef = useRef(null);
   const [url] = useObjectUrls(useMemo(() => (file ? [file] : []), [file]));
 
@@ -120,7 +124,7 @@ export function ProofPicker({ file, onChange, label = 'Capture de la transaction
             type="button"
             onClick={() => onChange(null)}
             className="absolute right-2 top-2 rounded-full bg-black/55 p-1.5 text-white"
-            aria-label="Retirer la preuve"
+            aria-label={removeLabel}
           >
             <X size={14} />
           </button>
@@ -132,7 +136,7 @@ export function ProofPicker({ file, onChange, label = 'Capture de la transaction
           className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-surface-200 p-3.5 text-left transition hover:border-primary-300 hover:bg-primary-50/40"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-            <Receipt size={18} />
+            <Icon size={18} />
           </span>
           <span>
             <span className="block text-body font-medium text-surface-900">{label}</span>
@@ -144,6 +148,7 @@ export function ProofPicker({ file, onChange, label = 'Capture de la transaction
         ref={inputRef}
         type="file"
         accept={ACCEPTED_IMAGES}
+        capture={capture}
         className="hidden"
         onChange={(e) => {
           const [f] = validImages([...(e.target.files ?? [])]);
