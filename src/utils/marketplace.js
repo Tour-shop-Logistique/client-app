@@ -187,14 +187,16 @@ export const apiErrorMessage = (err, fallback = 'Une erreur est survenue.') => {
 
 // --- Adresses (retrait vendeur / livraison acheteur) -------------------------
 
+// Plus de quartier saisi : `adresse` decrit le lieu, `ville` vient des communes
+// du backoffice (`retrait_quartier` reste optionnel cote API, on ne l'envoie plus).
 export const EMPTY_ADDRESS = {
-  nom: '', telephone: '', adresse: '', quartier: '', ville: '', latitude: null, longitude: null, instructions: '',
+  nom: '', telephone: '', adresse: '', ville: '', latitude: null, longitude: null, instructions: '',
 };
 
 // { nom, ... } -> { retrait_nom, ... } (annonce) ; ignore les champs vides.
 export const toRetraitPayload = (addr) => {
   const out = {};
-  ['nom', 'telephone', 'adresse', 'quartier', 'ville', 'latitude', 'longitude'].forEach((k) => {
+  ['nom', 'telephone', 'adresse', 'ville', 'latitude', 'longitude'].forEach((k) => {
     const v = addr?.[k];
     if (v !== undefined && v !== null && String(v).trim() !== '') out[`retrait_${k}`] = typeof v === 'string' ? v.trim() : v;
   });
@@ -206,10 +208,22 @@ export const fromRetrait = (annonce) => ({
   nom: annonce?.retrait_nom ?? '',
   telephone: annonce?.retrait_telephone ?? '',
   adresse: annonce?.retrait_adresse ?? '',
-  quartier: annonce?.retrait_quartier ?? '',
   ville: annonce?.retrait_ville ?? '',
   latitude: annonce?.retrait_latitude ?? null,
   longitude: annonce?.retrait_longitude ?? null,
 });
 
 export const hasRetraitAddress = (annonce) => Boolean(annonce?.retrait_adresse || annonce?.retrait_ville);
+
+// Adresse de retrait exigee pour publier (choix produit : l'API la laisse
+// optionnelle). La position GPS est obligatoire pour guider le livreur.
+export const RETRAIT_REQUIRED = ['nom', 'telephone', 'ville', 'adresse', 'gps'];
+
+export const retraitErrors = (addr) => {
+  const errs = {};
+  ['nom', 'telephone', 'ville', 'adresse'].forEach((k) => {
+    if (!String(addr?.[k] ?? '').trim()) errs[k] = 'Champ requis';
+  });
+  if (addr?.latitude == null || addr?.longitude == null) errs.gps = 'Enregistrez la position GPS du lieu de retrait.';
+  return errs;
+};

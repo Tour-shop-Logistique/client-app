@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import {
   FileText, LogOut, MessageCircle, ChevronRight, ArrowRight, Camera, MapPin, Package,
   UserCog, KeyRound, MapPinned, Trash2, ShoppingBag, Store, Bell, Loader2, User,
+  Download, Smartphone, Check, Share, MoreVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { logout, updateAvatar } from '../../store/slices/authSlice';
 import usePushSubscription from '../../hooks/usePushSubscription';
+import usePwaInstall from '../../hooks/usePwaInstall';
 import { GiftArt } from '../../components/illustrations';
 import { getCountryName } from '../../utils/countries';
 import { fullUserName, userInitials } from '../../utils/user';
@@ -59,6 +62,67 @@ function MenuSection({ title, children }) {
       <h2 className="px-1 text-caption font-semibold uppercase tracking-wide text-surface-500">{title}</h2>
       <div className="card divide-y divide-surface-100 overflow-hidden">{children}</div>
     </section>
+  );
+}
+
+// Installation de la PWA, au cas ou le bandeau flottant a ete ferme ou manque.
+// Sans invite native (iOS, ou navigateur qui ne l'a pas encore proposee), on
+// affiche la marche a suivre manuelle.
+function InstallRow() {
+  const { canPrompt, installed, install } = usePwaInstall();
+  const [help, setHelp] = useState(false);
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (installed) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3">
+        <RowContent
+          icon={Smartphone}
+          color="bg-sky-100 text-sky-700"
+          label="Application installée"
+          hint="TourShop est sur votre écran d'accueil"
+          trailing={<Check size={18} className="shrink-0 text-emerald-600" />}
+        />
+      </div>
+    );
+  }
+
+  const onClick = async () => {
+    if (canPrompt) {
+      const outcome = await install();
+      if (outcome === 'accepted') toast.success('Installation en cours…');
+      return;
+    }
+    setHelp((v) => !v);
+  };
+
+  return (
+    <div>
+      <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition active:bg-surface-50">
+        <RowContent
+          icon={Download}
+          color="bg-sky-100 text-sky-700"
+          label="Installer l'application"
+          hint="Accès rapide depuis l'écran d'accueil"
+        />
+      </button>
+      {help && (
+        <p className="mx-4 mb-3 rounded-xl bg-surface-50 p-3 text-caption text-surface-600">
+          {ios ? (
+            <>
+              Dans Safari, appuyez sur <Share size={13} className="mx-0.5 inline align-text-bottom" /> puis sur
+              «&nbsp;Sur l'écran d'accueil&nbsp;».
+            </>
+          ) : (
+            <>
+              Ouvrez le menu <MoreVertical size={13} className="inline align-text-bottom" /> du navigateur puis
+              «&nbsp;Installer l'application&nbsp;» ou «&nbsp;Ajouter à l'écran d'accueil&nbsp;».
+            </>
+          )}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -218,6 +282,10 @@ export default function ProfilePage() {
             <PushToggle />
           </MenuSection>
         )}
+
+        <MenuSection title="Application">
+          <InstallRow />
+        </MenuSection>
 
         {/* Numero WhatsApp du support (format international, chiffres seuls),
             fourni au build : sans lui, aucun lien plutot qu'un lien mort. */}

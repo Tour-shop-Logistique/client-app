@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -8,14 +8,21 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Eye, EyeOff, Rocket, Save, Loader2, Info, Lightbulb, CheckCircle2, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
+import DraftRestoredBanner from '../../components/common/DraftRestoredBanner';
 import { PhotoPicker } from '../../components/marketplace/FilePickers';
 import { ProductImage } from '../../components/marketplace/ProductCard';
 import AddressFields from '../../components/marketplace/AddressFields';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
-import { formatMoney, personName, EMPTY_ADDRESS, toRetraitPayload } from '../../utils/marketplace';
+import {
+  formatMoney, personName, EMPTY_ADDRESS, toRetraitPayload, retraitErrors, RETRAIT_REQUIRED,
+} from '../../utils/marketplace';
+import { loadJson, saveJson, loadFiles, saveFiles, clearDraft } from '../../utils/draftStore';
 import { ROUTES } from '../../routes';
+
+// Saisie conservee si l'onglet est recharge (navigateur mis en arriere-plan).
+const DRAFT_KEY = 'tourshop:sell-draft';
 
 // Contraintes de POST /marketplace/vendeur/annonces/store.
 const schema = yup.object({
@@ -41,13 +48,21 @@ export default function SellPage() {
   const handleError = useMarketplaceError();
   const abonnement = useSelector((s) => s.marketplace.abonnement);
   const user = useSelector((s) => s.auth.user);
+  const [saved] = useState(() => loadJson(DRAFT_KEY));
+  const [restored, setRestored] = useState(() =>
+    Boolean(saved?.values && Object.values(saved.values).some((v) => String(v ?? '').trim()))
+  );
   const [photos, setPhotos] = useState([]);
+  const photosRestored = useRef(false);
   // Adresse de retrait : indispensable au livreur pour recuperer l'article.
   const [retrait, setRetrait] = useState(() => ({
     ...EMPTY_ADDRESS,
     nom: user ? personName(user) : '',
     telephone: user?.telephone ?? '',
+    ...saved?.retrait,
   }));
+  const [retraitErrs, setRetraitErrs] = useState({});
+  const retraitRef = useRef(null);
   const [preview, setPreview] = useState(false);
   const [submitting, setSubmitting] = useState(null); // 'draft' | 'publish'
 
@@ -55,8 +70,48 @@ export default function SellPage() {
     register,
     handleSubmit,
     watch,
+    getValues,
+    reset,
     formState: { errors },
-  } = useForm({ resolver: yupResolver(schema), defaultValues: { titre: '', prix: '', description: '' } });
+  } = useForm({
+    resolver: yupResolver(schema),
+    defaultValues: { titre: '', prix: '', description: '', ...saved?.values },
+  });
+
+  // Brouillon local : texte a chaque frappe, photos dans IndexedDB.
+  useEffect(() => {
+    saveJson(DRAFT_KEY, { values: getValues(), retrait });
+    const sub = watch((values) => saveJson(DRAFT_KEY, { values, retrait }));
+    return () => sub.unsubscribe();
+  }, [watch, getValues, retrait]);
+
+  useEffect(() => {
+    loadFiles(DRAFT_KEY).then((files) => {
+      if (files.length) {
+        setPhotos((cur) => (cur.length ? cur : files));
+        setRestored(true);
+      }
+      photosRestored.current = true;
+    });
+  }, []);
+
+  const resetDraft = () => {
+    clearDraft(DRAFT_KEY);
+    reset({ titre: '', prix: '', description: '' });
+    setPhotos([]);
+    setRetrait({ ...EMPTY_ADDRESS, nom: user ? personName(user) : '', telephone: user?.telephone ?? '' });
+    setRetraitErrs({});
+    setRestored(false);
+  };
+
+  useEffect(() => {
+    if (photosRestored.current) saveFiles(DRAFT_KEY, photos);
+  }, [photos]);
+
+  const updateRetrait = (next) => {
+    setRetrait(next);
+    if (Object.keys(retraitErrs).length) setRetraitErrs(retraitErrors(next));
+  };
 
   const titre = watch('titre');
   const prix = watch('prix');
@@ -67,12 +122,23 @@ export default function SellPage() {
   const completion = [photos.length > 0, Boolean(titre?.trim()), prix !== '' && prix != null, description.trim().length >= 20].filter(Boolean).length;
 
   const save = (publish) =>
-    handleSubmit((values) =>
+    handleSubmit((values) => {
+      // Brouillon : adresse libre. Publication : adresse complete + GPS.
+      if (publish) {
+        const errs = retraitErrors(retrait);
+        setRetraitErrs(errs);
+        if (Object.keys(errs).length) {
+          toast.error('Complétez l’adresse de retrait pour publier.');
+          retraitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+      }
       requireAuth(async () => {
         setSubmitting(publish ? 'publish' : 'draft');
         let created = null;
         try {
           created = await marketplaceService.creerAnnonce({ ...values, photos, retrait: toRetraitPayload(retrait) });
+          clearDraft(DRAFT_KEY);
           if (publish) {
             await marketplaceService.publierAnnonce(created.id);
             toast.success('Annonce publiée 🎉', { description: 'Elle est maintenant visible par les acheteurs.' });
@@ -87,8 +153,8 @@ export default function SellPage() {
         } finally {
           setSubmitting(null);
         }
-      }, 'marketplace')
-    )();
+      }, 'marketplace');
+    })();
 
   return (
     <div>
@@ -107,6 +173,8 @@ export default function SellPage() {
       />
 
       <form onSubmit={(e) => e.preventDefault()} className="page-container space-y-5 py-4 pb-40">
+        {restored && <DraftRestoredBanner onReset={resetDraft} />}
+
         {/* Progression */}
         <div>
           <div className="mb-1.5 flex items-center justify-between text-caption">
@@ -177,16 +245,22 @@ export default function SellPage() {
           {errors.description && <p className="mt-1 text-caption text-red-600">{errors.description.message}</p>}
         </label>
 
-        <section className="card space-y-3 p-4">
+        <section ref={retraitRef} className="card space-y-3 p-4">
           <div>
             <h2 className="flex items-center gap-2 text-body font-semibold text-surface-900">
               <MapPin size={16} className="text-shop-700" /> Adresse de retrait
             </h2>
             <p className="text-caption text-surface-500">
-              Où le livreur récupère l’article. Facultatif, mais nécessaire pour une livraison par un livreur TourShop.
+              Où le livreur récupère l’article. Obligatoire pour publier, avec la position GPS du lieu.
             </p>
           </div>
-          <AddressFields value={retrait} onChange={setRetrait} idPrefix="retrait" />
+          <AddressFields
+            value={retrait}
+            onChange={updateRetrait}
+            idPrefix="retrait"
+            required={RETRAIT_REQUIRED}
+            errors={retraitErrs}
+          />
         </section>
 
         <section className="rounded-2xl bg-shop-50 p-4 ring-1 ring-shop-100">
@@ -210,7 +284,7 @@ export default function SellPage() {
         )}
       </form>
 
-      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20">
+      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2.75rem)] z-20">
         <div className="mx-auto flex max-w-md gap-2 border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
           <button type="button" className="btn-secondary flex-1" disabled={Boolean(submitting)} onClick={() => save(false)}>
             {submitting === 'draft' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Brouillon

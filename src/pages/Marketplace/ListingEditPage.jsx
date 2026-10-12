@@ -10,6 +10,7 @@ import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
 import {
   ANNONCE_STATUTS, annoncePhotos, handleMediaError, fromRetrait, toRetraitPayload, hasRetraitAddress,
+  retraitErrors, RETRAIT_REQUIRED,
 } from '../../utils/marketplace';
 import { ROUTES, productPath } from '../../routes';
 
@@ -19,6 +20,7 @@ export default function ListingEditPage() {
   const [annonce, setAnnonce] = useState(undefined);
   const [form, setForm] = useState({ titre: '', prix: '', description: '' });
   const [retrait, setRetrait] = useState(() => fromRetrait(null));
+  const [retraitErrs, setRetraitErrs] = useState({});
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState(null);
@@ -80,7 +82,21 @@ export default function ListingEditPage() {
   const dirty = Object.keys(changes).length > 0;
   const invalid = !form.titre.trim() || form.prix === '' || Number(form.prix) < 0;
 
+  // Une annonce en ligne garde une adresse de retrait complete (GPS compris).
+  const checkRetrait = () => {
+    const errs = retraitErrors(retrait);
+    setRetraitErrs(errs);
+    if (Object.keys(errs).length) toast.error('Complétez l’adresse de retrait (avec la position GPS).');
+    return !Object.keys(errs).length;
+  };
+
+  const updateRetrait = (next) => {
+    setRetrait(next);
+    if (Object.keys(retraitErrs).length) setRetraitErrs(retraitErrors(next));
+  };
+
   const save = async () => {
+    if (annonce.statut === 'publiee' && !checkRetrait()) return;
     setSaving(true);
     try {
       const updated = await marketplaceService.modifierAnnonce(annonce.id, changes);
@@ -94,6 +110,14 @@ export default function ListingEditPage() {
   };
 
   const togglePublish = async () => {
+    if (annonce.statut !== 'publiee') {
+      // La publication lit l'adresse enregistree : sauver d'abord les modifs.
+      if (dirty) {
+        toast.error('Enregistrez vos modifications avant de publier.');
+        return;
+      }
+      if (!checkRetrait()) return;
+    }
     setToggling(true);
     try {
       const updated =
@@ -242,7 +266,14 @@ export default function ListingEditPage() {
                 Sans adresse de retrait, le livreur ne saura pas où récupérer l’article.
               </p>
             )}
-            <AddressFields value={retrait} onChange={setRetrait} idPrefix="retrait" disabled={locked} />
+            <AddressFields
+              value={retrait}
+              onChange={updateRetrait}
+              idPrefix="retrait"
+              disabled={locked}
+              required={RETRAIT_REQUIRED}
+              errors={retraitErrs}
+            />
           </section>
         </fieldset>
       </div>
@@ -253,7 +284,7 @@ export default function ListingEditPage() {
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20"
+            className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2.75rem)] z-20"
           >
             <div className="mx-auto flex max-w-md gap-2 border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
               <button
@@ -262,6 +293,7 @@ export default function ListingEditPage() {
                 onClick={() => {
                   setForm({ titre: annonce.titre ?? '', prix: String(annonce.prix ?? ''), description: annonce.description ?? '' });
                   setRetrait(fromRetrait(annonce));
+                  setRetraitErrs({});
                 }}
               >
                 Annuler

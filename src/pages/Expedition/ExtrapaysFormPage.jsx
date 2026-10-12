@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
@@ -24,6 +24,8 @@ import StepProgress from '../../components/expedition/StepProgress';
 import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
 import { BoxArt } from '../../components/illustrations';
 import EmptyState from '../../components/common/EmptyState';
+import DraftRestoredBanner from '../../components/common/DraftRestoredBanner';
+import useFormDraft from '../../hooks/useFormDraft';
 import EmptyParcelAnimation from '../../components/illustrations/EmptyParcelAnimation';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import CitySelectSheet from '../../components/common/CitySelectSheet';
@@ -542,6 +544,39 @@ export default function ExtrapaysFormPage() {
   const [devisStatus, setDevisStatus] = useState('idle');
   const [devisError, setDevisError] = useState('');
 
+  // Saisie conservee si l'onglet est recharge (photos des colis comprises).
+  // Un brouillon d'un autre pays de depart est ignore.
+  const draftData = useMemo(
+    () => ({
+      code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
+      groupageDesignation, colisList, agence, typesChoisis, expediteur, destinataire, pickup,
+    }),
+    [country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
+      groupageDesignation, colisList, agence, typesChoisis, expediteur, destinataire, pickup]
+  );
+  const draft = useFormDraft(
+    'tourshop:expedition-extrapays',
+    draftData,
+    (d) => {
+      if (d.code_pays !== country.code) return false;
+      setStep(d.step ?? 1);
+      setMaxStepReached(d.maxStepReached ?? 1);
+      setMode(d.mode ?? '');
+      setPaysDestination(d.paysDestination ?? '');
+      setVilleDestination(d.villeDestination ?? '');
+      setArticles(d.articles ?? []);
+      setGroupageDesignation(d.groupageDesignation ?? '');
+      setColisList(d.colisList ?? []);
+      setAgence(d.agence ?? null);
+      setTypesChoisis(d.typesChoisis ?? {});
+      if (d.expediteur) setExpediteur(d.expediteur);
+      if (d.destinataire) setDestinataire(d.destinataire);
+      if (d.pickup) setPickup(d.pickup);
+      return true;
+    },
+    !mode && !paysDestination
+  );
+
   const destinationIsAfrican = isAfricanCountry(paysDestination);
   // Ville de destination is asked for both modes as soon as the destination
   // isn't an African country — same rule as recuperation_agence, now also
@@ -562,6 +597,7 @@ export default function ExtrapaysFormPage() {
   };
 
   const resetForm = () => {
+    draft.clear();
     setStep(1);
     setMaxStepReached(1);
     setSubmitResult(null);
@@ -833,6 +869,8 @@ export default function ExtrapaysFormPage() {
         if (villeRequise) payload.ville_destination = villeDestination;
 
         const result = await expeditionService.storeExpedition(payload);
+        // Demande envoyee (meme partiellement) : ne pas la re-proposer.
+        draft.clear();
         setSubmitResult(result);
       } catch (err) {
         const message =
@@ -882,6 +920,7 @@ export default function ExtrapaysFormPage() {
     <div>
       <TopBar title="Expedition Extrapays" back />
       <div className="page-container py-4">
+        {draft.restored && <DraftRestoredBanner onReset={resetForm} className="mb-3" />}
         <StepProgress
           step={step}
           total={6}
@@ -1137,6 +1176,7 @@ export default function ExtrapaysFormPage() {
                   onChange={(f) => updateColisField(i, 'photo', f)}
                   label="Photo du colis"
                   icon={Camera}
+                  camera
                   removeLabel="Retirer la photo du colis"
                 />
               </div>

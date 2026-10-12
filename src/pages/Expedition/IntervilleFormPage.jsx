@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Camera, ChevronDown, MapPinned, Plus, Trash2 } from 'lucide-react';
@@ -7,6 +7,8 @@ import TopBar from '../../components/common/TopBar';
 import StepProgress from '../../components/expedition/StepProgress';
 import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
 import EmptyState from '../../components/common/EmptyState';
+import DraftRestoredBanner from '../../components/common/DraftRestoredBanner';
+import useFormDraft from '../../hooks/useFormDraft';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
@@ -162,6 +164,31 @@ export default function IntervilleFormPage() {
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
 
+  // Saisie conservee si l'onglet est recharge (photos des colis comprises).
+  // Un brouillon d'un autre pays est ignore.
+  const draftData = useMemo(
+    () => ({ code_pays: country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup }),
+    [country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup]
+  );
+  const draftEmpty = !agence && !destinataireCommuneId && !colisList.some((c) => c.poids || c.photo) && !destinataire.nom_prenom;
+  const draft = useFormDraft(
+    'tourshop:expedition-interville',
+    draftData,
+    (d) => {
+      if (d.code_pays !== country.code) return false;
+      setStep(d.step ?? 1);
+      setMaxStepReached(d.maxStepReached ?? 1);
+      setAgence(d.agence ?? null);
+      setDestinataireCommuneId(d.destinataireCommuneId ?? '');
+      if (d.colisList?.length) setColisList(d.colisList);
+      if (d.expediteur) setExpediteur(d.expediteur);
+      if (d.destinataire) setDestinataire(d.destinataire);
+      if (d.pickup) setPickup(d.pickup);
+      return true;
+    },
+    draftEmpty
+  );
+
   // Communes of the departure country — public, gives destinataire_commune_id.
   useEffect(() => {
     if (!country.code) return;
@@ -271,6 +298,7 @@ export default function IntervilleFormPage() {
   };
 
   const resetForm = () => {
+    draft.clear();
     setStep(1);
     setMaxStepReached(1);
     setResult(null);
@@ -338,6 +366,7 @@ export default function IntervilleFormPage() {
       };
       const res = await expeditionService.storeExpedition(payload);
       if (res?.success && res.expedition) {
+        draft.clear();
         setResult(res.expedition);
       } else {
         const msg = res?.message || "Impossible d'enregistrer la demande.";
@@ -383,6 +412,7 @@ export default function IntervilleFormPage() {
     <div>
       <TopBar title="Expedition Interville" back />
       <div className="page-container py-4">
+        {draft.restored && <DraftRestoredBanner onReset={resetForm} className="mb-3" />}
         <StepProgress
           step={step}
           total={4}
@@ -535,6 +565,7 @@ export default function IntervilleFormPage() {
                   onChange={(f) => setColisField(i, 'photo', f)}
                   label="Photo du colis"
                   icon={Camera}
+                  camera
                   removeLabel="Retirer la photo du colis"
                 />
               </div>

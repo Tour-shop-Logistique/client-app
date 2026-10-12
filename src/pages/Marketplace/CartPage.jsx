@@ -45,7 +45,7 @@ const addressErrors = (addr) =>
 // Corps `adresse_livraison` de panier/valider (champs optionnels omis si vides).
 const toAdresseLivraison = (addr) => {
   const out = {};
-  ['nom', 'telephone', 'adresse', 'ville', 'quartier', 'instructions'].forEach((k) => {
+  ['nom', 'telephone', 'adresse', 'ville', 'instructions'].forEach((k) => {
     const v = String(addr[k] ?? '').trim();
     if (v) out[k] = v;
   });
@@ -337,7 +337,7 @@ export default function CartPage() {
       </div>
 
       {items.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20">
+        <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2.75rem)] z-20">
           <div className="mx-auto max-w-md border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
             {blocked && (
               <p className="mb-2 text-center text-caption text-amber-700">

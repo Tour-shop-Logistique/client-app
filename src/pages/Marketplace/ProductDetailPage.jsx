@@ -345,7 +345,7 @@ export default function ProductDetailPage() {
       )}
 
       {/* Barre d'achat collante (au-dessus de la barre de navigation) */}
-      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-20">
+      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2.75rem)] z-20">
         <div className="mx-auto max-w-md border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
           {own ? (
             <Link to={listingEditPath(annonce.id)} className="btn-secondary w-full">
