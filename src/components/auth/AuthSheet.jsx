@@ -35,6 +35,7 @@ const TITLES = {
   register: 'Créer un compte',
   verify: 'Vérifier votre email',
   forgot: 'Mot de passe oublié',
+  resetCode: 'Vérifier le code',
   reset: 'Nouveau mot de passe',
 };
 
@@ -196,10 +197,30 @@ export default function AuthSheet() {
     const result = await dispatch(forgotPassword(form.email.trim()));
     if (forgotPassword.fulfilled.match(result)) {
       toast.success('Code de réinitialisation envoyé par email.');
+      setForm((f) => ({ ...f, code: '', password: '', passwordConfirmation: '' }));
+      goTo('resetCode');
+    }
+  };
+
+  // Step 1 of the reset: the OTP is checked on its own before any password
+  // field is shown.
+  const handleVerifyResetCode = async (e) => {
+    e.preventDefault();
+    const email = (pendingEmail || form.email).trim();
+    const result = await dispatch(verifyResetCode({ email, code: form.code.trim() }));
+    if (verifyResetCode.fulfilled.match(result)) {
+      toast.success('Code vérifié. Choisissez un nouveau mot de passe.');
       goTo('reset');
     }
   };
 
+  const handleResendResetCode = async () => {
+    const email = (pendingEmail || form.email).trim();
+    const result = await dispatch(forgotPassword(email));
+    if (forgotPassword.fulfilled.match(result)) toast.success('Nouveau code envoyé.');
+  };
+
+  // Step 2: the code was already validated, it is only replayed to the API.
   const handleReset = async (e) => {
     e.preventDefault();
     if (form.password !== form.passwordConfirmation) {
@@ -208,9 +229,6 @@ export default function AuthSheet() {
     }
     const email = (pendingEmail || form.email).trim();
     const code = form.code.trim();
-    const check = await dispatch(verifyResetCode({ email, code }));
-    if (!verifyResetCode.fulfilled.match(check)) return;
-
     const result = await dispatch(resetPassword({
       email,
       code,
@@ -422,8 +440,8 @@ export default function AuthSheet() {
         </form>
       )}
 
-      {mode === 'reset' && (
-        <form onSubmit={handleReset} className="space-y-3">
+      {mode === 'resetCode' && (
+        <form onSubmit={handleVerifyResetCode} className="space-y-3">
           <p className="text-sm text-surface-500">
             Code envoyé à{' '}
             <span className="font-medium text-surface-900">{verifyEmailAddress}</span>{' '}
@@ -439,13 +457,30 @@ export default function AuthSheet() {
             />
             <FieldError errors={fieldErrors} name="code" />
           </label>
+          <button type="submit" className="btn-primary w-full" disabled={loading}>
+            {loading ? 'Vérification…' : 'Valider le code'}
+          </button>
+          <div className="flex items-center justify-between pt-1 text-sm">
+            <button type="button" className="font-medium text-primary-600" onClick={handleResendResetCode} disabled={loading}>
+              Renvoyer le code
+            </button>
+            <button type="button" className="text-surface-500" onClick={() => goTo('forgot')}>
+              Modifier l'adresse
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === 'reset' && (
+        <form onSubmit={handleReset} className="space-y-3">
           <label className="block text-sm font-medium text-surface-700">
-            Nouveau mot de passe
+            Nouveau mot de passe (8 caractères min.)
             <input
               type="password" autoComplete="new-password" minLength={8}
-              className="input-field mt-1.5" value={form.password} onChange={set('password')} required
+              className="input-field mt-1.5" value={form.password} onChange={set('password')} autoFocus required
             />
             <FieldError errors={fieldErrors} name="password" />
+            <FieldError errors={fieldErrors} name="code" />
           </label>
           <label className="block text-sm font-medium text-surface-700">
             Confirmer le mot de passe

@@ -22,6 +22,7 @@ import TrackingTimeline from '../../components/expedition/TrackingTimeline';
 import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
 import DeliverySection from '../../components/expedition/DeliverySection';
 import RatingSection from '../../components/expedition/RatingSection';
+import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import expeditionService from '../../services/expeditionService';
 import { useRealtimeExpedition } from '../../hooks/useRealtimeUpdates';
 import { cancelExpedition, resetCancelState } from '../../store/slices/expeditionSlice';
@@ -367,6 +368,9 @@ export default function ExpeditionDetailPage() {
             />
             <Row label="Créée le" value={formatDateTime(exp.created_at)} />
           </div>
+          {!closedWithoutDelivery && (
+            <InvoiceDownloadButton expedition={exp} className="btn-secondary mt-3 w-full" />
+          )}
         </Section>
 
         {cancelable && (

@@ -44,6 +44,7 @@ import { isDestinationCompatible, destinationBadges } from '../../utils/expediti
 import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
+import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 
 const MODES = [
   {
@@ -187,7 +188,7 @@ function ParcelChip({ icon, children }) {
   );
 }
 
-function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectType, articles = [], designation }) {
+function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectType, articles = [] }) {
   if (status === 'loading') return <SimulationLoading />;
   if (status === 'error') return <SimulationError message={error} />;
   if (!groupes) return null;
@@ -204,7 +205,7 @@ function DevisSummaryGroupage({ status, error, groupes, typesChoisis, onSelectTy
     <div className="space-y-3">
       <SimulationTotal
         total={total}
-        caption={`${articles.length} article${articles.length > 1 ? 's' : ''} · ${fmtKg(poidsTotal)}${designation?.trim() ? ` · ${designation.trim()}` : ''}`}
+        caption={`${articles.length} article${articles.length > 1 ? 's' : ''} · ${fmtKg(poidsTotal)}`}
       />
       {noneShippable && (
         <SimulationError message="Aucun tarif disponible pour cette sélection vers cette destination. Modifiez vos articles ou la destination." />
@@ -299,7 +300,7 @@ function DevisSummaryLD({ status, error, devis, colisList = [] }) {
                 <BoxArt size={42} className="shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-surface-900">
-                    {c.designation?.trim() || `Colis ${i + 1}`}
+                    Colis {i + 1}
                   </p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <ParcelChip icon={Weight}>{fmtKg(c.poids)}</ParcelChip>
@@ -354,7 +355,7 @@ function DevisSummaryLD({ status, error, devis, colisList = [] }) {
   );
 }
 
-function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType, colisList, articles, designation }) {
+function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType, colisList, articles }) {
   if (mode === 'livraison_domicile') {
     return <DevisSummaryLD status={status} error={error} devis={devis} colisList={colisList} />;
   }
@@ -366,7 +367,6 @@ function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType, 
       typesChoisis={typesChoisis}
       onSelectType={onSelectType}
       articles={articles}
-      designation={designation}
     />
   );
 }
@@ -472,6 +472,13 @@ function SubmitResultScreen({ result, pickupMode, onNewExpedition }) {
                 <span className="shrink-0 font-semibold text-primary-700">{formatPrice(exp.montant_expedition)}</span>
               </button>
             ))}
+            {successes.map(({ expedition: exp }) => (
+              <InvoiceDownloadButton
+                key={`facture-${exp.id}`}
+                expeditionId={exp.id}
+                label={successes.length > 1 ? `Facture ${exp.reference}` : 'Télécharger la facture'}
+              />
+            ))}
           </div>
         )}
 
@@ -521,8 +528,7 @@ export default function ExtrapaysFormPage() {
   const [paysDestination, setPaysDestination] = useState('');
   const [villeDestination, setVilleDestination] = useState('');
   const [articles, setArticles] = useState([]); // groupage: { produit_id, designation, reference, poids }
-  const [groupageDesignation, setGroupageDesignation] = useState(''); // groupage: designation du contenu (obligatoire, un seul colis implicite)
-  const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, designation, articles: [{produit_id, designation, reference}] }
+  const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, articles: [{produit_id, designation, reference}] }
   const [agence, setAgence] = useState(null);
   const [typesChoisis, setTypesChoisis] = useState({}); // groupage: { category_id: type_expedition }
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
@@ -549,10 +555,10 @@ export default function ExtrapaysFormPage() {
   const draftData = useMemo(
     () => ({
       code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
-      groupageDesignation, colisList, agence, typesChoisis, expediteur, destinataire, pickup,
+      colisList, agence, typesChoisis, expediteur, destinataire, pickup,
     }),
     [country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
-      groupageDesignation, colisList, agence, typesChoisis, expediteur, destinataire, pickup]
+      colisList, agence, typesChoisis, expediteur, destinataire, pickup]
   );
   const draft = useFormDraft(
     'tourshop:expedition-extrapays',
@@ -565,7 +571,6 @@ export default function ExtrapaysFormPage() {
       setPaysDestination(d.paysDestination ?? '');
       setVilleDestination(d.villeDestination ?? '');
       setArticles(d.articles ?? []);
-      setGroupageDesignation(d.groupageDesignation ?? '');
       setColisList(d.colisList ?? []);
       setAgence(d.agence ?? null);
       setTypesChoisis(d.typesChoisis ?? {});
@@ -606,7 +611,6 @@ export default function ExtrapaysFormPage() {
     setPaysDestination('');
     setVilleDestination('');
     setArticles([]);
-    setGroupageDesignation('');
     setColisList([]);
     setAgence(null);
     setTypesChoisis({});
@@ -632,7 +636,7 @@ export default function ExtrapaysFormPage() {
     }
     if (value === 'livraison_domicile') {
       setArticles([]);
-      setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', designation: '', articles: [] }]));
+      setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]));
     } else {
       setColisList([]);
     }
@@ -755,7 +759,7 @@ export default function ExtrapaysFormPage() {
     setArticles((list) => list.filter((_, i) => i !== index));
   };
 
-  const addColis = () => setColisList((list) => [...list, { poids: '', longueur: '', largeur: '', hauteur: '', designation: '', articles: [] }]);
+  const addColis = () => setColisList((list) => [...list, { poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]);
   const removeColis = (index) => setColisList((list) => list.filter((_, i) => i !== index));
   const updateColisField = (index, field, value) =>
     setColisList((list) => list.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
@@ -801,8 +805,8 @@ export default function ExtrapaysFormPage() {
   const canContinueStep3 =
     mode === 'livraison_domicile'
       ? colisList.length > 0 &&
-        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0 && c.designation.trim())
-      : articles.length > 0 && articles.every((a) => Number(a.poids) > 0) && groupageDesignation.trim();
+        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0)
+      : articles.length > 0 && articles.every((a) => Number(a.poids) > 0);
 
   const groupageHasShippableGroup = mode !== 'recuperation_agence' || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
   const groupageAllChoicesMade =
@@ -849,7 +853,6 @@ export default function ExtrapaysFormPage() {
               largeur: Number(c.largeur) || 0,
               hauteur: Number(c.hauteur) || 0,
               prix_emballage: 0,
-              designation: c.designation.trim(),
               articles: c.articles.map((a) => ({ produit_id: a.produit_id })),
               // Photo facultative (mode LD uniquement) : envoi multipart.
               photo: c.photo || undefined,
@@ -860,7 +863,6 @@ export default function ExtrapaysFormPage() {
           payload = {
             ...base,
             colis: [{
-              designation: groupageDesignation.trim(),
               articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })),
             }],
             types_choisis: typesChoisis,
@@ -1035,15 +1037,6 @@ export default function ExtrapaysFormPage() {
 
         {step === 3 && mode === 'recuperation_agence' && (
           <div className="space-y-4">
-            <label className="block text-sm font-medium text-surface-700">
-              Designation du contenu
-              <input
-                className="input-field mt-1.5"
-                placeholder="Ex: Denrees alimentaires et produits cosmetiques"
-                value={groupageDesignation}
-                onChange={(e) => setGroupageDesignation(e.target.value)}
-              />
-            </label>
             {articles.length === 0 && (
               <EmptyState
                 illustration={<EmptyParcelAnimation />}
@@ -1140,15 +1133,6 @@ export default function ExtrapaysFormPage() {
                     <input type="number" min="0" className="input-field mt-1.5" value={c.hauteur} onChange={(e) => updateColisField(i, 'hauteur', e.target.value)} />
                   </label>
                 </div>
-                <label className="block text-sm font-medium text-surface-700">
-                  Designation du contenu
-                  <input
-                    className="input-field mt-1.5"
-                    placeholder="Ex: Vetements et accessoires"
-                    value={c.designation}
-                    onChange={(e) => updateColisField(i, 'designation', e.target.value)}
-                  />
-                </label>
                 {c.articles.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.articles.map((a, ai) => (
@@ -1220,7 +1204,6 @@ export default function ExtrapaysFormPage() {
                 onSelectType={handleSelectType}
                 colisList={colisList}
                 articles={articles}
-                designation={groupageDesignation}
               />
             ) : (
               !agence && (
@@ -1290,7 +1273,6 @@ export default function ExtrapaysFormPage() {
               onSelectType={handleSelectType}
               colisList={colisList}
               articles={articles}
-              designation={groupageDesignation}
             />
 
             <p className="flex items-center gap-1.5 text-xs text-surface-400">

@@ -21,6 +21,7 @@ import expeditionService from '../../services/expeditionService';
 import { getFlagEmoji } from '../../utils/countries';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
+import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 
 const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
@@ -108,6 +109,8 @@ function SuccessScreen({ expedition, pickupMode, onNew }) {
             </p>
           )}
         </SuccessHero>
+
+        <InvoiceDownloadButton expeditionId={expedition.id} />
 
         <div className="flex gap-2">
           <button type="button" className="btn-secondary flex-1" onClick={() => navigate(ROUTES.EXPEDITION_HISTORY)}>
