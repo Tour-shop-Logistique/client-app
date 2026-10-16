@@ -138,7 +138,7 @@ export default function HomePage() {
   return (
     <div className="safe-top pb-4">
       {/* Héros illustré */}
-      <div className="brand-gradient relative h-[19.5rem] overflow-hidden rounded-b-[2rem] px-5 pt-5">
+      <div className="brand-gradient relative h-[13rem] overflow-hidden rounded-b-[1.75rem] px-5 pt-4">
         <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-white/[0.07]" />
         <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-shop-400/20" />
 
@@ -179,16 +179,16 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="relative mx-auto mt-6 max-w-md">
-          <h1 className="w-52 font-heading text-[27px] font-bold leading-[33px] tracking-tight">
-            Envoyez.<br />Achetez.<br /><span className="text-shop-300">Vendez.</span>
+        <div className="relative mx-auto mt-3 max-w-md">
+          <h1 className="w-52 font-heading text-[22px] font-bold leading-7 tracking-tight">
+            Envoyez. Achetez.<br /><span className="text-shop-300">Vendez.</span>
           </h1>
-          <p className="mt-2 w-52 text-body text-white/85">Colis, boutique et agences, tout au même endroit.</p>
-          <HeroGlobeArt className="pointer-events-none absolute -right-3 top-0 animate-float" />
+          <p className="mt-1.5 w-52 text-body leading-5 text-white/85">Colis, boutique et agences, au même endroit.</p>
+          <HeroGlobeArt className="pointer-events-none absolute -right-2 -top-1 h-24 w-auto animate-float" />
         </div>
       </div>
 
-      <div className="page-container relative z-10 -mt-12 space-y-6">
+      <div className="page-container relative z-10 -mt-6 space-y-6">
         {/* Suivi */}
         <form onSubmit={handleTrackingSubmit} className="rounded-[1.4rem] bg-white p-4 shadow-[0_16px_36px_-14px_rgba(15,23,42,0.28)]">
           <label htmlFor="home-tracking" className="font-heading text-[15px] font-semibold text-surface-900">

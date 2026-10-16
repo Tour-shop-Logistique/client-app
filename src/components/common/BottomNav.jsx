@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Package, Store, User, Plus } from 'lucide-react';
 import { ROUTES } from '../../routes';
@@ -5,6 +6,15 @@ import { isFeatureReady } from '../../config/features';
 
 // Barre flottante : 4 onglets + bouton central « Envoyer » mis en avant.
 // Les agences restent accessibles depuis les raccourcis de l'accueil.
+//
+// Rendu multi-appareils :
+//  - les 5 cellules ont la même structure (contenu calé en bas, libellé sur une
+//    seule ligne) : tous les libellés sont alignés, y compris sous le bouton
+//    central, qui déborde simplement vers le haut ;
+//  - zones de sécurité : bas (barre d'accueil iOS, navigation par gestes
+//    Android) et côtés (encoche en paysage) ;
+//  - la barre se replie pendant une saisie : sur Android le clavier réduit la
+//    fenêtre et la barre viendrait se poser sur le champ.
 const TABS = [
   { to: ROUTES.HOME, icon: Home, label: 'Accueil', end: true, feature: 'home' },
   { to: ROUTES.EXPEDITION_HISTORY, icon: Package, label: 'Colis', feature: 'expeditionHistory' },
@@ -13,16 +23,15 @@ const TABS = [
   { to: ROUTES.PROFILE, icon: User, label: 'Profil', feature: 'profile' },
 ];
 
+const CELL = 'relative flex h-full min-w-0 select-none flex-col items-center justify-end gap-1 px-0.5 pb-2 text-[11px] leading-none [-webkit-tap-highlight-color:transparent]';
+
 function PrimaryAction({ tab }) {
   return (
-    <NavLink
-      to={tab.to}
-      className="relative -mt-7 flex flex-col items-center justify-start gap-1 text-[11px] font-bold text-primary-700"
-    >
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-teal-600 text-white shadow-brand ring-[5px] ring-surface-50 transition active:scale-90">
+    <NavLink to={tab.to} className={`${CELL} font-bold text-primary-700`}>
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-teal-600 text-white shadow-brand ring-[5px] ring-surface-50 transition active:scale-90">
         <tab.icon size={26} strokeWidth={2.6} />
       </span>
-      {tab.label}
+      <span className="max-w-full truncate">{tab.label}</span>
     </NavLink>
   );
 }
@@ -37,14 +46,12 @@ function NavItem({ tab }) {
       to={tab.to}
       end={tab.end}
       className={({ isActive }) =>
-        `relative flex flex-col items-center justify-center gap-1 text-[11px] transition ${
-          isActive ? `${activeText} font-bold` : 'font-medium text-surface-500'
-        }`
+        `${CELL} transition ${isActive ? `${activeText} font-bold` : 'font-medium text-surface-500'}`
       }
     >
       {({ isActive }) => (
         <>
-          <span className={`relative flex h-8 w-11 items-center justify-center rounded-full transition-colors ${isActive ? activePill : ''}`}>
+          <span className={`relative flex h-8 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${isActive ? activePill : ''}`}>
             <tab.icon size={20} strokeWidth={isActive ? 2.4 : 2} />
             {comingSoon && (
               <span
@@ -53,20 +60,60 @@ function NavItem({ tab }) {
               />
             )}
           </span>
-          {tab.label}
+          <span className="max-w-full truncate">{tab.label}</span>
         </>
       )}
     </NavLink>
   );
 }
 
+// Champs qui ouvrent le clavier à l'écran (pas les cases, boutons, etc.).
+const TEXT_FIELD = 'textarea, select, input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=file]):not([type=range])';
+
+// true tant qu'un champ de saisie a le focus.
+function useTyping() {
+  const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    let timer;
+    const onIn = (e) => {
+      if (e.target instanceof Element && e.target.matches(TEXT_FIELD)) {
+        clearTimeout(timer);
+        setTyping(true);
+      }
+    };
+    // Petit délai : passer d'un champ à l'autre ne doit pas faire clignoter la barre.
+    const onOut = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setTyping(false), 150);
+    };
+    document.addEventListener('focusin', onIn);
+    document.addEventListener('focusout', onOut);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('focusin', onIn);
+      document.removeEventListener('focusout', onOut);
+    };
+  }, []);
+
+  return typing;
+}
+
 export default function BottomNav() {
+  const typing = useTyping();
+
   return (
     <nav
       aria-label="Navigation principale"
-      className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]"
+      aria-hidden={typing || undefined}
+      // Bas : barre d'accueil iOS (≈34 px) rognée de 0,25 rem pour ne pas flotter
+      // trop haut ; navigation par gestes ou boutons Android : au moins 0,75 rem.
+      // Côtés : encoche en paysage.
+      className={`fixed inset-x-0 bottom-0 z-30 pb-[max(0.75rem,calc(env(safe-area-inset-bottom)-0.25rem))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] transition-transform duration-200 ease-out ${
+        typing ? 'pointer-events-none translate-y-[calc(100%+1rem)]' : ''
+      }`}
     >
-      <div className="mx-auto grid h-bottom-nav max-w-md grid-cols-5 items-center rounded-[1.6rem] bg-white shadow-[0_14px_34px_-10px_rgba(15,23,42,0.3)] ring-1 ring-surface-100">
+      <div className="mx-auto grid h-bottom-nav max-w-md grid-cols-5 items-stretch rounded-[1.6rem] bg-white shadow-[0_14px_34px_-10px_rgba(15,23,42,0.3)] ring-1 ring-surface-100">
         {TABS.map((tab) =>
           tab.primary ? <PrimaryAction key={tab.to} tab={tab} /> : <NavItem key={tab.to} tab={tab} />
         )}

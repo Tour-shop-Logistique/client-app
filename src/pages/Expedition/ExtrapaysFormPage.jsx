@@ -44,16 +44,13 @@ import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
-import ColisFormatFields from '../../components/expedition/ColisFormatFields';
 import IdentityFields from '../../components/expedition/IdentityFields';
-import useColisFormats from '../../hooks/useColisFormats';
-import { applyFormat, defaultFormat, overweight } from '../../utils/colisFormat';
 import {
   EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
-const EMPTY_LD_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', articles: [] };
+const EMPTY_LD_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', articles: [] };
 
 const MODES = [
   {
@@ -468,12 +465,6 @@ export default function ExtrapaysFormPage() {
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState('idle');
 
-  // Formats de colis (LD) : le format choisi remplit les dimensions du colis.
-  const { formats, status: formatsStatus } = useColisFormats();
-  useEffect(() => {
-    const def = defaultFormat(formats);
-    if (def) setColisList((cl) => cl.map((c) => (c.format_colis_id ? c : applyFormat(c, def))));
-  }, [formats]);
 
   // Destination countries actually tariffed from the departure backoffice
   // (GET /api/expedition/client/pays-disponibles) — feeds the improved picker.
@@ -575,7 +566,7 @@ export default function ExtrapaysFormPage() {
     }
     if (value === 'livraison_domicile') {
       setArticles([]);
-      setColisList((list) => (list.length ? list : [applyFormat({ ...EMPTY_LD_COLIS }, defaultFormat(formats))]));
+      setColisList((list) => (list.length ? list : [{ ...EMPTY_LD_COLIS }]));
     } else {
       setColisList([]);
     }
@@ -701,7 +692,7 @@ export default function ExtrapaysFormPage() {
     setArticles((list) => list.filter((_, i) => i !== index));
   };
 
-  const addColis = () => setColisList((list) => [...list, applyFormat({ ...EMPTY_LD_COLIS }, defaultFormat(formats))]);
+  const addColis = () => setColisList((list) => [...list, { ...EMPTY_LD_COLIS }]);
   const removeColis = (index) => setColisList((list) => list.filter((_, i) => i !== index));
   const updateColisField = (index, field, value) =>
     setColisList((list) => list.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
@@ -747,8 +738,7 @@ export default function ExtrapaysFormPage() {
   const canContinueStep3 =
     mode === 'livraison_domicile'
       ? colisList.length > 0 &&
-        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0
-          && !overweight(c, formats.find((f) => f.id === c.format_colis_id)))
+        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0)
       : articles.length > 0 && articles.every((a) => Number(a.poids) > 0);
 
   const groupageHasShippableGroup = mode !== 'recuperation_agence' || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
@@ -784,7 +774,6 @@ export default function ExtrapaysFormPage() {
               longueur: Number(c.longueur) || 0,
               largeur: Number(c.largeur) || 0,
               hauteur: Number(c.hauteur) || 0,
-              ...(c.format_colis_id ? { format_colis_id: c.format_colis_id } : {}),
               prix_emballage: 0,
               articles: c.articles.map((a) => ({ produit_id: a.produit_id })),
               // Photo facultative (mode LD uniquement) : envoi multipart.
@@ -1060,12 +1049,21 @@ export default function ExtrapaysFormPage() {
                     onChange={(e) => updateColisField(i, 'poids', e.target.value)}
                   />
                 </label>
-                <ColisFormatFields
-                  colis={c}
-                  formats={formats}
-                  status={i === 0 ? formatsStatus : 'idle'}
-                  onChange={(next) => setColisList((list) => list.map((x, idx) => (idx === i ? next : x)))}
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  {[['longueur', 'Longueur'], ['largeur', 'Largeur'], ['hauteur', 'Hauteur']].map(([key, label]) => (
+                    <label key={key} className="block text-xs font-medium text-surface-600">
+                      {label} (cm)
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        className="input-field mt-1.5"
+                        value={c[key] ?? ''}
+                        onChange={(e) => updateColisField(i, key, e.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
                 {c.articles.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.articles.map((a, ai) => (

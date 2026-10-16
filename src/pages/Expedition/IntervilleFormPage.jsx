@@ -27,7 +27,7 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import ColisFormatFields from '../../components/expedition/ColisFormatFields';
 import useColisFormats from '../../hooks/useColisFormats';
-import { applyFormat, defaultFormat, overweight } from '../../utils/colisFormat';
+import { applyFormat, defaultFormat, overweight, syncColisFormats } from '../../utils/colisFormat';
 
 const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
@@ -209,12 +209,11 @@ export default function IntervilleFormPage() {
     };
   }, [isAuthenticated, country.code, retryTick]);
 
-  // Formats de colis du backoffice : le format par défaut (et ses dimensions)
-  // est appliqué aux colis qui n'en ont pas encore.
+  // Formats de colis du backoffice : chaque colis reste aligné sur les formats
+  // de l'API (format par défaut s'il n'en a pas, dimensions du format sinon).
   useEffect(() => {
-    const def = defaultFormat(formats);
-    if (def) setColisList((cl) => cl.map((c) => (c.format_colis_id ? c : applyFormat(c, def))));
-  }, [formats]);
+    setColisList((cl) => syncColisFormats(cl, formats));
+  }, [formats, colisList]);
 
   // Prefill the sender from the connected account (editable).
   useEffect(() => {

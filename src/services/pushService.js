@@ -40,11 +40,25 @@ const subscribe = async () => {
 
   const reg = await getRegistration();
   const { data } = await api.get('/push/public-key');
-  const subscription = (await reg.pushManager.getSubscription())
-    || await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(data.public_key),
-    });
+  // Clé VAPID absente (non configurée côté serveur) : sans elle aucun abonnement
+  // n'est possible — message clair plutôt qu'un TypeError sur `null.length`.
+  const publicKey = typeof data?.public_key === 'string' ? data.public_key.trim() : '';
+  if (!publicKey) {
+    throw new Error("Les notifications ne sont pas encore disponibles : le serveur n'a pas de clé d'envoi configurée.");
+  }
+
+  const options = { userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) };
+  // subscribe() renvoie l'abonnement existant si la clé est la même, et lève
+  // InvalidStateError si un ancien abonnement a été créé avec une autre clé :
+  // on le supprime alors et on se réabonne avec la clé actuelle.
+  let subscription;
+  try {
+    subscription = await reg.pushManager.subscribe(options);
+  } catch (err) {
+    if (err?.name !== 'InvalidStateError') throw err;
+    await (await reg.pushManager.getSubscription())?.unsubscribe();
+    subscription = await reg.pushManager.subscribe(options);
+  }
 
   const json = subscription.toJSON();
   await api.post('/push/subscribe', { endpoint: json.endpoint, keys: json.keys });

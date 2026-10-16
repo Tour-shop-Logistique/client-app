@@ -34,6 +34,35 @@ export const applyFormat = (colis, format) => {
   };
 };
 
+// Aligne chaque colis sur la liste de formats de l'API : un colis sans format
+// (créé avant l'arrivée des formats, restauré d'un brouillon, format d'un autre
+// pays) reçoit le format par défaut ; un colis dont le format porte des
+// dimensions fixes reprend ces dimensions. Renvoie la MÊME liste si rien ne
+// change (pas de rendu en boucle quand on l'appelle dans un effet).
+export const syncColisFormats = (list, formats = []) => {
+  const def = defaultFormat(formats);
+  if (!def) return list;
+  let changed = false;
+  const next = list.map((c) => {
+    const current = formats.find((f) => f.id === c.format_colis_id);
+    if (!current) {
+      changed = true;
+      return applyFormat({ ...c, format_colis_id: '' }, def);
+    }
+    const stale = formatHasDims(current) && (
+      String(current.longueur_max) !== String(c.longueur)
+      || String(current.largeur_max) !== String(c.largeur)
+      || String(current.hauteur_max) !== String(c.hauteur)
+    );
+    if (stale) {
+      changed = true;
+      return applyFormat(c, current);
+    }
+    return c;
+  });
+  return changed ? next : list;
+};
+
 // Poids saisi au-dessus du maximum du format choisi.
 export const overweight = (colis, format) =>
   Boolean(format) && format.poids_max != null && Number(colis.poids) > Number(format.poids_max);
