@@ -23,7 +23,10 @@ const TABS = [
   { to: ROUTES.PROFILE, icon: User, label: 'Profil', feature: 'profile' },
 ];
 
-const CELL = 'relative flex h-full min-w-0 select-none flex-col items-center justify-end gap-1 px-0.5 pb-2 text-[11px] leading-none [-webkit-tap-highlight-color:transparent]';
+// `min-h-0` + ligne de grille bornée (voir <nav>) : la hauteur d'une cellule ne
+// dépend jamais de son contenu. Le bouton central, plus haut que la barre,
+// déborde vers le haut (flex justify-end) sans pousser les libellés dehors.
+const CELL = 'relative flex h-full min-h-0 min-w-0 select-none flex-col items-center justify-end gap-1 px-0.5 pb-2.5 text-[11px] leading-3 [-webkit-tap-highlight-color:transparent]';
 
 function PrimaryAction({ tab }) {
   return (
@@ -113,7 +116,7 @@ export default function BottomNav() {
         typing ? 'pointer-events-none translate-y-[calc(100%+1rem)]' : ''
       }`}
     >
-      <div className="mx-auto grid h-bottom-nav max-w-md grid-cols-5 items-stretch rounded-[1.6rem] bg-white shadow-[0_14px_34px_-10px_rgba(15,23,42,0.3)] ring-1 ring-surface-100">
+      <div className="mx-auto grid h-bottom-nav max-w-md grid-cols-5 grid-rows-[minmax(0,1fr)] items-stretch rounded-[1.6rem] bg-white shadow-[0_14px_34px_-10px_rgba(15,23,42,0.3)] ring-1 ring-surface-100">
         {TABS.map((tab) =>
           tab.primary ? <PrimaryAction key={tab.to} tab={tab} /> : <NavItem key={tab.to} tab={tab} />
         )}

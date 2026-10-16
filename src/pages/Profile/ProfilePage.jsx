@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   FileText, LogOut, MessageCircle, ChevronRight, ArrowRight, Camera, MapPin, Package,
   UserCog, KeyRound, MapPinned, Trash2, ShoppingBag, Store, Bell, Loader2, User,
-  Download, Smartphone, Check, Share, MoreVertical,
+  Download, Smartphone, Check, Share, MoreVertical, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { openAuthSheet } from '../../store/slices/uiSlice';
@@ -12,7 +12,8 @@ import { logout, updateAvatar } from '../../store/slices/authSlice';
 import usePushSubscription from '../../hooks/usePushSubscription';
 import usePwaInstall from '../../hooks/usePwaInstall';
 import { GiftArt } from '../../components/illustrations';
-import { getCountryName } from '../../utils/countries';
+import CountrySelectSheet from '../../components/common/CountrySelectSheet';
+import { getCountryName, getFlagEmoji } from '../../utils/countries';
 import { fullUserName, userInitials } from '../../utils/user';
 import { ROUTES } from '../../routes';
 
@@ -170,6 +171,10 @@ export default function ProfilePage() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const user = useSelector((state) => state.auth.user);
   const countryCode = (user?.code_pays || '').toUpperCase();
+  // Invité : pays mémorisé sur l'appareil (agences, tarifs, formulaires). Une fois
+  // connecté, le pays est celui du compte (Modifier mon profil).
+  const guestCountry = useSelector((state) => state.country);
+  const [countrySheetOpen, setCountrySheetOpen] = useState(false);
 
   // PUT /api/profile/avatar takes a plain URL string (no upload endpoint exists),
   // so we ask for the already-hosted image URL.
@@ -235,6 +240,20 @@ export default function ProfilePage() {
                 <>
                   <p className="font-heading text-xl font-bold">Bienvenue !</p>
                   <p className="text-body text-white/85">Connectez-vous pour suivre vos colis et vos achats.</p>
+                  <button
+                    type="button"
+                    onClick={() => setCountrySheetOpen(true)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-caption font-semibold transition hover:bg-white/25 active:scale-95"
+                    aria-label={guestCountry.code ? `Pays : ${guestCountry.name}. Modifier` : 'Choisir mon pays'}
+                  >
+                    {guestCountry.code ? (
+                      <span className="text-base leading-none">{getFlagEmoji(guestCountry.code)}</span>
+                    ) : (
+                      <MapPin size={13} className="text-shop-300" strokeWidth={2.6} />
+                    )}
+                    {guestCountry.name || 'Choisir mon pays'}
+                    <ChevronDown size={14} />
+                  </button>
                 </>
               )}
             </div>
@@ -313,6 +332,16 @@ export default function ProfilePage() {
           </>
         )}
       </div>
+
+      {!isAuthenticated && (
+        <CountrySelectSheet
+          open={countrySheetOpen}
+          onClose={() => setCountrySheetOpen(false)}
+          currentCode={guestCountry.code}
+          title="Votre pays"
+          description="Le pays détermine les agences, les tarifs et les formulaires d'expédition proposés. Vous pourrez le modifier à tout moment."
+        />
+      )}
     </div>
   );
 }

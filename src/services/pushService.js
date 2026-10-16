@@ -14,6 +14,14 @@ const urlBase64ToUint8Array = (base64) => {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 };
 
+// Contrat : { success, public_key }. Autres noms lus en repli (clé VAPID,
+// éventuellement imbriquée sous `data`).
+const extractPublicKey = (payload) => {
+  const src = payload?.data && typeof payload.data === 'object' ? { ...payload, ...payload.data } : payload;
+  const value = src?.public_key ?? src?.publicKey ?? src?.vapid_public_key ?? src?.vapidPublicKey ?? src?.key;
+  return typeof value === 'string' ? value.trim() : '';
+};
+
 export const isPushSupported = () =>
   typeof window !== 'undefined'
   && 'serviceWorker' in navigator
@@ -42,8 +50,9 @@ const subscribe = async () => {
   const { data } = await api.get('/push/public-key');
   // Clé VAPID absente (non configurée côté serveur) : sans elle aucun abonnement
   // n'est possible — message clair plutôt qu'un TypeError sur `null.length`.
-  const publicKey = typeof data?.public_key === 'string' ? data.public_key.trim() : '';
+  const publicKey = extractPublicKey(data);
   if (!publicKey) {
+    console.warn('[push] Réponse de GET /push/public-key sans clé exploitable :', data);
     throw new Error("Les notifications ne sont pas encore disponibles : le serveur n'a pas de clé d'envoi configurée.");
   }
 
