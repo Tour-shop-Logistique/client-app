@@ -65,9 +65,9 @@ export function estimatePickupFee(grid, distanceKm, vehicule) {
 // calculée sur la carte (services/routingService.js). Absente si aucun moteur
 // routier n'a répondu ou si l'agence n'a pas de coordonnées : le backoffice
 // confirme alors le montant à l'assignation.
-// `expediteur_latitude/longitude` et `instructions_enlevement` sont lus par
-// l'app livreur (PARCOURS_LIVREUR_API.md §4.2) mais pas encore documentés en
-// entrée de `store` : à confirmer avec le backend.
+// Point et instructions : `expediteur_latitude/longitude/instructions` en
+// entrée de `store` (api-enregistrement-expedition-client.md), stockés par le
+// serveur sur `expediteur_latitude/longitude` et `instructions_enlevement`.
 export function pickupPayload(pickup) {
   if (!pickup?.domicile) return {};
   const out = {
@@ -81,6 +81,21 @@ export function pickupPayload(pickup) {
     out.expediteur_longitude = pickup.longitude;
   }
   const instructions = (pickup.instructions || '').trim();
-  if (instructions) out.instructions_enlevement = instructions;
+  if (instructions) out.expediteur_instructions = instructions;
+  return out;
+}
+
+// Corps de POST /expedition/client/{id}/demander-enlevement | demander-livraison
+// (api-enlevement-livraison-client.md) : { mode, distance_km?, type_vehicule?,
+// latitude?, longitude?, instructions? }. Le mode n'est plus modifiable ensuite.
+export function missionRequestPayload(value) {
+  const out = { mode: value.mode, type_vehicule: value.vehicule };
+  if (value.distanceKm != null) out.distance_km = value.distanceKm;
+  if (value.latitude != null && value.longitude != null) {
+    out.latitude = value.latitude;
+    out.longitude = value.longitude;
+  }
+  const instructions = (value.instructions || '').trim();
+  if (instructions) out.instructions = instructions;
   return out;
 }

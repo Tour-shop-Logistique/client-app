@@ -50,7 +50,14 @@ const EMPTY_FORM = {
   // register only: code_pays is mandatory for a client, code_parrain is optional
   codePays: '',
   codeParrain: '',
+  // register only: WhatsApp number (E.164), mandatory. Same as `telephone`
+  // unless the user unticks the box.
+  whatsappSame: true,
+  whatsapp: '',
 };
+
+// whatsapp_number: full E.164, no separator (api-authentification-client.md).
+const E164 = /^\+[1-9]\d{6,14}$/;
 
 // A referral code can reach a new client through a share link
 // (?parrain= / ?ref= / ?code_parrain=). Read it once at module load.
@@ -148,6 +155,11 @@ export default function AuthSheet() {
       toast.error('Numéro de téléphone invalide.');
       return;
     }
+    const whatsappNumber = (form.whatsappSame ? form.telephone : form.whatsapp).trim();
+    if (!E164.test(whatsappNumber) || !isPossiblePhoneNumber(whatsappNumber)) {
+      toast.error('Numéro WhatsApp invalide.');
+      return;
+    }
     // The API wants the dialing code and the national number in separate fields.
     const { indicatif, national } = splitPhone(form.telephone.trim());
     const result = await dispatch(registerClient({
@@ -155,6 +167,7 @@ export default function AuthSheet() {
       prenoms: form.prenoms.trim(),
       indicatifTelephone: indicatif || undefined,
       telephone: national,
+      whatsappNumber,
       email: form.email.trim(),
       password: form.password,
       passwordConfirmation: form.passwordConfirmation,
@@ -336,7 +349,7 @@ export default function AuthSheet() {
               defaultCountry={(form.codePays || 'CI').toUpperCase()}
               value={form.telephone}
               onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
-              numberInputProps={{ autoComplete: 'tel', required: true }}
+              numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'tel', required: true }}
               placeholder="01 02 03 04 05"
             />
             {(() => {
@@ -346,6 +359,34 @@ export default function AuthSheet() {
               ) : null;
             })()}
             <FieldError errors={fieldErrors} name="telephone" />
+          </div>
+          <div className="text-sm font-medium text-surface-700">
+            WhatsApp
+            <label className="mt-1.5 flex items-center gap-2 font-normal text-surface-600">
+              <input
+                type="checkbox"
+                checked={form.whatsappSame}
+                onChange={(e) => setForm((f) => ({ ...f, whatsappSame: e.target.checked }))}
+              />
+              Même numéro que le téléphone
+            </label>
+            {!form.whatsappSame && (
+              <PhoneInput
+                key={`wa-${form.codePays || 'CI'}`}
+                className="phone-field mt-1.5"
+                flags={flags}
+                international
+                countryCallingCodeEditable={false}
+                limitMaxLength
+                defaultCountry={(form.codePays || 'CI').toUpperCase()}
+                value={form.whatsapp}
+                onChange={(value) => setForm((f) => ({ ...f, whatsapp: value || '' }))}
+                numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'off', required: true }}
+                placeholder="01 02 03 04 05"
+              />
+            )}
+            <p className="mt-1 text-xs text-surface-400">Vos codes de vérification y sont aussi envoyés.</p>
+            <FieldError errors={fieldErrors} name="whatsapp_number" />
           </div>
           <label className="block text-sm font-medium text-surface-700">
             Email

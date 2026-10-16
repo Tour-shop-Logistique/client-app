@@ -41,7 +41,7 @@ function Frame({ points, focusKey }) {
   return null;
 }
 
-export default function PickupMap({ agence, point, onPlace, route, focusKey }) {
+export default function PickupMap({ agence, point, onPlace, route, focusKey, pointLabel = "Point d'enlèvement" }) {
   const agencyOk = isValidPoint(agence);
   const pointOk = isValidPoint(point);
   const points = [agencyOk && [agence.lat, agence.lng], pointOk && [point.lat, point.lng]].filter(Boolean);
@@ -69,7 +69,7 @@ export default function PickupMap({ agence, point, onPlace, route, focusKey }) {
               draggable
               eventHandlers={{ dragend: (e) => { const ll = e.target.getLatLng(); onPlace(ll.lat, ll.lng); } }}
             >
-              <Popup>Point d'enlèvement</Popup>
+              <Popup>{pointLabel}</Popup>
             </Marker>
           )}
         </MapContainer>

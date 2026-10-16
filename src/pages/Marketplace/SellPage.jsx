@@ -16,7 +16,7 @@ import useRequireAuth from '../../hooks/useRequireAuth';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
 import {
-  formatMoney, personName, EMPTY_ADDRESS, toRetraitPayload, retraitErrors, RETRAIT_REQUIRED,
+  formatMoney, personName, EMPTY_ADDRESS, toRetraitPayload, retraitErrors, retraitServerErrors, RETRAIT_REQUIRED,
 } from '../../utils/marketplace';
 import { loadJson, saveJson, loadFiles, saveFiles, clearDraft } from '../../utils/draftStore';
 import { ROUTES } from '../../routes';
@@ -123,15 +123,16 @@ export default function SellPage() {
 
   const save = (publish) =>
     handleSubmit((values) => {
-      // Brouillon : adresse libre. Publication : adresse complete + GPS.
-      if (publish) {
-        const errs = retraitErrors(retrait);
-        setRetraitErrs(errs);
-        if (Object.keys(errs).length) {
-          toast.error('Complétez l’adresse de retrait pour publier.');
-          retraitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return;
-        }
+      // Brouillon comme publication passent par `store()`, qui exige l'adresse
+      // de retrait (contact, ville, GPS) : on la verifie dans les deux cas.
+      const errs = retraitErrors(retrait);
+      setRetraitErrs(errs);
+      if (Object.keys(errs).length) {
+        toast.error(errs.gps && Object.keys(errs).length === 1
+          ? 'Indiquez la position GPS du lieu de retrait.'
+          : 'Complétez l’adresse de retrait.');
+        retraitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
       }
       requireAuth(async () => {
         setSubmitting(publish ? 'publish' : 'draft');
@@ -147,6 +148,14 @@ export default function SellPage() {
           }
           navigate(ROUTES.MARKETPLACE_MY_LISTINGS, { replace: true });
         } catch (err) {
+          // 422 sur l'adresse de retrait : on signale le champ precis.
+          const serverErrs = created ? {} : retraitServerErrors(err);
+          if (Object.keys(serverErrs).length) {
+            setRetraitErrs(serverErrs);
+            toast.error(serverErrs.gps ? 'Position GPS du lieu de retrait manquante.' : 'Adresse de retrait incomplète.');
+            retraitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
           const blocked = handleError(err, "Impossible d'enregistrer l'annonce.");
           // Creee mais pas publiee : ne pas laisser re-soumettre (doublon).
           if (created && !blocked) navigate(ROUTES.MARKETPLACE_MY_LISTINGS, { replace: true });
@@ -251,7 +260,7 @@ export default function SellPage() {
               <MapPin size={16} className="text-shop-700" /> Adresse de retrait
             </h2>
             <p className="text-caption text-surface-500">
-              Où le livreur récupère l’article. Obligatoire pour publier, avec la position GPS du lieu.
+              Où le livreur récupère l’article. Obligatoire, avec la position GPS du lieu (votre position ou un point sur la carte).
             </p>
           </div>
           <AddressFields
@@ -260,6 +269,7 @@ export default function SellPage() {
             idPrefix="retrait"
             required={RETRAIT_REQUIRED}
             errors={retraitErrs}
+            withMap
           />
         </section>
 

@@ -1,7 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { LocateFixed, Loader2, MapPin, Check } from 'lucide-react';
 import useGeolocation from '../../hooks/useGeolocation';
 import useCommunes from '../../hooks/useCommunes';
+import PickupMap from '../expedition/PickupMap';
+import PlaceSearch from '../expedition/PlaceSearch';
+import { isValidPoint } from '../../services/routingService';
 
 // Helpers associes (EMPTY_ADDRESS, toRetraitPayload, retraitErrors…) : utils/marketplace.js.
 
@@ -12,16 +16,26 @@ import useCommunes from '../../hooks/useCommunes';
 // si la liste ne peut pas etre chargee.
 // `required` : liste des champs obligatoires (marques d'un *), `gps` compris.
 // `errors` : { [champ]: message }, `gps` pour la position.
+// `withMap` : la position se choisit aussi sur une carte (tap, marqueur deplacable,
+// recherche d'un lieu) — utile quand on n'est pas sur place (adresse de retrait).
 
 export default function AddressFields({
   value, onChange, required = [], withInstructions = false, errors = {}, disabled = false, idPrefix = 'addr',
+  withMap = false,
 }) {
   const { position, loading, error, locate } = useGeolocation();
   const { communes, status } = useCommunes();
+  const countryCode = useSelector((state) => state.country?.code);
+  const [focusKey, setFocusKey] = useState(0);
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
 
+  const placePoint = (lat, lng, { refocus = false } = {}) => {
+    onChange({ ...value, latitude: lat, longitude: lng });
+    if (refocus) setFocusKey((k) => k + 1);
+  };
+
   useEffect(() => {
-    if (position) onChange({ ...value, latitude: position.lat, longitude: position.lng });
+    if (position) placePoint(position.lat, position.lng, { refocus: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position]);
 
@@ -56,12 +70,15 @@ export default function AddressFields({
   const freeVille = status === 'error' || status === 'none' || (status === 'idle' && communes.length === 0);
 
   const located = value.latitude != null && value.longitude != null;
+  const point = isValidPoint({ lat: value.latitude, lng: value.longitude })
+    ? { lat: Number(value.latitude), lng: Number(value.longitude) }
+    : null;
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         {field('nom', 'Nom du contact', { maxLength: 255, autoComplete: 'name' })}
-        {field('telephone', 'Téléphone', { maxLength: 20, inputMode: 'tel', autoComplete: 'tel' })}
+        {field('telephone', 'Téléphone', { maxLength: 20, type: 'tel', inputMode: 'tel', autoComplete: 'tel' })}
       </div>
 
       <label className="block" htmlFor={`${idPrefix}-ville`}>
@@ -152,8 +169,33 @@ export default function AddressFields({
           {located && <MapPin size={14} />}
         </button>
         {errorText('gps')}
-        {error && !located && <p className="mt-1 text-caption text-amber-700">Position indisponible : {error}</p>}
+        {error && !located && (
+          <p className="mt-1 text-caption text-amber-700">
+            Position indisponible : {error}{withMap && '. Recherchez un lieu ou touchez la carte.'}
+          </p>
+        )}
       </div>
+
+      {withMap && !disabled && (
+        <div className="space-y-2">
+          <PlaceSearch
+            countryCode={countryCode}
+            near={point}
+            onSelect={(p) => placePoint(p.lat, p.lng, { refocus: true })}
+          />
+          <PickupMap
+            point={point}
+            onPlace={(lat, lng) => placePoint(lat, lng)}
+            focusKey={focusKey}
+            pointLabel="Lieu de retrait"
+          />
+          <p className="text-caption text-surface-500">
+            {point
+              ? 'Pas le bon endroit ? Déplacez le marqueur, touchez la carte ou recherchez un lieu.'
+              : 'Pas sur place ? Recherchez un lieu ou touchez la carte à l’endroit où le livreur récupérera l’article.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

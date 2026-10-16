@@ -10,7 +10,7 @@ import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
 import {
   ANNONCE_STATUTS, annoncePhotos, handleMediaError, fromRetrait, toRetraitPayload, hasRetraitAddress,
-  retraitErrors, RETRAIT_REQUIRED,
+  retraitErrors, retraitServerErrors, RETRAIT_REQUIRED,
 } from '../../utils/marketplace';
 import { ROUTES, productPath } from '../../routes';
 
@@ -103,7 +103,13 @@ export default function ListingEditPage() {
       setAnnonce((a) => ({ ...a, ...updated }));
       toast.success('Annonce mise à jour');
     } catch (err) {
-      handleError(err, 'Mise à jour impossible.');
+      const serverErrs = retraitServerErrors(err);
+      if (Object.keys(serverErrs).length) {
+        setRetraitErrs(serverErrs);
+        toast.error(serverErrs.gps ? 'Position GPS du lieu de retrait invalide.' : 'Adresse de retrait incomplète.');
+      } else {
+        handleError(err, 'Mise à jour impossible.');
+      }
     } finally {
       setSaving(false);
     }
@@ -261,9 +267,9 @@ export default function ListingEditPage() {
                 Copiée sur la commande quand vous choisissez une livraison par livreur.
               </p>
             </div>
-            {!hasRetraitAddress(annonce) && (
+            {!locked && !hasRetraitAddress(annonce) && (
               <p className="rounded-xl bg-amber-50 p-3 text-caption text-amber-800">
-                Sans adresse de retrait, le livreur ne saura pas où récupérer l’article.
+                Complétez votre adresse de retrait (contact, ville et position GPS) : sans elle, le livreur ne peut ni calculer la distance ni savoir où récupérer l’article.
               </p>
             )}
             <AddressFields
@@ -273,6 +279,7 @@ export default function ListingEditPage() {
               disabled={locked}
               required={RETRAIT_REQUIRED}
               errors={retraitErrs}
+              withMap
             />
           </section>
         </fieldset>

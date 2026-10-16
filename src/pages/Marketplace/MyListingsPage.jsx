@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Rocket, EyeOff, Pencil, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Rocket, EyeOff, Pencil, ExternalLink, Loader2, RefreshCw, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import SegmentedTabs from '../../components/marketplace/SegmentedTabs';
@@ -10,7 +10,7 @@ import { ProductImage } from '../../components/marketplace/ProductCard';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
-import { ANNONCE_STATUTS, annonceCover, formatMoney } from '../../utils/marketplace';
+import { ANNONCE_STATUTS, annonceCover, formatMoney, hasRetraitAddress } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { ROUTES, listingEditPath, productPath } from '../../routes';
 import { EmptyTagArt } from '../../components/illustrations';
@@ -54,6 +54,14 @@ function ListingCard({ annonce, busy, onPublish, onUnpublish }) {
           </div>
         </div>
       </div>
+      {canEdit && annonce.statut !== 'masquee' && !hasRetraitAddress(annonce) && (
+        <Link
+          to={listingEditPath(annonce.id)}
+          className="flex items-center gap-1.5 border-t border-surface-100 bg-amber-50 px-3 py-2 text-caption font-medium text-amber-800"
+        >
+          <MapPin size={13} className="shrink-0" /> Complétez votre adresse de retrait (position GPS) pour être livrable.
+        </Link>
+      )}
       {annonce.statut === 'masquee' && (
         <p className="border-t border-surface-100 bg-red-50 px-3 py-2 text-caption text-red-700">
           Cette annonce a été masquée par la modération et n’est plus visible.

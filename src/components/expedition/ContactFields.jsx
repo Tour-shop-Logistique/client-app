@@ -1,16 +1,38 @@
 import { useState } from 'react';
-import { User } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { BookMarked, MapPin, User } from 'lucide-react';
+import LocationPicker from './LocationPicker';
+import { applyFavorite, whatsappInvalid } from '../../utils/contact';
 
 // Shared expediteur/destinataire block for the expedition forms.
 // Shape + helpers (EMPTY_CONTACT, contactIsComplete, contactPayload) live in
 // src/utils/contact.js.
 //
-// The ville field never accepts free text here: pass `villeFixed` to lock it
-// to the commune already chosen during the trajet step (destinataire), or
-// `communes` to offer a select of the country's communes (expediteur).
-export default function ContactFields({ title, data, onChange, communes, villeFixed }) {
+// The ville field: pass `villeFixed` to lock it to the commune already chosen
+// during the trajet step, `communes` to offer a select of the country's
+// communes, or neither for free text.
+// `children` : bloc complémentaire affiché sous l'adresse (ex. pièce d'identité).
+// `withLocation` : position GPS + instructions pour le livreur (optionnelles,
+// `{prefix}_latitude/longitude/instructions`), utiles pour une livraison ou un
+// enlèvement à domicile.
+// Les adresses favorites du profil (`user.adresses_favoris`) préremplissent
+// adresse, ville et code postal.
+export default function ContactFields({
+  title, data, onChange, communes, villeFixed, withLocation = false, locationLabel = 'Position pour le livreur', children,
+}) {
   const [showMore, setShowMore] = useState(false);
+  const [showLocation, setShowLocation] = useState(data.latitude != null || Boolean(data.instructions));
+  const favorites = useSelector((state) => state.auth.user?.adresses_favoris);
   const set = (field) => (e) => onChange({ ...data, [field]: e.target.value });
+
+  const favoriteList = Array.isArray(favorites) ? favorites.filter((f) => f?.adresse) : [];
+  const pickFavorite = (e) => {
+    const fav = favoriteList[Number(e.target.value)];
+    if (!fav) return;
+    // Une ville imposée (commune du trajet) ou hors liste des communes n'est pas recopiée.
+    const keepVille = Boolean(villeFixed) || (communes && !communes.some((c) => c.nom === fav.ville));
+    onChange(applyFavorite(data, fav, { keepVille }));
+  };
 
   return (
     <div className="card space-y-3 p-4">
@@ -18,13 +40,26 @@ export default function ContactFields({ title, data, onChange, communes, villeFi
         <User size={18} className="text-primary-600" />
         <p className="font-semibold text-surface-900">{title}</p>
       </div>
+      {favoriteList.length > 0 && (
+        <label className="block text-sm font-medium text-surface-700">
+          <span className="flex items-center gap-1.5"><BookMarked size={14} className="text-primary-600" /> Adresse favorite</span>
+          <select className="input-field mt-1.5" value="" onChange={pickFavorite}>
+            <option value="">Préremplir depuis mes adresses…</option>
+            {favoriteList.map((f, i) => (
+              <option key={`${f.nom}-${i}`} value={i}>
+                {[f.nom, f.adresse, f.ville].filter(Boolean).join(' · ')}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="block text-sm font-medium text-surface-700">
         Nom et prenom
         <input className="input-field mt-1.5" placeholder="Ex: Jean Kouassi" value={data.nom_prenom} onChange={set('nom_prenom')} />
       </label>
       <label className="block text-sm font-medium text-surface-700">
         Telephone
-        <input className="input-field mt-1.5" inputMode="tel" placeholder="Ex: 0102030405" value={data.telephone} onChange={set('telephone')} />
+        <input className="input-field mt-1.5" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ex: 0102030405" value={data.telephone} onChange={set('telephone')} />
       </label>
       <label className="block text-sm font-medium text-surface-700">
         Adresse
@@ -47,11 +82,72 @@ export default function ContactFields({ title, data, onChange, communes, villeFi
           <input className="input-field mt-1.5" placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
         )}
       </div>
+      {children}
+
+      {withLocation && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowLocation((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600"
+          >
+            <MapPin size={13} />
+            {showLocation ? 'Masquer la position pour le livreur' : '+ Position et instructions pour le livreur (recommandé)'}
+          </button>
+          {showLocation && (
+            <div className="space-y-3 border-t border-surface-100 pt-3">
+              <LocationPicker
+                value={data}
+                onChange={(lat, lng) => onChange({ ...data, latitude: lat, longitude: lng })}
+                label={locationLabel}
+                pointLabel={title}
+              />
+              {data.latitude != null && (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-surface-500"
+                  onClick={() => onChange({ ...data, latitude: null, longitude: null })}
+                >
+                  Retirer la position
+                </button>
+              )}
+              <label className="block text-sm font-medium text-surface-700">
+                Instructions au livreur (optionnel)
+                <textarea
+                  rows={2}
+                  maxLength={500}
+                  className="input-field mt-1.5"
+                  placeholder="Ex : immeuble gris, 3e étage, appeler en arrivant"
+                  value={data.instructions || ''}
+                  onChange={set('instructions')}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
       <button type="button" onClick={() => setShowMore((v) => !v)} className="text-xs font-semibold text-primary-600">
-        {showMore ? 'Masquer les champs optionnels' : '+ Email, societe, code postal...'}
+        {showMore ? 'Masquer les champs optionnels' : '+ WhatsApp, email, societe, code postal...'}
       </button>
       {showMore && (
         <div className="space-y-3 border-t border-surface-100 pt-3">
+          <label className="block text-sm font-medium text-surface-700">
+            WhatsApp (optionnel)
+            <input
+              className="input-field mt-1.5"
+              type="tel"
+              inputMode="tel"
+              placeholder="Ex: +2250102030405"
+              value={data.whatsapp || ''}
+              onChange={set('whatsapp')}
+            />
+            {whatsappInvalid(data) ? (
+              <span className="mt-1 block text-xs text-red-600">Format international attendu : + indicatif + numéro, sans espace.</span>
+            ) : (
+              <span className="mt-1 block text-xs font-normal text-surface-400">Pour recevoir aussi les notifications de l’expédition sur WhatsApp.</span>
+            )}
+          </label>
           <label className="block text-sm font-medium text-surface-700">
             Email (optionnel)
             <input type="email" className="input-field mt-1.5" value={data.email} onChange={set('email')} />

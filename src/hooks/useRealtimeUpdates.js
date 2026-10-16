@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
 import { orderPath, salePath, expeditionDetailPath } from '../routes';
 import { getStatutMeta } from '../utils/expeditionStatus';
+import { formatPrice } from '../utils/format';
 
 // Couche pratique au-dessus de useWebSocket (meme idee que dans
 // l'app agence-partenaire) : branche l'ID du client connecte depuis le
@@ -57,6 +58,9 @@ export function useRealtimeUpdates(onUpdate, options = {}) {
       : undefined,
     onExpeditionDelivered: shouldListen('expeditions')
       ? (d, m) => emit(d, m, 'expedition.delivered')
+      : undefined,
+    onExpeditionTariffRecalculated: shouldListen('expeditions')
+      ? (d, m) => emit(d, m, 'expedition.tarif_recalculated')
       : undefined,
     onColisStatusChanged: shouldListen('colis')
       ? (d, m) => emit(d, m, 'colis.status_changed')
@@ -196,6 +200,17 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
         case 'mission.step': {
           const step = MISSION_STEP_TOASTS[item?.etape];
           if (step) toast[step.tone](step.title, { action: openExp, duration: item?.etape === 'colis_livre' ? 10000 : undefined });
+          break;
+        }
+        case 'expedition.tarif_recalculated': {
+          // changes.montant_expedition = { from, to } (WEBSOCKETS.md).
+          const montant = meta?.changes?.montant_expedition;
+          const to = montant?.to ?? item?.montant_expedition;
+          toast.info('Le tarif de votre expédition a été ajusté après contrôle des colis', {
+            description: [ref && `Expédition ${ref}`, to != null && `Nouveau montant : ${formatPrice(to)}`].filter(Boolean).join(' · ') || undefined,
+            action: openExp,
+            duration: 10000,
+          });
           break;
         }
         case 'expedition.delivered':

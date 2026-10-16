@@ -251,6 +251,7 @@ function DeliveryChoicePanel({ commande, onDone, handleError }) {
                   <input
                     id="direct-telephone"
                     className="input-field flex-1"
+                    type="tel"
                     inputMode="tel"
                     autoComplete="off"
                     placeholder="Ex : 0705060708"

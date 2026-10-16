@@ -17,9 +17,9 @@ const listCommunes = async (codePays) => {
 };
 
 // GET /api/expedition/client/formats-colis — colis formats (Petit/Moyen/Grand…)
-// of the backoffice. Public : connecté, le pays vient de User.code_pays ; invité,
-// passer `code_pays` (REPONSE_DEMANDE_BACKEND_APP_CLIENT_COMPLETE.md A2). Sorted
-// by `ordre`; exactly one `is_default: true`; a null max = unlimited.
+// of the backoffice. Public route: always pass `code_pays` (422 without it, the
+// token isn't read there). Sorted by `ordre`; exactly one `is_default: true`;
+// a null max = unlimited.
 const getColisFormats = async (codePays) => {
   const { data } = await api.get('/expedition/client/formats-colis', {
     params: codePays ? { code_pays: codePays } : undefined,
@@ -27,9 +27,10 @@ const getColisFormats = async (codePays) => {
   return data;
 };
 
-// GET /api/expedition/client/grille-tarifs-enlevement?commune_id= — grille brute
-// des tarifs d'enlèvement groupage par tranche de km et véhicule. Format de
-// réponse non documenté côté app (lecture défensive : utils/pickup.js).
+// GET /api/expedition/client/grille-tarifs-enlevement?commune_id= — tranches
+// actives { type_vehicule, km_min, km_max, montant } dans `data`, partagées
+// enlèvement / livraison à domicile (mode groupage). `data: []` possible si
+// aucune grille n'est configurée (pas une erreur). Lecture : utils/pickup.js.
 const getPickupTariffGrid = async (communeId) => {
   const { data } = await api.get('/expedition/client/grille-tarifs-enlevement', { params: { commune_id: communeId } });
   return data;
@@ -126,10 +127,28 @@ const clientStatistics = async () => {
 
 // --- Missions du dernier kilomètre (enlèvement, livraison à domicile) --------
 
-// GET /api/expedition/client/{id}/missions -> { success, data: [{ id, type,
-// statut, preuve: { photo_url, signature_data, latitude, longitude, horodatage } | null }] }
+// GET /api/expedition/client/{id}/missions -> { success, data: [{ id, type, mode,
+// statut, montant, livreur (si assignee), preuve: { photo, signature, latitude,
+// longitude } | null }] } — api-enlevement-livraison-client.md.
 const clientMissions = async (id) => {
   const { data } = await api.get(`/expedition/client/${id}/missions`);
+  return data;
+};
+
+// POST /api/expedition/client/{id}/demander-enlevement | demander-livraison —
+// corps { mode: groupage|express, distance_km?, type_vehicule?, latitude?,
+// longitude?, instructions? } (utils/pickup.js missionRequestPayload).
+// 201 { message, mission } ; 422 si une demande du même type est déjà en cours
+// ou si `distance_km` sort de la grille de la commune ; 404 si l'expédition
+// n'appartient pas au client. `message` distingue groupage (transmise au
+// backoffice) et express (diffusée aux livreurs).
+const requestPickup = async (id, payload) => {
+  const { data } = await api.post(`/expedition/client/${id}/demander-enlevement`, payload);
+  return data;
+};
+
+const requestHomeDelivery = async (id, payload) => {
+  const { data } = await api.post(`/expedition/client/${id}/demander-livraison`, payload);
   return data;
 };
 
@@ -201,6 +220,8 @@ const expeditionService = {
   clientCancel,
   clientStatistics,
   clientMissions,
+  requestPickup,
+  requestHomeDelivery,
   missionOffers,
   acceptOffer,
   cancelMission,

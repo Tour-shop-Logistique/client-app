@@ -33,11 +33,15 @@ const clearSession = () => {
 // only link between the client and a backoffice/country (tarification, parrainage).
 // `codeParrain` is optional — an existing account's `code_parrainage`; when sent
 // it must match a real account (422 `code_parrain` otherwise) and sets `parrain_id`.
+// `whatsappNumber` is mandatory (since 2026-10-06), full E.164 (`+2250102030405`,
+// regex ^\+[1-9]\d{6,14}$) — 422 `whatsapp_number` otherwise. The email code is
+// duplicated on WhatsApp (best-effort); email stays the only blocking channel.
 const register = async ({
   nom,
   prenoms,
   telephone,
   indicatifTelephone,
+  whatsappNumber,
   email,
   password,
   passwordConfirmation,
@@ -49,6 +53,7 @@ const register = async ({
     prenoms: prenoms || undefined,
     indicatif_telephone: indicatifTelephone || undefined,
     telephone,
+    whatsapp_number: whatsappNumber,
     email,
     password,
     password_confirmation: passwordConfirmation,

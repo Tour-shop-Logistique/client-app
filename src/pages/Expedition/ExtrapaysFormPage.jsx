@@ -16,7 +16,6 @@ import {
   MapPinned,
   Plus,
   Trash2,
-  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -45,6 +44,16 @@ import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
+import ColisFormatFields from '../../components/expedition/ColisFormatFields';
+import IdentityFields from '../../components/expedition/IdentityFields';
+import useColisFormats from '../../hooks/useColisFormats';
+import { applyFormat, defaultFormat, overweight } from '../../utils/colisFormat';
+import {
+  EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
+} from '../../utils/contact';
+import ContactFields from '../../components/expedition/ContactFields';
+
+const EMPTY_LD_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', articles: [] };
 
 const MODES = [
   {
@@ -67,26 +76,13 @@ const TYPE_LABELS = {
   groupage_afrique: 'Groupage Afrique',
 };
 
-const EMPTY_CONTACT = {
-  nom_prenom: '',
-  telephone: '',
-  email: '',
-  adresse: '',
-  ville: '',
-  societe: '',
-  code_postal: '',
-  etat: '',
-  quartier: '',
-};
-
 function typeLabel(type) {
   return TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function emptyToNull(value) {
-  const trimmed = (value || '').trim();
-  return trimmed ? trimmed : null;
-}
+
+// Booleen Laravel, parfois serialise en 1 / "1".
+const isEligibleLd = (p) => p?.eligible_ld === true || p?.eligible_ld === 1 || p?.eligible_ld === '1';
 
 // Shared with the interactive groupage selector below so the persistent
 // estimate bar always matches what each category's radio buttons show.
@@ -117,10 +113,6 @@ function EstimateBar({ total, status }) {
       <span className="text-base font-bold text-primary-800">{formatPrice(total)}</span>
     </div>
   );
-}
-
-function contactIsComplete(data) {
-  return Boolean(data.nom_prenom.trim() && data.telephone.trim() && data.adresse.trim() && data.ville.trim());
 }
 
 // --- Simulation (devis) -----------------------------------------------------
@@ -155,7 +147,7 @@ function SimulationError({ message }) {
   );
 }
 
-// Carte du montant : total en grand + décomposition base / prestation / emballage.
+// Carte du montant : total en grand + frais d'emballage éventuels.
 function SimulationTotal({ total, lines = [], caption }) {
   return (
     <div className="brand-gradient relative overflow-hidden rounded-3xl p-5 shadow-brand">
@@ -275,11 +267,8 @@ function DevisSummaryLD({ status, error, devis, colisList = [] }) {
   const details = devis.details_colis ?? [];
   const emballage = details.reduce((s, d) => s + (Number(d.frais_emballage) || 0), 0);
   const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
-  const lines = [
-    { label: 'Transport', value: devis.montant_base },
-    Number(devis.montant_prestation) > 0 && { label: 'Prestation', value: devis.montant_prestation },
-    emballage > 0 && { label: 'Emballage', value: emballage },
-  ].filter((l) => l && l.value != null);
+  // Le montant de prestation est interne : seul l'emballage est détaillé au client.
+  const lines = emballage > 0 ? [{ label: "Frais d'emballage", value: emballage }] : [];
 
   return (
     <div className="space-y-3">
@@ -327,21 +316,9 @@ function DevisSummaryLD({ status, error, devis, colisList = [] }) {
                       <span className="text-right font-semibold text-surface-800">{fmtKg(d.indice_arrondi)}</span>
                     </>
                   )}
-                  {d.montant_base != null && (
-                    <>
-                      <span className="text-surface-500">Transport</span>
-                      <span className="text-right font-semibold text-surface-800">{formatPrice(d.montant_base)}</span>
-                    </>
-                  )}
-                  {Number(d.montant_prestation) > 0 && (
-                    <>
-                      <span className="text-surface-500">Prestation</span>
-                      <span className="text-right font-semibold text-surface-800">{formatPrice(d.montant_prestation)}</span>
-                    </>
-                  )}
                   {Number(d.frais_emballage) > 0 && (
                     <>
-                      <span className="text-surface-500">Emballage</span>
+                      <span className="text-surface-500">Frais d'emballage</span>
                       <span className="text-right font-semibold text-surface-800">{formatPrice(d.frais_emballage)}</span>
                     </>
                   )}
@@ -371,66 +348,10 @@ function DevisSummary({ mode, status, error, devis, typesChoisis, onSelectType, 
   );
 }
 
-function ContactFields({ title, data, onChange }) {
-  const [showMore, setShowMore] = useState(false);
-  const set = (field) => (e) => onChange({ ...data, [field]: e.target.value });
-
-  return (
-    <div className="card space-y-3 p-4">
-      <div className="flex items-center gap-2">
-        <User size={18} className="text-primary-600" />
-        <p className="font-semibold text-surface-900">{title}</p>
-      </div>
-      <label className="block text-sm font-medium text-surface-700">
-        Nom et prenom
-        <input className="input-field mt-1.5" placeholder="Ex: Jean Kouassi" value={data.nom_prenom} onChange={set('nom_prenom')} />
-      </label>
-      <label className="block text-sm font-medium text-surface-700">
-        Telephone
-        <input className="input-field mt-1.5" placeholder="Ex: 0102030405" value={data.telephone} onChange={set('telephone')} />
-      </label>
-      <label className="block text-sm font-medium text-surface-700">
-        Adresse
-        <input className="input-field mt-1.5" placeholder="Ex: Rue 12" value={data.adresse} onChange={set('adresse')} />
-      </label>
-      <label className="block text-sm font-medium text-surface-700">
-        Ville
-        <input className="input-field mt-1.5" placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
-      </label>
-      <button type="button" onClick={() => setShowMore((v) => !v)} className="text-xs font-semibold text-primary-600">
-        {showMore ? 'Masquer les champs optionnels' : '+ Email, societe, code postal...'}
-      </button>
-      {showMore && (
-        <div className="space-y-3 border-t border-surface-100 pt-3">
-          <label className="block text-sm font-medium text-surface-700">
-            Email (optionnel)
-            <input type="email" className="input-field mt-1.5" value={data.email} onChange={set('email')} />
-          </label>
-          <label className="block text-sm font-medium text-surface-700">
-            Societe (optionnel)
-            <input className="input-field mt-1.5" value={data.societe} onChange={set('societe')} />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block text-xs font-medium text-surface-600">
-              Code postal
-              <input className="input-field mt-1.5" value={data.code_postal} onChange={set('code_postal')} />
-            </label>
-            <label className="block text-xs font-medium text-surface-600">
-              Etat / Region
-              <input className="input-field mt-1.5" value={data.etat} onChange={set('etat')} />
-            </label>
-          </div>
-          <label className="block text-sm font-medium text-surface-700">
-            Quartier (optionnel)
-            <input className="input-field mt-1.5" value={data.quartier} onChange={set('quartier')} />
-          </label>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SubmitResultScreen({ result, pickupMode, onNewExpedition }) {
+// Recuperation agence : 201 (succes total/partiel) ou 422 (aucune creee),
+// toujours avec `resultats[]` par categorie — chaque echec porte son `message`.
+// `categoryNames` : { category_id: nom } tire du devis, pour dire lesquelles.
+function SubmitResultScreen({ result, pickupMode, onNewExpedition, onBack, categoryNames = {} }) {
   const navigate = useNavigate();
   const isGroupage = Array.isArray(result.resultats);
   const successes = isGroupage ? result.resultats.filter((r) => r.success) : result.expedition ? [{ expedition: result.expedition }] : [];
@@ -486,21 +407,28 @@ function SubmitResultScreen({ result, pickupMode, onNewExpedition }) {
           <div className="space-y-2">
             <p className="text-sm font-semibold text-red-600">Non enregistree(s)</p>
             {failures.map((f, i) => (
-              <div key={i} className="card border border-red-100 bg-red-50 p-4 text-sm text-red-700">
-                {f.message}
+              <div key={f.category_id || i} className="card border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                {categoryNames[f.category_id] && <p className="font-semibold">{categoryNames[f.category_id]}</p>}
+                <p>{f.message || "Cette catégorie n'a pas pu être enregistrée."}</p>
               </div>
             ))}
           </div>
         )}
 
-        <div className="flex gap-2">
-          <button type="button" className="btn-secondary flex-1" onClick={() => navigate(ROUTES.EXPEDITION_HISTORY)}>
-            Mes expeditions
+        {successes.length === 0 ? (
+          <button type="button" className="btn-primary w-full" onClick={onBack}>
+            Revenir au formulaire
           </button>
-          <button type="button" className="btn-primary flex-1" onClick={onNewExpedition}>
-            Nouvelle expedition
-          </button>
-        </div>
+        ) : (
+          <div className="flex gap-2">
+            <button type="button" className="btn-secondary flex-1" onClick={() => navigate(ROUTES.EXPEDITION_HISTORY)}>
+              Mes expeditions
+            </button>
+            <button type="button" className="btn-primary flex-1" onClick={onNewExpedition}>
+              Nouvelle expedition
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -539,6 +467,13 @@ export default function ExtrapaysFormPage() {
 
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState('idle');
+
+  // Formats de colis (LD) : le format choisi remplit les dimensions du colis.
+  const { formats, status: formatsStatus } = useColisFormats();
+  useEffect(() => {
+    const def = defaultFormat(formats);
+    if (def) setColisList((cl) => cl.map((c) => (c.format_colis_id ? c : applyFormat(c, def))));
+  }, [formats]);
 
   // Destination countries actually tariffed from the departure backoffice
   // (GET /api/expedition/client/pays-disponibles) — feeds the improved picker.
@@ -590,7 +525,7 @@ export default function ExtrapaysFormPage() {
 
   useEffect(() => {
     if (!user) return;
-    setExpediteur((e) => (e.nom_prenom || e.telephone ? e : { ...e, nom_prenom: user.name || '', telephone: user.phone || '' }));
+    setExpediteur((e) => (e.nom_prenom || e.telephone ? e : { ...e, nom_prenom: [user.nom, user.prenoms].filter(Boolean).join(' '), telephone: user.telephone || '' }));
   }, [user]);
 
   // Used by both the "Continuer"/"Retour" buttons and the clickable step
@@ -614,7 +549,11 @@ export default function ExtrapaysFormPage() {
     setColisList([]);
     setAgence(null);
     setTypesChoisis({});
-    setExpediteur({ ...EMPTY_CONTACT, nom_prenom: user?.name || '', telephone: user?.phone || '' });
+    setExpediteur({
+      ...EMPTY_CONTACT,
+      nom_prenom: [user?.nom, user?.prenoms].filter(Boolean).join(' '),
+      telephone: user?.telephone || '',
+    });
     setDestinataire(EMPTY_CONTACT);
     setPickup(EMPTY_PICKUP);
     setDevis(null);
@@ -636,7 +575,7 @@ export default function ExtrapaysFormPage() {
     }
     if (value === 'livraison_domicile') {
       setArticles([]);
-      setColisList((list) => (list.length ? list : [{ poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]));
+      setColisList((list) => (list.length ? list : [applyFormat({ ...EMPTY_LD_COLIS }, defaultFormat(formats))]));
     } else {
       setColisList([]);
     }
@@ -663,11 +602,14 @@ export default function ExtrapaysFormPage() {
   useEffect(() => {
     if (!country.code || !mode) return;
     setProductsStatus('loading');
-    const params = mode === 'livraison_domicile' ? { code_pays: country.code, eligible_ld: 1 } : { code_pays: country.code };
+    // GET /produits ne filtre que par `code_pays` : en mode LD, l'eligibilite
+    // (`eligible_ld === true`) est a la charge du frontend
+    // (api-enregistrement-expedition-client.md).
     produitService
-      .list(params)
+      .list({ code_pays: country.code })
       .then((data) => {
-        setProducts(data.products ?? []);
+        const list = data.products ?? [];
+        setProducts(mode === 'livraison_domicile' ? list.filter(isEligibleLd) : list);
         setProductsStatus('idle');
       })
       .catch(() => setProductsStatus('error'));
@@ -759,7 +701,7 @@ export default function ExtrapaysFormPage() {
     setArticles((list) => list.filter((_, i) => i !== index));
   };
 
-  const addColis = () => setColisList((list) => [...list, { poids: '', longueur: '', largeur: '', hauteur: '', articles: [] }]);
+  const addColis = () => setColisList((list) => [...list, applyFormat({ ...EMPTY_LD_COLIS }, defaultFormat(formats))]);
   const removeColis = (index) => setColisList((list) => list.filter((_, i) => i !== index));
   const updateColisField = (index, field, value) =>
     setColisList((list) => list.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
@@ -805,7 +747,8 @@ export default function ExtrapaysFormPage() {
   const canContinueStep3 =
     mode === 'livraison_domicile'
       ? colisList.length > 0 &&
-        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0)
+        colisList.every((c) => Number(c.poids) > 0 && c.articles.length > 0
+          && !overweight(c, formats.find((f) => f.id === c.format_colis_id)))
       : articles.length > 0 && articles.every((a) => Number(a.poids) > 0);
 
   const groupageHasShippableGroup = mode !== 'recuperation_agence' || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
@@ -813,7 +756,7 @@ export default function ExtrapaysFormPage() {
     mode !== 'recuperation_agence' || !Array.isArray(devis) || devis.every((g) => g.types_eligibles.length === 0 || Boolean(typesChoisis[g.category_id]));
   const canContinueStep4 = Boolean(agence) && groupageHasShippableGroup && groupageAllChoicesMade;
 
-  const canContinueStep5 = contactIsComplete(expediteur) && contactIsComplete(destinataire);
+  const canContinueStep5 = contactIsComplete(expediteur) && contactIsComplete(destinataire) && !identityExpired(expediteur);
 
   const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis);
 
@@ -822,25 +765,14 @@ export default function ExtrapaysFormPage() {
       setSubmitting(true);
       setSubmitError('');
       try {
-        const contactFields = (prefix, data) => ({
-          [`${prefix}_nom_prenom`]: data.nom_prenom.trim(),
-          [`${prefix}_telephone`]: data.telephone.trim(),
-          [`${prefix}_email`]: emptyToNull(data.email),
-          [`${prefix}_adresse`]: data.adresse.trim(),
-          [`${prefix}_ville`]: data.ville.trim(),
-          [`${prefix}_societe`]: emptyToNull(data.societe),
-          [`${prefix}_code_postal`]: emptyToNull(data.code_postal),
-          [`${prefix}_etat`]: emptyToNull(data.etat),
-          [`${prefix}_quartier`]: emptyToNull(data.quartier),
-        });
-
         const base = {
           mode,
           code_pays_depart: country.code,
           code_pays_destination: paysDestination,
           agence_id: agence.id,
-          ...contactFields('expediteur', expediteur),
-          ...contactFields('destinataire', destinataire),
+          ...contactPayload('expediteur', expediteur),
+          ...identityPayload(expediteur),
+          ...contactPayload('destinataire', destinataire),
         };
 
         let payload;
@@ -852,6 +784,7 @@ export default function ExtrapaysFormPage() {
               longueur: Number(c.longueur) || 0,
               largeur: Number(c.largeur) || 0,
               hauteur: Number(c.hauteur) || 0,
+              ...(c.format_colis_id ? { format_colis_id: c.format_colis_id } : {}),
               prix_emballage: 0,
               articles: c.articles.map((a) => ({ produit_id: a.produit_id })),
               // Photo facultative (mode LD uniquement) : envoi multipart.
@@ -875,6 +808,12 @@ export default function ExtrapaysFormPage() {
         draft.clear();
         setSubmitResult(result);
       } catch (err) {
+        // 422 "Aucune demande n'a pu être enregistrée." : le detail par
+        // categorie est dans `resultats[]`, affiche comme un resultat.
+        if (Array.isArray(err.response?.data?.resultats)) {
+          setSubmitResult(err.response.data);
+          return;
+        }
         const message =
           err.response?.data?.message ||
           Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
@@ -893,6 +832,8 @@ export default function ExtrapaysFormPage() {
         result={submitResult}
         pickupMode={mode === 'livraison_domicile' && pickup.domicile ? pickup.mode : null}
         onNewExpedition={resetForm}
+        onBack={() => setSubmitResult(null)}
+        categoryNames={Array.isArray(devis) ? Object.fromEntries(devis.map((g) => [g.category_id, g.category_nom])) : {}}
       />
     );
   }
@@ -1119,20 +1060,12 @@ export default function ExtrapaysFormPage() {
                     onChange={(e) => updateColisField(i, 'poids', e.target.value)}
                   />
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="block text-xs font-medium text-surface-600">
-                    Longueur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.longueur} onChange={(e) => updateColisField(i, 'longueur', e.target.value)} />
-                  </label>
-                  <label className="block text-xs font-medium text-surface-600">
-                    Largeur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.largeur} onChange={(e) => updateColisField(i, 'largeur', e.target.value)} />
-                  </label>
-                  <label className="block text-xs font-medium text-surface-600">
-                    Hauteur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.hauteur} onChange={(e) => updateColisField(i, 'hauteur', e.target.value)} />
-                  </label>
-                </div>
+                <ColisFormatFields
+                  colis={c}
+                  formats={formats}
+                  status={i === 0 ? formatsStatus : 'idle'}
+                  onChange={(next) => setColisList((list) => list.map((x, idx) => (idx === i ? next : x)))}
+                />
                 {c.articles.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.articles.map((a, ai) => (
@@ -1223,8 +1156,10 @@ export default function ExtrapaysFormPage() {
         {step === 5 && (
           <div className="space-y-4">
             <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
-            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} />
-            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} />
+            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur}>
+              <IdentityFields data={expediteur} onChange={setExpediteur} />
+            </ContactFields>
+            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} withLocation locationLabel="Point de livraison" />
             {mode === 'livraison_domicile' && (
               <PickupOption
                 value={pickup}

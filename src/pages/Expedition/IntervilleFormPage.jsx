@@ -14,7 +14,10 @@ import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
 import PickupOption from '../../components/expedition/PickupOption';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
-import { EMPTY_CONTACT, contactIsComplete, contactPayload } from '../../utils/contact';
+import {
+  EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
+} from '../../utils/contact';
+import IdentityFields from '../../components/expedition/IdentityFields';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import expeditionService from '../../services/expeditionService';
@@ -22,12 +25,13 @@ import { getFlagEmoji } from '../../utils/countries';
 import { formatPrice } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
+import ColisFormatFields from '../../components/expedition/ColisFormatFields';
+import useColisFormats from '../../hooks/useColisFormats';
+import { applyFormat, defaultFormat, overweight } from '../../utils/colisFormat';
 
 const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
 const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '', photo: null };
-
-const formatHint = (f) => (f.poids_max != null ? `jusqu'a ${f.poids_max} kg` : 'poids libre');
 
 // Builds the `colis[]` array shared by simulate-interville and store — only the
 // fields the API expects, empty/zero optionals dropped. The optional photo is
@@ -53,7 +57,7 @@ function Row({ label, value, strong }) {
   );
 }
 
-function TarifCard({ status, error, sim, onRetry }) {
+function TarifCard({ status, error, sim, colisList = [], onRetry }) {
   if (status === 'loading') {
     return (
       <div className="rounded-xl border border-surface-100 bg-white px-4 py-3 text-sm text-surface-500">
@@ -73,23 +77,20 @@ function TarifCard({ status, error, sim, onRetry }) {
   }
   if (!sim?.tarif) return null;
 
+  // Le montant de prestation est interne : le client ne voit que le total et
+  // les frais d'emballage qu'il a saisis.
   const t = sim.tarif;
+  const emballage = colisList.reduce((s, c) => s + (Number(c.prix_emballage) || 0), 0);
   return (
     <div className="card border border-primary-100 bg-primary-50/60 p-4">
-      <p className="text-xs text-primary-700">Montant de l'expedition</p>
+      <p className="text-xs text-primary-700">Montant total de l'expedition</p>
       <p className="text-2xl font-bold text-primary-800">{formatPrice(t.montant_expedition)}</p>
-      <div className="mt-2 space-y-0.5 text-xs text-primary-700/80">
-        <div className="flex justify-between">
-          <span>Transport</span>
-          <span>{formatPrice(t.montant_base)}</span>
+      {emballage > 0 && (
+        <div className="mt-2 flex justify-between text-xs text-primary-700/80">
+          <span>Frais d'emballage</span>
+          <span>{formatPrice(emballage)}</span>
         </div>
-        {Number(t.montant_prestation) > 0 && (
-          <div className="flex justify-between">
-            <span>Prestation ({t.pourcentage_prestation}%)</span>
-            <span>{formatPrice(t.montant_prestation)}</span>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -155,13 +156,11 @@ export default function IntervilleFormPage() {
 
   const [communes, setCommunes] = useState([]);
   const [communesStatus, setCommunesStatus] = useState('idle');
-  const [formats, setFormats] = useState([]);
-  const [formatsStatus, setFormatsStatus] = useState('idle');
-
   const [sim, setSim] = useState(null);
   const [simStatus, setSimStatus] = useState('idle');
   const [simError, setSimError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
+  const { formats, status: formatsStatus } = useColisFormats(retryTick);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -210,29 +209,12 @@ export default function IntervilleFormPage() {
     };
   }, [isAuthenticated, country.code, retryTick]);
 
-  // Colis formats of the client's backoffice — default-select the is_default one.
+  // Formats de colis du backoffice : le format par défaut (et ses dimensions)
+  // est appliqué aux colis qui n'en ont pas encore.
   useEffect(() => {
-    if (!country.code) return;
-    let cancelled = false;
-    setFormatsStatus('loading');
-    // Invité : formats du pays choisi (route publique, A2) ; connecté : pays du compte.
-    expeditionService
-      .getColisFormats(isAuthenticated ? undefined : country.code)
-      .then((d) => {
-        if (cancelled) return;
-        const list = d.formats ?? [];
-        setFormats(list);
-        setFormatsStatus('idle');
-        const def = list.find((f) => f.is_default) || list[0];
-        if (def) {
-          setColisList((cl) => cl.map((c) => (c.format_colis_id ? c : { ...c, format_colis_id: def.id })));
-        }
-      })
-      .catch(() => !cancelled && setFormatsStatus('error'));
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, country.code, retryTick]);
+    const def = defaultFormat(formats);
+    if (def) setColisList((cl) => cl.map((c) => (c.format_colis_id ? c : applyFormat(c, def))));
+  }, [formats]);
 
   // Prefill the sender from the connected account (editable).
   useEffect(() => {
@@ -308,8 +290,7 @@ export default function IntervilleFormPage() {
     setSubmitError('');
     setAgence(null);
     setDestinataireCommuneId('');
-    const def = formats.find((f) => f.is_default) || formats[0];
-    setColisList([{ ...EMPTY_COLIS, format_colis_id: def?.id || '' }]);
+    setColisList([applyFormat({ ...EMPTY_COLIS }, defaultFormat(formats))]);
     setExpediteur({
       ...EMPTY_CONTACT,
       nom_prenom: [user?.nom, user?.prenoms].filter(Boolean).join(' '),
@@ -322,8 +303,7 @@ export default function IntervilleFormPage() {
   };
 
   const addColis = () => {
-    const def = formats.find((f) => f.is_default) || formats[0];
-    setColisList((list) => [...list, { ...EMPTY_COLIS, format_colis_id: def?.id || '' }]);
+    setColisList((list) => [...list, applyFormat({ ...EMPTY_COLIS }, defaultFormat(formats))]);
   };
   const removeColis = (i) => setColisList((list) => list.filter((_, idx) => idx !== i));
   const setColisField = (i, field, value) =>
@@ -346,8 +326,10 @@ export default function IntervilleFormPage() {
   }, [agenceVille]);
 
   const canContinueStep1 = Boolean(agence?.id) && Boolean(destinataireCommuneId);
-  const canContinueStep2 = colisList.length > 0 && colisList.every((c) => Number(c.poids) >= 0.01);
-  const canContinueStep3 = contactIsComplete(expediteur) && contactIsComplete(destinataire);
+  const canContinueStep2 =
+    colisList.length > 0 &&
+    colisList.every((c) => Number(c.poids) >= 0.01 && !overweight(c, formats.find((f) => f.id === c.format_colis_id)));
+  const canContinueStep3 = contactIsComplete(expediteur) && contactIsComplete(destinataire) && !identityExpired(expediteur);
 
   const handleSubmit = async () => {
     // The devis is open to guests; login is only required to register.
@@ -363,6 +345,7 @@ export default function IntervilleFormPage() {
         agence_id: agence.id,
         destinataire_commune_id: destinataireCommuneId,
         ...contactPayload('expediteur', expediteur),
+        ...identityPayload(expediteur),
         ...contactPayload('destinataire', destinataire),
         colis: buildColis(colisList, { withPhoto: true }),
         ...pickupPayload(pickup),
@@ -483,14 +466,6 @@ export default function IntervilleFormPage() {
 
         {step === 2 && (
           <div className="space-y-4">
-            {formatsStatus === 'loading' && (
-              <p className="text-xs text-surface-400">Chargement des formats de colis...</p>
-            )}
-            {formatsStatus === 'error' && (
-              <p className="text-xs text-amber-600">
-                Formats indisponibles — le format par defaut de l'agence sera applique.
-              </p>
-            )}
             {colisList.map((c, i) => (
               <div key={i} className="card space-y-3 p-4">
                 <div className="flex items-center justify-between">
@@ -519,44 +494,12 @@ export default function IntervilleFormPage() {
                   />
                 </label>
 
-                {formats.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-sm font-medium text-surface-700">Format</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {formats.map((f) => {
-                        const selected = c.format_colis_id === f.id;
-                        return (
-                          <button
-                            key={f.id}
-                            type="button"
-                            onClick={() => setColisField(i, 'format_colis_id', f.id)}
-                            className={`rounded-xl border p-2.5 text-left text-xs transition ${
-                              selected ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-surface-200 text-surface-600'
-                            }`}
-                          >
-                            <span className="block text-sm font-semibold">{f.nom}</span>
-                            <span className="text-[11px] text-surface-500">{formatHint(f)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="block text-xs font-medium text-surface-600">
-                    Longueur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.longueur} onChange={(e) => setColisField(i, 'longueur', e.target.value)} />
-                  </label>
-                  <label className="block text-xs font-medium text-surface-600">
-                    Largeur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.largeur} onChange={(e) => setColisField(i, 'largeur', e.target.value)} />
-                  </label>
-                  <label className="block text-xs font-medium text-surface-600">
-                    Hauteur (cm)
-                    <input type="number" min="0" className="input-field mt-1.5" value={c.hauteur} onChange={(e) => setColisField(i, 'hauteur', e.target.value)} />
-                  </label>
-                </div>
+                <ColisFormatFields
+                  colis={c}
+                  formats={formats}
+                  status={i === 0 ? formatsStatus : 'idle'}
+                  onChange={(next) => setColisList((list) => list.map((x, idx) => (idx === i ? next : x)))}
+                />
 
                 <label className="block text-xs font-medium text-surface-600">
                   Emballage (FCFA, optionnel)
@@ -601,6 +544,7 @@ export default function IntervilleFormPage() {
               status={simStatus}
               error={simError}
               sim={sim}
+              colisList={colisList}
               onRetry={() => setRetryTick((t) => t + 1)}
             />
 
@@ -614,8 +558,10 @@ export default function IntervilleFormPage() {
         {step === 4 && (
           <div className="space-y-4">
             <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
-            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined} />
-            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
+            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined}>
+              <IdentityFields data={expediteur} onChange={setExpediteur} />
+            </ContactFields>
+            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} withLocation locationLabel="Point de livraison" />
             <PickupOption
               value={pickup}
               onChange={setPickup}
@@ -624,7 +570,7 @@ export default function IntervilleFormPage() {
               address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
             />
 
-            {sim?.tarif && <TarifCard status={simStatus} error={simError} sim={sim} onRetry={() => setRetryTick((t) => t + 1)} />}
+            {sim?.tarif && <TarifCard status={simStatus} error={simError} sim={sim} colisList={colisList} onRetry={() => setRetryTick((t) => t + 1)} />}
 
             {submitError && (
               <div className="card border border-red-100 bg-red-50 p-3 text-sm text-red-700">{submitError}</div>

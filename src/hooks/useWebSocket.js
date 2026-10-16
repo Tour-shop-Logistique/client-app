@@ -21,6 +21,7 @@ const channelRefs = new Map(); // channelName -> instance Echo channel
  * @param {Function} handlers.onExpeditionStatusChanged - Changement de statut d'une expedition (suivi colis).
  * @param {Function} handlers.onExpeditionPaymentConfirmed - Paiement confirme.
  * @param {Function} handlers.onExpeditionDelivered - Colis livre.
+ * @param {Function} handlers.onExpeditionTariffRecalculated - Tarif recalcule apres controle des colis.
  * @param {Function} handlers.onDeliveryOfferReceived - Nouvelle offre de livreur recue.
  * @param {Function} handlers.onColisStatusChanged - Changement de statut d'un colis.
  * @param {Function} handlers.onMissionPublished - Mission express de ma demande ouverte aux livreurs.
@@ -83,6 +84,9 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
           h.onExpeditionPaymentConfirmed(data, meta);
         } else if (action === 'delivered' && h.onExpeditionDelivered) {
           h.onExpeditionDelivered(data, meta);
+        } else if (action === 'tarif_recalculated' && h.onExpeditionTariffRecalculated) {
+          // Tarif recalcule apres controle des colis : changes.montant_expedition.{from,to}.
+          h.onExpeditionTariffRecalculated(data, meta);
         } else {
           console.warn(`⚠️ [WebSocket] Action '${action}' non geree pour Expedition ou handler manquant`);
         }

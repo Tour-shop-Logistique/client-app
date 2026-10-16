@@ -206,6 +206,7 @@ export default function PaymentMethodsPage() {
               {form.methode === 'mobile_money' ? 'Numéro qui reçoit les paiements' : 'Numéro de compte'}
               <input
                 className="input-field mt-1 font-mono"
+                type={form.methode === 'mobile_money' ? 'tel' : 'text'}
                 inputMode={form.methode === 'mobile_money' ? 'tel' : 'text'}
                 maxLength={50}
                 placeholder={form.methode === 'mobile_money' ? '07 00 00 00 00' : 'IBAN / RIB'}

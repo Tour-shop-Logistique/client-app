@@ -213,11 +213,33 @@ export const fromRetrait = (annonce) => ({
   longitude: annonce?.retrait_longitude ?? null,
 });
 
-export const hasRetraitAddress = (annonce) => Boolean(annonce?.retrait_adresse || annonce?.retrait_ville);
+// Adresse exploitable par le livreur : contact, ville et coordonnees GPS
+// (RECAP_GEOLOCALISATION_RETRAIT_MARKETPLACE.md). Les annonces anterieures a
+// la regle peuvent ne pas les avoir.
+export const hasRetraitAddress = (annonce) => Boolean(
+  annonce?.retrait_nom && annonce?.retrait_telephone && annonce?.retrait_ville
+  && annonce?.retrait_latitude != null && annonce?.retrait_longitude != null,
+);
 
-// Adresse de retrait exigee pour publier (choix produit : l'API la laisse
-// optionnelle). La position GPS est obligatoire pour guider le livreur.
+// Adresse de retrait exigee a la creation (y compris en brouillon : `store()`
+// renvoie 422 sans nom, telephone, ville, latitude, longitude). `adresse` est
+// en plus exigee par choix produit. La position GPS guide le livreur.
 export const RETRAIT_REQUIRED = ['nom', 'telephone', 'ville', 'adresse', 'gps'];
+
+// 422 Laravel `{ errors: { retrait_latitude: [...] } }` -> erreurs d'AddressFields.
+export const retraitServerErrors = (err) => {
+  const errors = err?.response?.status === 422 ? err.response.data?.errors : null;
+  if (!errors || typeof errors !== 'object') return {};
+  const out = {};
+  Object.entries(errors).forEach(([key, msgs]) => {
+    if (!key.startsWith('retrait_')) return;
+    const field = key.slice('retrait_'.length);
+    const name = field === 'latitude' || field === 'longitude' ? 'gps' : field;
+    const msg = Array.isArray(msgs) ? msgs[0] : msgs;
+    if (!out[name]) out[name] = name === 'gps' ? 'Position GPS du lieu de retrait manquante ou invalide.' : msg;
+  });
+  return out;
+};
 
 export const retraitErrors = (addr) => {
   const errs = {};

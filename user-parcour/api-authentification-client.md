@@ -1,0 +1,327 @@
+# API Authentification Client
+
+Toutes les routes de ce document sont **publiques** (hors `auth:sanctum`) sauf `logout` et `profil`, qui exigent un token.
+
+Flux obligatoire pour un nouveau client : **register → verify-email → login**. `register` et `verify-email` ne retournent jamais de token — `login` est la seule étape qui en délivre un.
+
+---
+
+## `POST /api/register`
+
+### Entrée
+
+```json
+{
+  "nom": "Kouassi",
+  "prenoms": "Jean",
+  "telephone": "0102030405",
+  "indicatif_telephone": "+225",
+  "whatsapp_number": "+2250102030405",
+  "email": "jean.kouassi@example.com",
+  "password": "motdepasse123",
+  "password_confirmation": "motdepasse123",
+  "type": "client",
+  "code_pays": "CI",
+  "code_parrain": "BYNHH23T"
+}
+```
+
+| Champ | Type | Obligatoire | Notes |
+|---|---|---|---|
+| `nom` | string, max 255 | Oui | |
+| `prenoms` | string, max 255 | Non | |
+| `telephone` | string | Oui | Unique en base |
+| `indicatif_telephone` | string, max 6, regex `^\+[0-9]{1,5}$` | **Oui** | Indicatif téléphonique du pays (ex. `+225`), saisi via un sélecteur dédié à l'inscription — distinct de `telephone` (numéro local). Obligatoire quel que soit le type de compte. |
+| `whatsapp_number` | string, regex `^\+[1-9]\d{6,14}$` (format E.164 strict) | **Oui** | Numéro WhatsApp, saisi séparément du téléphone principal — peut être le même numéro mais doit être renseigné explicitement, en E.164 complet (indicatif + numéro, ex. `+2250102030405`, pas juste l'indicatif). Utilisé pour dupliquer les OTP/notifications sur WhatsApp en plus de l'email. **Obligatoire**, sans exception de type de compte. |
+| `email` | string, email, max 255 | Oui | Unique en base |
+| `password` | string, min 8 | Oui | Doit être accompagné de `password_confirmation` identique |
+| `password_confirmation` | string | Oui | Doit être identique à `password` |
+| `type` | string | Oui | Toujours `"client"` pour l'app cliente — jamais déduit automatiquement |
+| `code_pays` | string (code ISO pays, ex. `CI`) | **Oui pour un client** | Obligatoire uniquement si `type = "client"` (`nullable` pour les autres types) — c'est le seul moyen de rattacher le client à un backoffice/pays, aucune autre source (contrairement à une agence/un backoffice, qui ont leur propre entité). Validé par une règle `ValidCountryCode` (code ISO reconnu). |
+| `code_parrain` | string | Non | Le `code_parrainage` d'un compte existant (voir `docs/api-parrainage-client.md`) — si fourni, doit correspondre à un compte réel (`exists:users,code_parrainage`), sinon 422. Rattache le nouveau compte à ce parrain (`User.parrain_id`), sans effet immédiat visible : les bonus ne se déclenchent que plus tard, sur une activité payante du filleul. |
+
+### Comportement
+
+- Crée le compte avec `email_verified_at = null`.
+- Envoie un **code à 6 chiffres par email** (expire dans 30 minutes).
+- **Ne retourne aucun token.** Le compte n'est pas encore utilisable pour se connecter tant que l'email n'est pas vérifié.
+
+### Sortie — succès (201)
+
+```json
+{
+  "success": true,
+  "message": "Inscription réussie. Un code de vérification a été envoyé à votre adresse email.",
+  "user": {
+    "id": "uuid",
+    "nom": "Kouassi",
+    "prenoms": "Jean",
+    "telephone": "0102030405",
+    "indicatif_telephone": "+225",
+    "whatsapp_number": "+2250102030405",
+    "email": "jean.kouassi@example.com",
+    "type": "client",
+    "code_pays": "CI",
+    "parrain_id": "uuid-du-parrain-ou-null",
+    "email_verified_at": null,
+    "actif": true,
+    "...": "..."
+  }
+}
+```
+
+### Erreurs
+
+**Email ou téléphone déjà utilisé (422)**
+```json
+{
+  "success": false,
+  "message": "Un compte avec cet email ou ce téléphone existe déjà.",
+  "errors": {
+    "email": ["Cet email est déjà utilisé."],
+    "telephone": ["Ce téléphone est déjà utilisé."]
+  }
+}
+```
+
+**Validation (422)**
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "password": ["The password confirmation does not match."] } }
+```
+
+**`code_pays` manquant pour un client (422)** — piège fréquent, ce champ est absent des exemples les plus simples qu'on trouve en ligne mais bien requis ici pour `type: "client"` :
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "code_pays": ["The code pays field is required."] } }
+```
+
+**`whatsapp_number` manquant ou mal formaté (422)** — piège fréquent : ce champ est obligatoire depuis le 2026-10-06 et absent de beaucoup d'exemples d'intégration existants ; le format attendu est l'E.164 complet (`+` suivi de l'indicatif et du numéro, sans espace ni séparateur), pas seulement l'indicatif :
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "whatsapp_number": ["The whatsapp number field is required."] } }
+```
+
+**`code_parrain` invalide (422)** — aucun compte ne porte ce `code_parrainage` :
+```json
+{ "success": false, "message": "Erreur de validation des données.", "errors": { "code_parrain": ["The selected code parrain is invalid."] } }
+```
+
+---
+
+## `POST /api/verify-email`
+
+### Entrée
+
+```json
+{ "email": "jean.kouassi@example.com", "code": "482913" }
+```
+
+| Champ | Type | Obligatoire |
+|---|---|---|
+| `email` | string, email | Oui |
+| `code` | string, exactement 6 caractères | Oui |
+
+### Comportement
+
+- Vérifie le code (haché en base, expiré après 30 minutes depuis `register`/`resend`).
+- Si valide : renseigne `email_verified_at = now()` sur le compte. **C'est cette étape qui débloque `login`.**
+- Aucun token retourné — il faut appeler `login` ensuite.
+
+### Sortie — succès (200)
+
+```json
+{ "success": true, "message": "Adresse email vérifiée avec succès. Vous pouvez maintenant vous connecter." }
+```
+
+### Erreurs
+
+```json
+{ "success": false, "message": "Code invalide ou expiré." }
+```
+```json
+{ "success": false, "message": "Utilisateur introuvable." }
+```
+(HTTP 422 et 404 respectivement)
+
+---
+
+## `POST /api/resend-email-verification`
+
+À utiliser si le code a expiré ou n'est jamais arrivé.
+
+### Entrée
+
+```json
+{ "email": "jean.kouassi@example.com" }
+```
+
+### Sortie — toujours `success: true` en cas normal (200)
+
+```json
+{ "success": true, "message": "Si cet e-mail est associé à un compte non vérifié, un nouveau code a été envoyé." }
+```
+
+> Message volontairement générique si l'email n'existe pas (anti-énumération de comptes). Si le compte est déjà vérifié :
+
+```json
+{ "success": true, "message": "Cette adresse email est déjà vérifiée." }
+```
+
+---
+
+## `POST /api/login`
+
+### Entrée
+
+```json
+{
+  "email": "jean.kouassi@example.com",
+  "password": "motdepasse123",
+  "type": "client"
+}
+```
+
+| Champ | Type | Obligatoire | Notes |
+|---|---|---|---|
+| `email` | string, email | Un des deux (`email` ou `telephone`) requis | |
+| `telephone` | string | Un des deux (`email` ou `telephone`) requis | |
+| `password` | string | Oui | |
+| `type` | string | Oui | Toujours `"client"` — sert de filtre, un compte agence avec le même email ne matchera pas |
+
+### Comportement
+
+Bloque avec 422 dans ces cas, avant même de vérifier le mot de passe :
+- Aucun utilisateur avec ce téléphone/email + ce type → `"Les identifiants fournis sont incorrects."`
+- Compte désactivé (`actif = false`) → `"Votre compte est désactivé."`
+- **Email non vérifié** → `"Veuillez vérifier votre adresse email avant de vous connecter."`
+
+### Sortie — succès (200)
+
+```json
+{
+  "success": true,
+  "message": "Connexion réussie",
+  "user": { "id": "uuid", "nom": "Kouassi", "type": "client", "...": "..." },
+  "token": "12|AbCdEf1234567890..."
+}
+```
+
+Le champ s'appelle **`token`** (pas `access_token`). C'est un token Sanctum classique — à envoyer ensuite dans le header `Authorization: Bearer <token>` sur toutes les routes protégées (`expedition/client/store`, `list`, `show`, `cancel`, `statistics`, `logout`, `profil`, etc.).
+
+### Erreurs (422)
+
+```json
+{ "success": false, "message": "Erreur de validation des identifiants.", "errors": { "email": ["Veuillez vérifier votre adresse email avant de vous connecter."] } }
+```
+
+---
+
+## `POST /api/logout`
+
+**Authentification requise.**
+
+Révoque uniquement le token utilisé pour cet appel (pas les autres sessions/appareils éventuellement connectés).
+
+### Sortie — succès (200)
+
+```json
+{ "success": true, "message": "Déconnexion réussie." }
+```
+
+---
+
+## `GET /api/profil`
+
+**Authentification requise.**
+
+Retourne les infos du compte actuellement connecté (utile pour restaurer une session au démarrage de l'app à partir d'un token stocké).
+
+### Sortie — succès (200)
+
+```json
+{ "success": true, "user": { "id": "uuid", "nom": "Kouassi", "type": "client", "role_details": null, "...": "..." } }
+```
+
+---
+
+## Mot de passe oublié — 3 étapes
+
+### 1. `POST /api/forgot-password`
+
+```json
+{ "email": "jean.kouassi@example.com" }
+```
+
+Envoie un code à 6 chiffres par email (expire dans 15 minutes).
+
+**Sortie — succès (200)**
+```json
+{ "success": true, "message": "Un code de réinitialisation a été envoyé à votre adresse e-mail." }
+```
+
+**Sortie — email inconnu — attention, HTTP 200 avec `success: false` (pas 404)**
+```json
+{ "success": false, "message": "Aucun compte trouvé avec cette adresse e-mail." }
+```
+Toujours lire le flag `success`, pas seulement le code HTTP, pour ce endpoint.
+
+### 2. `POST /api/verify-reset-code`
+
+```json
+{ "email": "jean.kouassi@example.com", "code": "738291" }
+```
+
+Vérifie le code sans le consommer (permet d'afficher l'écran "nouveau mot de passe" seulement si le code est valide).
+
+**Sortie — succès (200)**
+```json
+{ "success": true, "message": "Code validé. Vous pouvez définir un nouveau mot de passe." }
+```
+
+**Sortie — code invalide/expiré (422)**
+```json
+{ "success": false, "message": "Code invalide ou expiré." }
+```
+
+### 3. `POST /api/reset-password`
+
+```json
+{
+  "email": "jean.kouassi@example.com",
+  "code": "738291",
+  "password": "nouveaumotdepasse123",
+  "password_confirmation": "nouveaumotdepasse123"
+}
+```
+
+Change le mot de passe et **révoque tous les tokens existants** du compte (déconnexion forcée de toutes les sessions/appareils). Reconnexion via `login` obligatoire après.
+
+**Sortie — succès (200)**
+```json
+{ "success": true, "message": "Mot de passe réinitialisé avec succès. Vous pouvez maintenant vous connecter." }
+```
+
+---
+
+## Points d'attention pour l'implémentation frontend
+
+- **`whatsapp_number` est désormais obligatoire à l'inscription** (`register` et l'inscription livreur `register-livreur`, voir `docs/PARCOURS_LIVREUR_API.md`), en plus de `telephone`/`indicatif_telephone` — un écran d'inscription qui ne collecte pas ce champ échouera systématiquement en 422. Le code de vérification email (register, resend, forgot-password) est désormais **dupliqué sur WhatsApp** en best-effort si `whatsapp_number` est renseigné (`WhatsAppGateway::sendTemplate`, template `otp_verification`) — un échec d'envoi WhatsApp n'empêche jamais l'inscription ni la réception du code par email, qui reste le seul canal **bloquant** pour `verify-email`/`login`. Il n'existe toujours aucun endpoint de vérification du numéro WhatsApp lui-même (pas de `verify-whatsapp` équivalent à `verify-email`) — c'est une simple duplication du code email sur un second canal, pas un flux de vérification indépendant.
+- `type: "client"` doit être envoyé explicitement à **chaque** appel de `register` et `login` — ce n'est jamais déduit du contexte ou de la route appelée.
+- `code_pays` est **obligatoire** sur `register` dès que `type: "client"` (422 sinon) — l'écran d'inscription doit inclure un sélecteur de pays, ce n'est pas un champ optionnel malgré son absence dans certains exemples d'API génériques. C'est ce qui permet ensuite de rattacher le client à un backoffice pour la tarification/le parrainage (voir `taux_international`/`taux_national` dans `docs/api-parrainage-client.md`).
+- Stocker le `token` reçu à la connexion (ex: `localStorage`/`sessionStorage` selon la stratégie PWA) et l'envoyer en `Authorization: Bearer <token>` sur toutes les routes authentifiées listées dans `docs/api-enregistrement-expedition-client.md`.
+- Après un `reset-password`, l'ancien token stocké côté client devient invalide (tous révoqués) — il faut détecter une réponse 401 et rediriger vers `login`, ou explicitement invalider le token stocké côté client juste après l'appel `reset-password`.
+- Le flux complet minimal pour un nouveau client : `register` → écran "saisir le code reçu par email" → `verify-email` → `login` automatique ou redirection vers l'écran de connexion.
+
+---
+
+## Endpoints associés (rappel)
+
+| Endpoint | Auth | Usage |
+|---|---|---|
+| `POST /api/register` | Non | Inscription |
+| `POST /api/verify-email` | Non | Vérification du code email |
+| `POST /api/resend-email-verification` | Non | Renvoi du code email |
+| `POST /api/login` | Non | Connexion — retourne le token |
+| `POST /api/logout` | Oui | Déconnexion (token courant uniquement) |
+| `GET /api/profil` | Oui | Infos du compte connecté |
+| `POST /api/forgot-password` | Non | Demande de réinitialisation |
+| `POST /api/verify-reset-code` | Non | Vérification du code de réinitialisation |
+| `POST /api/reset-password` | Non | Nouveau mot de passe (révoque tous les tokens) |

@@ -4,8 +4,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomSheet from '../common/BottomSheet';
+import MissionRequest from './MissionRequest';
 import expeditionService from '../../services/expeditionService';
 import { formatDateTime, formatPrice } from '../../utils/format';
+import { storageUrl, handleMediaError } from '../../utils/marketplace';
 
 // Dernier kilomètre d'une expédition (cahier 4.2 / 4.3, workflow 8.3) :
 //  - missions d'enlèvement / de livraison à domicile (GET /{id}/missions) ;
@@ -36,7 +38,8 @@ const statutOf = (m) => (m.statut === 'en_attente' && isGroupage(m)
   ? { label: 'En attente d’un livreur', className: 'bg-amber-50 text-amber-700' }
   : MISSION_STATUT[m.statut]);
 
-// Forme d'une offre non documentée : lecture défensive.
+// Offre : { id, montant_propose, statut, livreur: { nom, prenoms, telephone } }
+// (api-enlevement-livraison-client.md) ; autres formes lues en repli.
 const offerLivreur = (o) => {
   const l = o?.livreur || {};
   const u = l.user || {};
@@ -131,8 +134,19 @@ function CancelMission({ mission, onDone }) {
 }
 const isOpenOffer = (o) => !o?.statut || o.statut === 'active' || o.statut === 'en_attente';
 
-// `signature_data` : data URL ou base64 brut.
-const signatureSrc = (data) => (String(data).startsWith('data:') ? data : `data:image/png;base64,${data}`);
+// Une seule demande active par type et par expédition (422 sinon).
+const ACTIVE_MISSION = ['en_attente', 'proposee', 'assignee'];
+const hasMission = (missions, type) =>
+  missions.some((m) => m.type === type && (ACTIVE_MISSION.includes(m.statut) || m.statut === 'terminee'));
+
+// Enlèvement : tant que le colis n'a pas été remis à l'agence de départ.
+const PICKUP_REQUESTABLE = ['en_attente', 'accepted'];
+// Livraison à domicile : jusqu'au départ en livraison. Pas pour le type
+// `simple` (LD), déjà livré à domicile sans mission (PARCOURS_LIVREUR_API.md §4).
+const DELIVERY_CLOSED = ['en_cours_livraison', 'termined', 'cancelled', 'refused'];
+
+// Signature : URL, data URL ou base64 brut (le livreur l'envoie en base64).
+const signatureSrc = (data) => (/^(data:|https?:)/i.test(String(data)) ? data : `data:image/png;base64,${data}`);
 
 function OfferList({ mission, onAccepted, refreshKey }) {
   const [offers, setOffers] = useState(null);
@@ -157,11 +171,25 @@ function OfferList({ mission, onAccepted, refreshKey }) {
     setAccepting(true);
     try {
       await expeditionService.acceptOffer(mission.id, target.id);
-      toast.success('Offre acceptée', { description: 'Le destinataire recevra le code de réception par SMS et email.' });
+      // Code de réception : uniquement pour une mission de livraison.
+      toast.success('Offre acceptée', {
+        description: mission.type === 'livraison'
+          ? 'Le destinataire recevra le code de réception par SMS et email.'
+          : 'Le livreur va venir récupérer le colis.',
+      });
       setTarget(null);
       onAccepted();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Impossible d'accepter cette offre.");
+      // 404 "Mission non trouvée ou déjà clôturée" / "Offre non trouvée ou déjà
+      // retirée" : la demande a changé entre-temps -> on rafraîchit.
+      if (err.response?.status === 404) {
+        toast.warning('Cette offre n’est plus disponible', { description: 'La liste a été actualisée.' });
+        setTarget(null);
+        load();
+        onAccepted();
+      } else {
+        toast.error(err.response?.data?.message || "Impossible d'accepter cette offre.");
+      }
     } finally {
       setAccepting(false);
     }
@@ -238,23 +266,35 @@ function OfferList({ mission, onAccepted, refreshKey }) {
   );
 }
 
-function Proof({ preuve }) {
+// Contrat api-enlevement-livraison-client.md : `preuve: { photo, signature,
+// latitude, longitude }`. Les anciens noms (`photo_url`, `signature_data`,
+// `horodatage`) restent lus en repli.
+const normalizeProof = (p) => ({
+  photo: storageUrl(p.photo ?? p.photo_url ?? null),
+  signature: p.signature ?? p.signature_data ?? null,
+  latitude: p.latitude ?? null,
+  longitude: p.longitude ?? null,
+  horodatage: p.horodatage ?? p.created_at ?? null,
+});
+
+function Proof({ preuve: raw }) {
+  const preuve = normalizeProof(raw);
   const hasPosition = preuve.latitude != null && preuve.longitude != null;
   return (
     <div className="mt-3 space-y-2 rounded-xl bg-surface-50 p-3">
       <p className="text-xs font-semibold text-surface-700">
         Preuve{preuve.horodatage ? ` · ${formatDateTime(preuve.horodatage)}` : ''}
       </p>
-      {(preuve.photo_url || preuve.signature_data) && (
+      {(preuve.photo || preuve.signature) && (
         <div className="grid grid-cols-2 gap-2">
-          {preuve.photo_url && (
-            <a href={preuve.photo_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg bg-white">
-              <img src={preuve.photo_url} alt="Photo prise par le livreur" className="aspect-square w-full object-cover" loading="lazy" />
+          {preuve.photo && (
+            <a href={preuve.photo} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg bg-white">
+              <img src={preuve.photo} onError={handleMediaError} alt="Photo prise par le livreur" className="aspect-square w-full object-cover" loading="lazy" />
             </a>
           )}
-          {preuve.signature_data && (
+          {preuve.signature && (
             <div className="flex items-center justify-center rounded-lg bg-white p-2">
-              <img src={signatureSrc(preuve.signature_data)} alt="Signature" className="max-h-28 w-full object-contain" />
+              <img src={signatureSrc(preuve.signature)} alt="Signature" className="max-h-28 w-full object-contain" />
             </div>
           )}
         </div>
@@ -288,7 +328,13 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
   useEffect(() => { load(); }, [load, refreshKey]);
 
   const visible = (missions ?? []).filter((m) => statutOf(m));
-  if (!error && visible.length === 0) return null;
+  const expStatut = expedition.statut_expedition;
+  const canRequestPickup = missions !== null && PICKUP_REQUESTABLE.includes(expStatut) && !hasMission(missions, 'enlevement');
+  const canRequestDelivery = missions !== null
+    && expedition.type_expedition !== 'simple'
+    && Boolean(expStatut) && !DELIVERY_CLOSED.includes(expStatut)
+    && !hasMission(missions, 'livraison');
+  if (!error && visible.length === 0 && !canRequestPickup && !canRequestDelivery) return null;
 
   return (
     <section className="card p-4">
@@ -351,6 +397,13 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
           );
         })}
       </div>
+
+      {(canRequestPickup || canRequestDelivery) && (
+        <div className={`space-y-2 ${visible.length ? 'mt-3 border-t border-surface-100 pt-3' : 'mt-2'}`}>
+          {canRequestPickup && <MissionRequest expedition={expedition} kind="enlevement" onDone={load} />}
+          {canRequestDelivery && <MissionRequest expedition={expedition} kind="livraison" onDone={load} />}
+        </div>
+      )}
     </section>
   );
 }
