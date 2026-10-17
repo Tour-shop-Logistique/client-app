@@ -118,6 +118,9 @@ function ColisItem({ colis, index }) {
         {Number(colis.prix_emballage) > 0 && (
           <span>Emballage : {formatPrice(colis.prix_emballage)}</span>
         )}
+        {Number(colis.prix_estimation) > 0 && (
+          <span>Estimation : {formatPrice(colis.prix_estimation)}</span>
+        )}
         {articles.length > 0 && <span>{articles.length} article(s)</span>}
       </div>
       {colis.photo_url && (

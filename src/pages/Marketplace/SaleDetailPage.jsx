@@ -16,6 +16,7 @@ import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import marketplaceService from '../../services/marketplaceService';
 import {
   COMMANDE_STATUTS, formatMoney, personName, initials, isAbonnementBloque, isLivraisonActive, isCommandeAnnulable,
+  apiErrorMessage, isAwaitingOffers,
 } from '../../utils/marketplace';
 import CancelOrderButton from '../../components/marketplace/CancelOrderButton';
 import { ROUTES } from '../../routes';
@@ -319,20 +320,40 @@ function DeliveryChoicePanel({ commande, onDone, handleError }) {
 
 // Offres des livreurs (mode reseau, livraison en attente), rafraichies en continu
 // et a chaque offre recue en temps reel (`refreshKey`).
+// Offres actives uniquement (retirées / refusées exclues), du prix le plus bas au
+// plus haut : le tri ne dépend pas de l'ordre renvoyé par l'API.
+const sortOffers = (list) => (Array.isArray(list) ? list : [])
+  .filter((o) => !o?.statut || o.statut === 'active')
+  .sort((a, b) => Number(a.montant_propose) - Number(b.montant_propose));
+
 function OffersPanel({ commande, onDone, handleError, refreshKey }) {
   const [offres, setOffres] = useState(null);
+  const [error, setError] = useState(null);
   const [accepting, setAccepting] = useState(null);
+  const embedded = commande.livraison_marketplace?.offres;
 
   const load = useCallback(() => {
     marketplaceService
       .offresLivraison(commande.id)
-      .then(setOffres)
+      .then((list) => {
+        setOffres(sortOffers(list));
+        setError(null);
+      })
       .catch((err) => {
-        setOffres((o) => o ?? []);
-        // Rafraichissement periodique : on ne signale que le blocage d'abonnement.
-        if (isAbonnementBloque(err)) handleError(err);
+        if (isAbonnementBloque(err)) {
+          handleError(err);
+          return;
+        }
+        // Route dédiée en échec : on retombe sur les offres déjà jointes à la
+        // commande (commandes/show), sinon on le dit au lieu de montrer « aucune offre ».
+        if (Array.isArray(embedded) && embedded.length) {
+          setOffres(sortOffers(embedded));
+          setError(null);
+        } else {
+          setError(apiErrorMessage(err, 'Impossible de charger les offres.'));
+        }
       });
-  }, [commande.id, handleError]);
+  }, [commande.id, embedded, handleError]);
 
   useEffect(() => {
     load();
@@ -368,7 +389,17 @@ function OffersPanel({ commande, onDone, handleError, refreshKey }) {
         </button>
       </div>
 
-      {offres === null && <div className="h-16 skeleton rounded-2xl" />}
+      {offres === null && !error && <div className="h-16 skeleton rounded-2xl" />}
+
+      {offres === null && error && (
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-red-50 px-4 py-6 text-center">
+          <p className="text-body font-medium text-red-800">Les offres n’ont pas pu être chargées</p>
+          <p className="text-caption text-red-700">{error}</p>
+          <button type="button" className="btn-secondary mt-1" onClick={load}>
+            <RefreshCw size={14} /> Réessayer
+          </button>
+        </div>
+      )}
 
       {offres?.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-50 py-8 text-center">
@@ -470,7 +501,7 @@ export default function SaleDetailPage() {
   // Apres un refus / une expiration, la commande revient `payee` : nouveau choix possible.
   const needsChoice = payee && commande.mode_livraison !== 'hors_plateforme' && !isLivraisonActive(liv);
   const courierDeclined = needsChoice && liv && !isLivraisonActive(liv);
-  const waitingOffers = payee && liv?.mode === 'reseau' && liv?.statut === 'en_attente';
+  const waitingOffers = isAwaitingOffers(commande);
   const waitingCourier = payee && liv?.statut === 'proposee';
   const selfDelivery = payee && commande.mode_livraison === 'hors_plateforme';
   const courierAssigned = payee && isLivraisonActive(liv) && !['en_attente', 'proposee'].includes(liv.statut);

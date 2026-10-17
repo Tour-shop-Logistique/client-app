@@ -31,14 +31,16 @@ import { applyFormat, defaultFormat, overweight, syncColisFormats } from '../../
 
 const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
 
-const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '', photo: null };
+const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '', prix_estimation: '', photo: null };
 
 // Builds the `colis[]` array shared by simulate-interville and store — only the
 // fields the API expects, empty/zero optionals dropped. The optional photo is
 // only sent to `store` (`withPhoto`), never to the JSON simulation.
+// `prix_estimation` (valeur estimée du colis, FCFA) part à la simulation ET à
+// l'enregistrement, toujours présent (0 si non renseigné) comme dans l'app agence.
 const buildColis = (colisList, { withPhoto = false } = {}) =>
   colisList.map((c) => {
-    const item = { poids: Number(c.poids) };
+    const item = { poids: Number(c.poids), prix_estimation: Number(c.prix_estimation) || 0 };
     if (Number(c.longueur) > 0) item.longueur = Number(c.longueur);
     if (Number(c.largeur) > 0) item.largeur = Number(c.largeur);
     if (Number(c.hauteur) > 0) item.hauteur = Number(c.hauteur);
@@ -500,10 +502,26 @@ export default function IntervilleFormPage() {
                   onChange={(next) => setColisList((list) => list.map((x, idx) => (idx === i ? next : x)))}
                 />
 
-                <label className="block text-xs font-medium text-surface-600">
-                  Emballage (FCFA, optionnel)
-                  <input type="number" min="0" className="input-field mt-1.5" value={c.prix_emballage} onChange={(e) => setColisField(i, 'prix_emballage', e.target.value)} />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-xs font-medium text-surface-600">
+                    Emballage (FCFA, optionnel)
+                    <input type="number" inputMode="numeric" min="0" className="input-field mt-1.5" value={c.prix_emballage ?? ''} onChange={(e) => setColisField(i, 'prix_emballage', e.target.value)} />
+                  </label>
+                  <label className="block text-xs font-medium text-surface-600">
+                    Estimation (FCFA)
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      placeholder="0"
+                      className="input-field mt-1.5"
+                      value={c.prix_estimation ?? ''}
+                      onChange={(e) => setColisField(i, 'prix_estimation', e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                    />
+                  </label>
+                </div>
+                <p className="-mt-1 text-[11px] text-surface-400">Estimation : valeur approximative du contenu du colis.</p>
 
                 <ProofPicker
                   file={c.photo}

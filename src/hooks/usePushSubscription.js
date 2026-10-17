@@ -3,11 +3,14 @@ import pushService, { isPushSupported } from '../services/pushService';
 
 // Etat de l'abonnement Web Push de cet appareil. `ready` passe a true une fois
 // l'abonnement courant lu (evite d'afficher "desactive" pendant la lecture).
+// `permission` : 'default' | 'granted' | 'denied' | 'unsupported' (la bannière
+// d'invitation n'apparait que tant que la permission est 'default').
 export default function usePushSubscription() {
   const supported = isPushSupported();
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(!supported);
   const [loading, setLoading] = useState(false);
+  const [permission, setPermission] = useState(() => pushService.getPermission());
 
   useEffect(() => {
     if (!supported) return;
@@ -31,9 +34,11 @@ export default function usePushSubscription() {
     } catch (err) {
       return { ok: false, message: err?.response?.data?.message || err.message };
     } finally {
+      // Le choix de l'utilisateur (autoriser / refuser) change la permission.
+      setPermission(pushService.getPermission());
       setLoading(false);
     }
   }, [enabled]);
 
-  return { supported, ready, enabled, loading, toggle };
+  return { supported, ready, enabled, loading, permission, toggle };
 }

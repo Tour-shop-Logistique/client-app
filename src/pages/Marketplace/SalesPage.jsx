@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Receipt, ChevronRight, Hourglass, Truck } from 'lucide-react';
+import { Receipt, ChevronRight, Hourglass, Truck, Users } from 'lucide-react';
 import TopBar from '../../components/common/TopBar';
 import SegmentedTabs from '../../components/marketplace/SegmentedTabs';
 import StatusBadge from '../../components/marketplace/StatusBadge';
@@ -10,7 +10,7 @@ import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
 import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import {
-  COMMANDE_STATUTS, LIVRAISON_STATUTS, formatMoney, personName, isLivraisonActive,
+  COMMANDE_STATUTS, LIVRAISON_STATUTS, formatMoney, personName, isLivraisonActive, isAwaitingOffers,
 } from '../../utils/marketplace';
 import { formatDate } from '../../utils/format';
 import { salePath } from '../../routes';
@@ -23,8 +23,10 @@ const needsShipping = (c) => c.statut === 'payee' && c.mode_livraison !== 'hors_
 const TABS = [
   { key: 'all', label: 'Toutes', match: () => true },
   { key: 'confirm', label: 'À confirmer', match: (c) => c.statut === 'paiement_a_confirmer' },
+  // Livraison ouverte au réseau : les livreurs proposent un prix, à comparer.
+  { key: 'offers', label: 'Offres à comparer', match: isAwaitingOffers },
   { key: 'ship', label: 'À expédier', match: needsShipping },
-  { key: 'transit', label: 'En livraison', match: (c) => c.statut === 'payee' && !needsShipping(c) },
+  { key: 'transit', label: 'En livraison', match: (c) => c.statut === 'payee' && !needsShipping(c) && !isAwaitingOffers(c) },
   { key: 'wait', label: 'Paiement attendu', match: (c) => c.statut === 'en_attente_paiement' },
   { key: 'done', label: 'Livrées', match: (c) => c.statut === 'livree' },
   { key: 'cancel', label: 'Annulées', match: (c) => c.statut === 'annulee' },
@@ -84,9 +86,11 @@ export default function SalesPage() {
               const action =
                 c.statut === 'paiement_a_confirmer'
                   ? { icon: Hourglass, text: 'Confirmer le paiement', cls: 'bg-primary-600 text-white' }
-                  : needsShipping(c)
-                    ? { icon: Truck, text: 'Choisir la livraison', cls: 'bg-shop-400 text-shop-950' }
-                    : null;
+                  : isAwaitingOffers(c)
+                    ? { icon: Users, text: 'Comparer les offres', cls: 'bg-emerald-600 text-white' }
+                    : needsShipping(c)
+                      ? { icon: Truck, text: 'Choisir la livraison', cls: 'bg-shop-400 text-shop-950' }
+                      : null;
               return (
                 <motion.li key={c.id} layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }} exit={{ opacity: 0 }}>
                   <Link to={salePath(c.id)} className="block rounded-2xl bg-white p-4 shadow-card transition hover:shadow-lg active:scale-[0.99]">

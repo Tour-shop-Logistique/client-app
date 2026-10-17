@@ -213,7 +213,8 @@ const annulerVente = async (id, motif) => {
 // Offres actives des livreurs (mode reseau), triees par montant croissant.
 const offresLivraison = async (id) => {
   const { data } = await api.get(`/marketplace/vendeur/ventes/${id}/livraison/offres`);
-  return data.offres ?? [];
+  const list = data?.offres ?? data?.data ?? data?.livraison?.offres ?? [];
+  return Array.isArray(list) ? list : [];
 };
 
 const accepterOffre = async (id, offreId) => {

@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Outlet } from 'react-router-dom';
 import BottomNav from '../components/common/BottomNav';
 import InstallPrompt from '../components/common/InstallPrompt';
+import PushNotificationPrompt from '../components/common/PushNotificationPrompt';
 
 // Guest-first: the auth sheet is only mounted-visible on demand. Lazy-loading it
 // keeps its deps (react-phone-number-input + bundled country flags) out of the
@@ -16,6 +17,7 @@ export default function MobileLayout() {
       </main>
       <BottomNav />
       <InstallPrompt />
+      <PushNotificationPrompt />
       <Suspense fallback={null}>
         <AuthSheet />
       </Suspense>

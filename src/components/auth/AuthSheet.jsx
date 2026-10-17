@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Mail, MapPin } from 'lucide-react';
+import { Mail, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
@@ -8,6 +8,7 @@ import 'react-phone-number-input/style.css';
 import { splitPhone, getPhoneLengthHint } from '../../utils/phone';
 import BottomSheet from '../common/BottomSheet';
 import CountrySelectSheet from '../common/CountrySelectSheet';
+import MethodSwitch from '../common/MethodSwitch';
 import { getFlagEmoji, getCountryName } from '../../utils/countries';
 import { closeAuthSheet } from '../../store/slices/uiSlice';
 import {
@@ -59,6 +60,28 @@ const EMPTY_FORM = {
 // whatsapp_number: full E.164, no separator (api-authentification-client.md).
 const E164 = /^\+[1-9]\d{6,14}$/;
 
+// Connexion : par téléphone OU par email (l'API accepte l'un ou l'autre avec
+// `type: "client"`). Le dernier mode utilisé est retenu sur l'appareil.
+const LOGIN_METHODS = [
+  { key: 'telephone', label: 'Téléphone', icon: Phone },
+  { key: 'email', label: 'Email', icon: Mail },
+];
+const METHOD_KEY = 'client_login_method';
+const loadLoginMethod = () => {
+  try {
+    return localStorage.getItem(METHOD_KEY) === 'email' ? 'email' : 'telephone';
+  } catch {
+    return 'telephone';
+  }
+};
+const saveLoginMethod = (method) => {
+  try {
+    localStorage.setItem(METHOD_KEY, method);
+  } catch {
+    /* stockage indisponible : non bloquant */
+  }
+};
+
 // A referral code can reach a new client through a share link
 // (?parrain= / ?ref= / ?code_parrain=). Read it once at module load.
 const referralFromUrl = (() => {
@@ -87,6 +110,12 @@ export default function AuthSheet() {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState(EMPTY_FORM);
   const [countrySheetOpen, setCountrySheetOpen] = useState(false);
+  const [loginMethod, setLoginMethodState] = useState(loadLoginMethod);
+  const setLoginMethod = (method) => {
+    setLoginMethodState(method);
+    saveLoginMethod(method);
+    dispatch(clearAuthError());
+  };
 
   const loading = status === 'loading';
 
@@ -129,12 +158,18 @@ export default function AuthSheet() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    // One field for both: an "@" means email, otherwise a national phone number
-    // (the API wants it without dialing code, exactly as stored at register).
-    const identifier = form.email.trim();
-    const credentials = identifier.includes('@')
-      ? { email: identifier }
-      : { telephone: identifier.replace(/[\s.\-()]/g, '') };
+    let credentials;
+    if (loginMethod === 'email') {
+      credentials = { email: form.email.trim() };
+    } else {
+      if (!form.telephone || !isPossiblePhoneNumber(form.telephone)) {
+        toast.error('Numéro de téléphone invalide.');
+        return;
+      }
+      // The API wants the national number without dialing code, exactly as it
+      // was stored at register (same split as handleRegister).
+      credentials = { telephone: splitPhone(form.telephone.trim()).national };
+    }
     const result = await dispatch(loginClient({ ...credentials, password: form.password }));
     if (loginClient.fulfilled.match(result)) finishAuthenticated();
   };
@@ -196,6 +231,7 @@ export default function AuthSheet() {
     }
     toast.success('Email vérifié. Connectez-vous.');
     setForm({ ...EMPTY_FORM, email });
+    setLoginMethod('email');
     goTo('login');
   };
 
@@ -251,6 +287,7 @@ export default function AuthSheet() {
     if (resetPassword.fulfilled.match(result)) {
       toast.success('Mot de passe réinitialisé. Connectez-vous.');
       setForm({ ...EMPTY_FORM, email });
+      setLoginMethod('email');
       goTo('login');
     }
   };
@@ -266,19 +303,57 @@ export default function AuthSheet() {
       </p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {/* Compte non vérifié : le code se saisit avec l'adresse email, que l'on ne
+          connaît pas quand on se connecte par téléphone. */}
+      {error && mode === 'login' && loginMethod === 'telephone' && /vérifier votre adresse/i.test(error) && (
+        <button type="button" className="mb-3 text-sm font-semibold text-primary-600" onClick={() => setLoginMethod('email')}>
+          Me connecter avec mon email pour saisir le code
+        </button>
+      )}
 
       {mode === 'login' && (
         <form onSubmit={handleLogin} className="space-y-3">
-          <label className="block text-sm font-medium text-surface-700">
-            Email ou téléphone
-            <input
-              type="text" inputMode="email" autoComplete="username" autoCapitalize="none"
-              placeholder="email@exemple.com ou 0102030405"
-              className="input-field mt-1.5" value={form.email} onChange={set('email')} autoFocus required
-            />
-            <FieldError errors={fieldErrors} name="email" />
-            <FieldError errors={fieldErrors} name="telephone" />
-          </label>
+          <MethodSwitch
+            label="Se connecter avec"
+            options={LOGIN_METHODS}
+            value={loginMethod}
+            onChange={setLoginMethod}
+          />
+
+          {loginMethod === 'telephone' ? (
+            <div className="text-sm font-medium text-surface-700">
+              Numéro de téléphone
+              {/* Même champ qu'à l'inscription : indicatif + numéro national. */}
+              <PhoneInput
+                key={`login-${form.codePays || 'CI'}`}
+                className="phone-field mt-1.5"
+                flags={flags}
+                international
+                countryCallingCodeEditable={false}
+                limitMaxLength
+                defaultCountry={(form.codePays || 'CI').toUpperCase()}
+                value={form.telephone}
+                onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
+                numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'username', required: true }}
+                placeholder="01 02 03 04 05"
+              />
+              {(() => {
+                const hint = getPhoneLengthHint(form.codePays || 'CI');
+                return hint ? <p className="mt-1 text-xs text-surface-400">Numéro national : {hint}</p> : null;
+              })()}
+              <FieldError errors={fieldErrors} name="telephone" />
+            </div>
+          ) : (
+            <label className="block text-sm font-medium text-surface-700">
+              Adresse email
+              <input
+                type="email" inputMode="email" autoComplete="username" autoCapitalize="none"
+                placeholder="vous@exemple.com"
+                className="input-field mt-1.5" value={form.email} onChange={set('email')} required
+              />
+              <FieldError errors={fieldErrors} name="email" />
+            </label>
+          )}
           <label className="block text-sm font-medium text-surface-700">
             Mot de passe
             <input

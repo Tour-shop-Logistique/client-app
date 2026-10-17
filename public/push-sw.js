@@ -29,18 +29,38 @@ self.addEventListener('push', (event) => {
   event.waitUntil(Promise.all([self.registration.showNotification(title, options), notifyClients]));
 });
 
+// `data.url` : chemin relatif de l'app (ex. /expeditions/<id>, /parrainage) fourni
+// par le backend (INTEGRATION_PUSH_NOTIFICATIONS_REACT.md, section 6). Résolu
+// contre l'origine de l'app ; une URL absolue reste telle quelle.
+const resolveUrl = (raw) => {
+  try {
+    return new URL(raw || '/', self.location.origin).href;
+  } catch {
+    return new URL('/', self.location.origin).href;
+  }
+};
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  const target = resolveUrl(event.notification.data?.url);
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-      const existing = windows.find((w) => 'focus' in w);
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windows) => {
+      // Onglet déjà sur cette page : on le met au premier plan.
+      const same = windows.find((w) => w.url === target && 'focus' in w);
+      if (same) return same.focus();
+      // Sinon on réutilise un onglet de l'app et on l'y amène.
+      const existing = windows.find((w) => 'focus' in w && w.url.startsWith(self.location.origin));
       if (existing) {
-        existing.navigate(url);
+        try {
+          await existing.navigate(target);
+        } catch {
+          /* navigation refusée : on se rabat sur une nouvelle fenêtre */
+          return clients.openWindow(target);
+        }
         return existing.focus();
       }
-      return clients.openWindow(url);
+      return clients.openWindow(target);
     })
   );
 });

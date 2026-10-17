@@ -132,6 +132,16 @@ export const TONE_CLASSES = {
 // Refusee / expiree : la commande revient `payee`, le vendeur re-choisit.
 export const isLivraisonActive = (liv) => Boolean(liv) && !['refusee', 'expiree'].includes(liv.statut);
 
+// Vente payée dont la livraison est ouverte au réseau et attend encore un livreur :
+// le vendeur doit comparer les offres reçues et en accepter une. Tolère les deux
+// écritures du mode (`reseau` sur la livraison, `reseau_livreurs` sur la commande).
+export const isAwaitingOffers = (commande) => {
+  const liv = commande?.livraison_marketplace;
+  if (commande?.statut !== 'payee' || liv?.statut !== 'en_attente') return false;
+  const network = liv.mode === 'reseau' || liv.mode === 'reseau_livreurs' || commande.mode_livraison === 'reseau_livreurs';
+  return network;
+};
+
 // Adresse snapshot de la commande : `livraison_*` (acheteur) ou `retrait_*` (vendeur).
 export const commandeAddress = (commande, prefix) => {
   const get = (k) => commande?.[`${prefix}_${k}`] ?? null;

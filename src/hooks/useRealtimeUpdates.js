@@ -3,7 +3,9 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
-import { orderPath, salePath, expeditionDetailPath } from '../routes';
+import { ROUTES, orderPath, salePath, expeditionDetailPath } from '../routes';
+import marketplaceService from '../services/marketplaceService';
+import { formatMoney } from '../utils/marketplace';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
 
@@ -151,6 +153,27 @@ export function useRealtimeMarketplace(commandeId, onUpdate, enabled = true) {
   useRealtimeUpdates(handle, { only: ['marketplace'], enabled });
 }
 
+// Ouvre la vente qui porte une livraison donnée : directement si l'id de commande
+// est connu, sinon en cherchant parmi les ventes du vendeur ; à défaut, l'onglet
+// « Offres à comparer » de la liste.
+async function openSaleOfDelivery(navigate, commandeId, livraisonId) {
+  if (commandeId) {
+    navigate(salePath(commandeId));
+    return;
+  }
+  try {
+    const ventes = await marketplaceService.mesVentes();
+    const vente = ventes.find((c) => String(c.livraison_marketplace?.id) === String(livraisonId));
+    if (vente) {
+      navigate(salePath(vente.id));
+      return;
+    }
+  } catch {
+    /* liste indisponible : repli sur l'onglet */
+  }
+  navigate(`${ROUTES.MARKETPLACE_SALES}?onglet=offers`);
+}
+
 // Role du client connecte dans la commande, quand le payload le permet.
 const roleIn = (item, userId) => {
   const vendeur = item?.vendeur_id ?? item?.commande?.vendeur_id;
@@ -278,9 +301,19 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           if (role === 'vendeur') toast.info('Le livreur a récupéré l’article', { action: open(salePath) });
           else toast.info('Votre commande est en route 🚚', { action: open(orderPath) });
           break;
-        case 'marketplace.LivraisonMarketplaceOffre.proposee':
-          toast.info('Nouvelle offre d’un livreur', { description: 'Comparez les offres de livraison.', action: open(salePath) });
+        case 'marketplace.LivraisonMarketplaceOffre.proposee': {
+          // L'offre ne porte que `livraison_marketplace_id` (pas l'id de la
+          // commande) : on retrouve la vente correspondante au toucher du bouton.
+          if (role === 'acheteur') break;
+          const livraisonId = item?.livraison_marketplace_id ?? item?.livraison_id;
+          const montant = item?.montant_propose;
+          toast.info('Nouvelle offre d’un livreur', {
+            description: montant != null ? `${formatMoney(montant)} proposés · comparez les offres.` : 'Comparez les offres de livraison.',
+            duration: 10000,
+            action: { label: 'Voir', onClick: () => openSaleOfDelivery(navigate, commandeId, livraisonId) },
+          });
           break;
+        }
         default:
           break;
       }

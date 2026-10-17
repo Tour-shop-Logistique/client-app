@@ -35,11 +35,14 @@ export const isPushSupported = () =>
 // arriver avant la fin de l'enregistrement) au lieu de lire un état instantané.
 const WORKER_TIMEOUT_MS = 8000;
 
+// Registration du service worker actif, ou null si aucun ne devient actif à temps.
+const waitForRegistration = (timeoutMs = WORKER_TIMEOUT_MS) => Promise.race([
+  navigator.serviceWorker.ready,
+  new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+]);
+
 const getRegistration = async () => {
-  const reg = await Promise.race([
-    navigator.serviceWorker.ready,
-    new Promise((resolve) => setTimeout(() => resolve(null), WORKER_TIMEOUT_MS)),
-  ]);
+  const reg = await waitForRegistration();
   if (!reg) {
     throw new Error(
       import.meta.env.DEV
@@ -50,11 +53,17 @@ const getRegistration = async () => {
   return reg;
 };
 
+// Abonnement de cet appareil, lu une fois le service worker actif (au chargement
+// il peut ne pas l'être encore : une lecture instantanée afficherait « désactivé »
+// à tort). Attente courte : sans service worker (mode dev) on conclut vite à null.
 const getCurrentSubscription = async () => {
   if (!isPushSupported()) return null;
-  const reg = await navigator.serviceWorker.getRegistration();
+  const reg = await waitForRegistration(3000);
   return reg ? reg.pushManager.getSubscription() : null;
 };
+
+// 'default' (pas encore demandé) | 'granted' | 'denied' | 'unsupported'.
+const getPermission = () => (isPushSupported() ? Notification.permission : 'unsupported');
 
 // GET /push/public-key -> POST /push/subscribe { endpoint, keys: { p256dh, auth } }
 const subscribe = async () => {
@@ -90,7 +99,13 @@ const subscribe = async () => {
   }
 
   const json = subscription.toJSON();
-  await api.post('/push/subscribe', { endpoint: json.endpoint, keys: json.keys });
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+    throw new Error("L'abonnement créé par le navigateur est incomplet. Réessayez.");
+  }
+  await api.post('/push/subscribe', {
+    endpoint: json.endpoint,
+    keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+  });
   return true;
 };
 
@@ -107,6 +122,7 @@ const pushService = {
   subscribe,
   unsubscribe,
   getCurrentSubscription,
+  getPermission,
 };
 
 export default pushService;

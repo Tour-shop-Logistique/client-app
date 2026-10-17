@@ -1,6 +1,6 @@
 import { useEffect, useState, Suspense, lazy } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import MobileLayout from './layouts/MobileLayout';
 import LoadingSpinner from './components/common/LoadingSpinner';
@@ -147,6 +147,12 @@ export default function App() {
         <Route path={ROUTES.PROFILE_DELETE} element={gated('profile', <DeleteAccountPage />)} />
         <Route path={ROUTES.PROFILE_REFERRAL} element={gated('referral', <ReferralPage />)} />
         <Route path={ROUTES.PROFILE_INVOICES} element={gated('invoices', <InvoicesPage />)} />
+
+        {/* Liens `data.url` des notifications push envoyes par le backend
+            (INTEGRATION_PUSH_NOTIFICATIONS_REACT.md, section 7) qui different
+            des routes de l'app. */}
+        <Route path="/parrainage" element={<Navigate to={ROUTES.PROFILE_REFERRAL} replace />} />
+        <Route path="/abonnement" element={<Navigate to={ROUTES.MARKETPLACE_SUBSCRIPTION} replace />} />
 
         <Route path="*" element={<NotFoundPage />} />
       </Route>
