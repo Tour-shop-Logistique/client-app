@@ -28,9 +28,25 @@ export const isPushSupported = () =>
   && 'PushManager' in window
   && 'Notification' in window;
 
+// Le push marche dans Chrome (ordinateur et Android) SANS installer l'app : il
+// suffit qu'un service worker soit actif. Il n'est enregistré que dans la version
+// construite (`npm run build`, vite.config.js > devOptions.enabled: false) : en
+// `npm run dev` il n'existe donc pas. `ready` attend l'activation (le clic peut
+// arriver avant la fin de l'enregistrement) au lieu de lire un état instantané.
+const WORKER_TIMEOUT_MS = 8000;
+
 const getRegistration = async () => {
-  const reg = await navigator.serviceWorker.getRegistration();
-  if (!reg) throw new Error("Le service worker n'est pas actif (disponible uniquement sur l'app installée / build de production).");
+  const reg = await Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((resolve) => setTimeout(() => resolve(null), WORKER_TIMEOUT_MS)),
+  ]);
+  if (!reg) {
+    throw new Error(
+      import.meta.env.DEV
+        ? "Le service worker n'est pas actif en mode développement : testez sur la version construite (npm run build, puis npm run preview) ou sur le site déployé."
+        : "Le service worker n'est pas encore prêt. Rechargez la page puis réessayez."
+    );
+  }
   return reg;
 };
 
@@ -43,6 +59,10 @@ const getCurrentSubscription = async () => {
 // GET /push/public-key -> POST /push/subscribe { endpoint, keys: { p256dh, auth } }
 const subscribe = async () => {
   if (!isPushSupported()) throw new Error('Les notifications push ne sont pas prises en charge sur cet appareil.');
+  // Déjà refusé : le navigateur ne redemande pas, il faut le réactiver à la main.
+  if (Notification.permission === 'denied') {
+    throw new Error('Les notifications sont bloquées pour ce site. Autorisez-les dans les réglages du navigateur (cadenas à côté de l’adresse > Notifications).');
+  }
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Autorisation de notification refusée.');
 
