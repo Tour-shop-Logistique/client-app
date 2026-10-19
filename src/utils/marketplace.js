@@ -46,9 +46,9 @@ export const annoncePhotos = (annonce) =>
 
 export const annonceCover = (annonce) => annoncePhotos(annonce)[0]?.url ?? null;
 
-// Devise libre (defaut XOF) : on affiche "FCFA" pour XOF/XAF, sinon le code.
-export const formatMoney = (value, devise = 'XOF') =>
-  formatPrice(value, !devise || devise === 'XOF' || devise === 'XAF' ? 'FCFA' : devise);
+// Devise de l'annonce, sinon celle de l'utilisateur (user.devise) : "FCFA"
+// pour XOF/XAF, symbole ou code sinon (cf. utils/format).
+export const formatMoney = (value, devise) => formatPrice(value, devise ? String(devise).toUpperCase() : undefined);
 
 // Badge "Nouveau" : annonce publiee (ou creee) il y a moins de 3 jours.
 export const isNewAnnonce = (annonce) => {
@@ -92,11 +92,21 @@ export const LIVRAISON_STATUTS = {
   terminee: { label: 'Livrée', tone: 'success' },
 };
 
+// Libelles des modes. Les 3 premiers sont les seuls actifs
+// (MARKETPLACE_LIVRAISON_3_MODES.md) ; les anciens restent pour l'historique.
 export const MODES_LIVRAISON = {
+  standard: 'Standard',
+  express: 'Express',
+  livreur_magasin: 'Livreur du vendeur',
   reseau_livreurs: 'Réseau de livreurs',
+  reseau: 'Réseau de livreurs',
   livreur_direct: 'Livreur choisi',
+  direct: 'Livreur choisi',
   hors_plateforme: 'Hors plateforme',
 };
+
+// Mode effectif : porte par la livraison, sinon par la commande.
+export const deliveryMode = (commande) => commande?.livraison_marketplace?.mode ?? commande?.mode_livraison ?? null;
 
 export const ECHEANCE_STATUTS = {
   a_payer: { label: 'À payer', tone: 'neutral' },
@@ -129,17 +139,37 @@ export const TONE_CLASSES = {
 };
 
 // Livraison encore portee par un livreur (ou en attente de son accord).
-// Refusee / expiree : la commande revient `payee`, le vendeur re-choisit.
+// Refusee / expiree (livreur du magasin) : la commande revient `payee`, le
+// vendeur designe un autre livreur.
 export const isLivraisonActive = (liv) => Boolean(liv) && !['refusee', 'expiree'].includes(liv.statut);
 
-// Vente payée dont la livraison est ouverte au réseau et attend encore un livreur :
-// le vendeur doit comparer les offres reçues et en accepter une. Tolère les deux
-// écritures du mode (`reseau` sur la livraison, `reseau_livreurs` sur la commande).
-export const isAwaitingOffers = (commande) => {
+// --- Etats du workflow de livraison (3 modes) --------------------------------
+
+// Commande payee sans mode choisi : c'est a L'ACHETEUR de choisir.
+export const needsDeliveryChoice = (commande) => commande?.statut === 'payee'
+  && !commande.livraison_marketplace && !commande.mode_livraison;
+
+// Livreur du magasin choisi par l'acheteur : le vendeur doit designer son
+// livreur (au depart, ou apres un refus / une expiration du livreur).
+export const needsMagasinAssignment = (commande) => {
   const liv = commande?.livraison_marketplace;
-  if (commande?.statut !== 'payee' || liv?.statut !== 'en_attente') return false;
-  const network = liv.mode === 'reseau' || liv.mode === 'reseau_livreurs' || commande.mode_livraison === 'reseau_livreurs';
-  return network;
+  return commande?.statut === 'payee' && liv?.mode === 'livreur_magasin' && !liv.livreur_id
+    && (liv.statut === 'en_attente' || ['refusee', 'expiree'].includes(liv.statut));
+};
+
+// Livraison geree par le vendeur hors application : ancien mode hors_plateforme,
+// ou livreur du magasin designe sans compte livreur (assignee, sans livreur_id).
+export const isSelfDelivery = (commande) => {
+  if (commande?.statut !== 'payee') return false;
+  if (commande.mode_livraison === 'hors_plateforme') return true;
+  const liv = commande.livraison_marketplace;
+  return liv?.mode === 'livreur_magasin' && liv.statut === 'assignee' && !liv.livreur_id;
+};
+
+// Standard / express en attente d'un livreur (backoffice ou reseau).
+export const isAwaitingCourier = (commande) => {
+  const liv = commande?.livraison_marketplace;
+  return commande?.statut === 'payee' && liv?.statut === 'en_attente' && ['standard', 'express'].includes(liv.mode);
 };
 
 // Adresse snapshot de la commande : `livraison_*` (acheteur) ou `retrait_*` (vendeur).
@@ -164,7 +194,7 @@ export const orderSteps = (commande) => {
   const liv = commande?.livraison_marketplace;
   const order = ['en_attente_paiement', 'paiement_a_confirmer', 'payee', 'livree'];
   const idx = order.indexOf(s);
-  const shipping = s === 'livree' ? 'done' : s === 'payee' && (commande?.mode_livraison === 'hors_plateforme' || isLivraisonActive(liv)) ? 'current' : 'todo';
+  const shipping = s === 'livree' ? 'done' : s === 'payee' && (isSelfDelivery(commande) || isLivraisonActive(liv)) ? 'current' : 'todo';
   return [
     { key: 'commande', label: 'Commande', state: 'done' },
     { key: 'paiement', label: 'Paiement', state: idx >= 2 ? 'done' : 'current' },
@@ -199,22 +229,27 @@ export const apiErrorMessage = (err, fallback = 'Une erreur est survenue.') => {
 
 // Plus de quartier saisi : `adresse` decrit le lieu, `ville` vient des communes
 // du backoffice (`retrait_quartier` reste optionnel cote API, on ne l'envoie plus).
+// `commune_id` : UUID de la commune choisie dans la liste (avec `ville` = son nom).
+// Commune de depart de l'annonce / commune de livraison de l'acheteur : elles
+// servent au calcul des tarifs de livraison (MARKETPLACE_LIVRAISON_3_MODES.md).
 export const EMPTY_ADDRESS = {
-  nom: '', telephone: '', adresse: '', ville: '', latitude: null, longitude: null, instructions: '',
+  nom: '', telephone: '', adresse: '', ville: '', commune_id: null, latitude: null, longitude: null, instructions: '',
 };
 
-// { nom, ... } -> { retrait_nom, ... } (annonce) ; ignore les champs vides.
+// { nom, ... } -> { retrait_nom, ..., commune_id } (annonce) ; ignore les champs vides.
 export const toRetraitPayload = (addr) => {
   const out = {};
   ['nom', 'telephone', 'adresse', 'ville', 'latitude', 'longitude'].forEach((k) => {
     const v = addr?.[k];
     if (v !== undefined && v !== null && String(v).trim() !== '') out[`retrait_${k}`] = typeof v === 'string' ? v.trim() : v;
   });
+  if (addr?.commune_id) out.commune_id = addr.commune_id;
   return out;
 };
 
 export const fromRetrait = (annonce) => ({
   ...EMPTY_ADDRESS,
+  commune_id: annonce?.commune_id ?? null,
   nom: annonce?.retrait_nom ?? '',
   telephone: annonce?.retrait_telephone ?? '',
   adresse: annonce?.retrait_adresse ?? '',

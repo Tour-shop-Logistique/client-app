@@ -21,6 +21,7 @@ import {
 import { loadJson, saveJson, loadFiles, saveFiles, clearDraft } from '../../utils/draftStore';
 import { ROUTES } from '../../routes';
 
+import { currencyLabel } from '../../utils/format';
 // Saisie conservee si l'onglet est recharge (navigateur mis en arriere-plan).
 const DRAFT_KEY = 'tourshop:sell-draft';
 
@@ -211,7 +212,7 @@ export default function SellPage() {
               <div className="mx-auto w-1/2 overflow-hidden rounded-2xl bg-white shadow-lg">
                 <ProductImage src={coverUrl} alt="" className="aspect-[4/5]" />
                 <div className="space-y-0.5 p-3">
-                  <p className="font-heading text-[15px] font-bold">{prix !== '' ? formatMoney(prix) : '— FCFA'}</p>
+                  <p className="font-heading text-[15px] font-bold">{prix !== '' ? formatMoney(prix) : `— ${currencyLabel()}`}</p>
                   <p className="line-clamp-2 text-body text-surface-700">{titre || 'Titre de votre article'}</p>
                 </div>
               </div>
@@ -240,7 +241,7 @@ export default function SellPage() {
           <span className="text-body font-semibold text-surface-900">Prix</span>
           <div className="relative mt-1.5">
             <input type="number" inputMode="numeric" min="0" className="input-field pr-16 font-semibold" placeholder="15000" {...register('prix')} />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-caption font-semibold text-surface-400">FCFA</span>
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-caption font-semibold text-surface-400">{currencyLabel()}</span>
           </div>
           {errors.prix && <p className="mt-1 text-caption text-red-600">{errors.prix.message}</p>}
         </label>

@@ -4,14 +4,22 @@ import { toast } from 'sonner';
 import BottomSheet from '../common/BottomSheet';
 import HomeMissionFields from './HomeMissionFields';
 import expeditionService from '../../services/expeditionService';
+import destinataireService from '../../services/destinataireService';
 import { missionRequestPayload } from '../../utils/pickup';
+import { expeditionCurrency } from '../../utils/format';
+import { arrivalAgence } from '../../utils/expedition';
 
 // Demande d'enlèvement ou de livraison à domicile APRÈS la création de
 // l'expédition (api-enlevement-livraison-client.md) :
 //  - POST /expedition/client/{id}/demander-enlevement (chez l'expéditeur,
 //    depuis l'agence de départ) — seul moyen en mode `recuperation_agence` ;
 //  - POST /expedition/client/{id}/demander-livraison (chez le destinataire,
-//    depuis l'agence d'arrivée).
+//    depuis l'agence d'arrivée) ;
+//  - `viewer="destinataire"` : POST /destinataire/{id}/demander-livraison — le
+//    destinataire demande lui-même la livraison et PAIE le livreur
+//    (user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §4).
+// Express : prix imposé (standard × taux express), affiché avant confirmation.
+// 422 si le taux express n'est pas configuré : on propose le mode standard.
 // Le mode (groupage | express) est définitif une fois la demande envoyée.
 
 const COPY = {
@@ -29,11 +37,14 @@ const COPY = {
     title: 'Livraison à domicile',
     submit: 'Demander la livraison',
   },
+  destinataire: {
+    icon: Home,
+    cta: 'Me faire livrer à domicile',
+    hint: 'Un livreur apporte le colis de l’agence jusque chez vous. Vous réglez la course au livreur.',
+    title: 'Livraison à domicile',
+    submit: 'Confirmer la livraison',
+  },
 };
-
-// Agence d'arrivée : nom de relation non garanti dans `show` — lecture défensive.
-const arrivalAgence = (exp) =>
-  exp?.agence_arrivee ?? exp?.agenceArrivee ?? exp?.agence_destination ?? exp?.agenceDestination ?? null;
 
 const initialValue = (exp, kind) => {
   const who = kind === 'enlevement' ? 'expediteur' : 'destinataire';
@@ -47,46 +58,65 @@ const initialValue = (exp, kind) => {
   };
 };
 
-export default function MissionRequest({ expedition, kind, onDone }) {
-  const copy = COPY[kind];
+const errorMessage = (err) => {
+  const data = err.response?.data;
+  return data?.message || Object.values(data?.errors || {}).flat()[0] || 'Impossible d’envoyer la demande pour le moment.';
+};
+
+export default function MissionRequest({ expedition, kind, onDone, viewer = 'client' }) {
+  const asRecipient = viewer === 'destinataire';
+  const copy = asRecipient ? COPY.destinataire : COPY[kind];
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [value, setValue] = useState(() => initialValue(expedition, kind));
+  const [expressRefused, setExpressRefused] = useState(null); // message 422 express
 
   const agence = kind === 'enlevement' ? expedition.agence : arrivalAgence(expedition);
   const communeId = kind === 'enlevement'
     ? expedition.agence?.commune_id
     : agence?.commune_id ?? expedition.destinataire_commune_id;
+  // Enlèvement : grille de la commune de départ (devise d'origine). Livraison :
+  // commune d'arrivée — devise de destination si fournie, sinon celle de l'utilisateur.
+  const currency = kind === 'enlevement' ? expeditionCurrency(expedition) : expedition.devise_destination ?? undefined;
 
   const openSheet = () => {
     setValue(initialValue(expedition, kind));
+    setExpressRefused(null);
     setOpen(true);
   };
 
   const submit = async () => {
     setBusy(true);
+    setExpressRefused(null);
     try {
       const payload = missionRequestPayload(value);
-      const res = kind === 'enlevement'
-        ? await expeditionService.requestPickup(expedition.id, payload)
-        : await expeditionService.requestHomeDelivery(expedition.id, payload);
+      let res;
+      if (asRecipient) res = await destinataireService.requestDelivery(expedition.id, payload);
+      else if (kind === 'enlevement') res = await expeditionService.requestPickup(expedition.id, payload);
+      else res = await expeditionService.requestHomeDelivery(expedition.id, payload);
       toast.success(res?.message || 'Demande envoyée.', {
         description: value.mode === 'express'
-          ? 'Les offres des livreurs vont arriver ici : comparez-les puis choisissez.'
+          ? 'Course diffusée aux livreurs disponibles : le premier qui l’accepte la prend en charge.'
           : 'TourShop affecte un livreur au tarif fixé par l’agence.',
       });
       setOpen(false);
-      onDone?.();
+      onDone?.(res);
     } catch (err) {
-      const data = err.response?.data;
-      toast.error(
-        data?.message
-          || Object.values(data?.errors || {}).flat()[0]
-          || 'Impossible d’envoyer la demande pour le moment.',
-      );
+      const message = errorMessage(err);
+      // Express non configuré pour la tranche : repli proposé sur le standard.
+      if (err.response?.status === 422 && value.mode === 'express' && /express/i.test(message)) {
+        setExpressRefused(message);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setBusy(false);
     }
+  };
+
+  const switchToStandard = () => {
+    setValue((v) => ({ ...v, mode: 'groupage' }));
+    setExpressRefused(null);
   };
 
   const Icon = copy.icon;
@@ -110,10 +140,30 @@ export default function MissionRequest({ expedition, kind, onDone }) {
 
       <BottomSheet open={open} onClose={() => !busy && setOpen(false)} title={copy.title}>
         <div className="space-y-4">
-          <HomeMissionFields value={value} onChange={setValue} agence={agence} communeId={communeId} kind={kind} />
+          <HomeMissionFields
+            value={value}
+            onChange={setValue}
+            agence={agence}
+            communeId={communeId}
+            kind={kind}
+            currency={currency}
+          />
           {pointMissing && (
             <p className="text-xs text-amber-700">
               Sans position, le livreur n’aura que l’adresse écrite pour se repérer.
+            </p>
+          )}
+          {expressRefused && (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p>{expressRefused}</p>
+              <button type="button" className="btn-secondary w-full" onClick={switchToStandard}>
+                Passer en mode classique
+              </button>
+            </div>
+          )}
+          {asRecipient && (
+            <p className="rounded-xl bg-surface-50 px-3 py-2.5 text-xs text-surface-600">
+              Vous payez le livreur directement (mobile money, espèces…), puis vous déposez la preuve de paiement dans l’app.
             </p>
           )}
           <p className="text-xs text-surface-500">Le mode choisi ne pourra plus être modifié ensuite (vous pourrez seulement annuler la demande).</p>

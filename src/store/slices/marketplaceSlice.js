@@ -3,6 +3,7 @@ import marketplaceService from '../../services/marketplaceService';
 import abonnementService from '../../services/abonnementService';
 import { loadJson } from '../persist';
 import { annonceCover } from '../../utils/marketplace';
+import { getDefaultCurrency } from '../../utils/format';
 
 export const FAVORITES_KEY = 'marketplace_favorites';
 export const RECENT_KEY = 'marketplace_recent';
@@ -31,8 +32,13 @@ export const annonceSnapshot = (annonce) => ({
   id: annonce.id,
   titre: annonce.titre,
   prix: Number(annonce.prix),
-  devise: annonce.devise || 'XOF',
+  devise: annonce.devise || getDefaultCurrency(),
   photo: annonceCover(annonce),
+  // Depart de la livraison : commune et position de retrait, pour afficher les
+  // tarifs de livraison avant la commande (MARKETPLACE_LIVRAISON_3_MODES.md).
+  commune_id: annonce.commune_id ?? null,
+  retrait_latitude: annonce.retrait_latitude ?? null,
+  retrait_longitude: annonce.retrait_longitude ?? null,
   vendeur: annonce.vendeur
     ? { id: annonce.vendeur.id, nom: annonce.vendeur.nom, prenoms: annonce.vendeur.prenoms }
     : null,

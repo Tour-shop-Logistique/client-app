@@ -1,14 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Camera, ChevronDown, MapPinned, Plus, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle, Building2, Camera, Check, ChevronDown, MapPin, MapPinned, Plus, Search, Trash2,
+} from 'lucide-react';
+import {
+  ContactSummary, ErrorNote, PickerButton, RouteRail, SummaryRow as Row,
+} from '../../components/expedition/FlowParts';
+import { fmtKg } from '../../utils/decimal';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
-import StepProgress from '../../components/expedition/StepProgress';
+import BottomSheet from '../../components/common/BottomSheet';
+import StepBar from '../../components/expedition/StepBar';
+import ActionDock, { DockTotal } from '../../components/expedition/ActionDock';
+import WeightStepper from '../../components/expedition/WeightStepper';
+import CommuneSelectSheet from '../../components/expedition/CommuneSelectSheet';
 import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
 import EmptyState from '../../components/common/EmptyState';
 import DraftRestoredBanner from '../../components/common/DraftRestoredBanner';
 import useFormDraft from '../../hooks/useFormDraft';
+import useExitGuard from '../../hooks/useExitGuard';
+import ExitFlowSheet from '../../components/expedition/ExitFlowSheet';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
@@ -22,16 +34,23 @@ import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pi
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import expeditionService from '../../services/expeditionService';
 import { getFlagEmoji } from '../../utils/countries';
-import { formatPrice } from '../../utils/format';
+import { formatPrice, formatExpeditionPrice, currencyLabel } from '../../utils/format';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import ColisFormatFields from '../../components/expedition/ColisFormatFields';
 import useColisFormats from '../../hooks/useColisFormats';
 import { applyFormat, defaultFormat, overweight, syncColisFormats } from '../../utils/colisFormat';
+import { getRecentCommunes, pushRecentCommune } from '../../utils/recentCommunes';
 
-const STEP_LABELS = ['Trajet', 'Colis', 'Devis', 'Coordonnees'];
+// Parcours mobile en 3 étapes : Trajet -> Colis -> Coordonnées, puis une feuille
+// de vérification avant l'enregistrement. Le tarif (simulate-interville) n'est
+// plus une étape : il s'affiche en continu dans la barre d'action dès que
+// l'agence, la commune et des colis valides sont connus.
+const STEP_LABELS = ['Trajet', 'Colis', 'Coordonnées'];
+const LAST_STEP = STEP_LABELS.length;
 
-const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_emballage: '', prix_estimation: '', photo: null };
+// Pas de montant d'emballage en Interville : ni saisi, ni envoyé.
+const EMPTY_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', format_colis_id: '', prix_estimation: '', photo: null };
 
 // Builds the `colis[]` array shared by simulate-interville and store — only the
 // fields the API expects, empty/zero optionals dropped. The optional photo is
@@ -45,67 +64,24 @@ const buildColis = (colisList, { withPhoto = false } = {}) =>
     if (Number(c.largeur) > 0) item.largeur = Number(c.largeur);
     if (Number(c.hauteur) > 0) item.hauteur = Number(c.hauteur);
     if (c.format_colis_id) item.format_colis_id = c.format_colis_id;
-    if (Number(c.prix_emballage) > 0) item.prix_emballage = Number(c.prix_emballage);
     if (withPhoto && c.photo) item.photo = c.photo;
     return item;
   });
 
-function Row({ label, value, strong }) {
-  return (
-    <div className="flex items-center justify-between py-2.5">
-      <span className="text-surface-500">{label}</span>
-      <span className={strong ? 'font-semibold text-primary-700' : 'font-medium text-surface-900'}>{value}</span>
-    </div>
-  );
-}
-
-function TarifCard({ status, error, sim, colisList = [], onRetry }) {
-  if (status === 'loading') {
-    return (
-      <div className="rounded-xl border border-surface-100 bg-white px-4 py-3 text-sm text-surface-500">
-        Calcul du tarif...
-      </div>
-    );
-  }
-  if (status === 'error') {
-    return (
-      <div className="card border border-red-100 bg-red-50 p-3 text-sm text-red-700">
-        {error}
-        <button type="button" onClick={onRetry} className="mt-2 block font-semibold text-red-700 underline">
-          Reessayer
-        </button>
-      </div>
-    );
-  }
-  if (!sim?.tarif) return null;
-
-  // Le montant de prestation est interne : le client ne voit que le total et
-  // les frais d'emballage qu'il a saisis.
-  const t = sim.tarif;
-  const emballage = colisList.reduce((s, c) => s + (Number(c.prix_emballage) || 0), 0);
-  return (
-    <div className="card border border-primary-100 bg-primary-50/60 p-4">
-      <p className="text-xs text-primary-700">Montant total de l'expedition</p>
-      <p className="text-2xl font-bold text-primary-800">{formatPrice(t.montant_expedition)}</p>
-      {emballage > 0 && (
-        <div className="mt-2 flex justify-between text-xs text-primary-700/80">
-          <span>Frais d'emballage</span>
-          <span>{formatPrice(emballage)}</span>
-        </div>
-      )}
-    </div>
-  );
-}
+const dimsOf = (c) => {
+  const d = [c.longueur, c.largeur, c.hauteur].map((v) => Number(v) || 0);
+  return d.every((v) => v > 0) ? `${d.join('×')} cm` : null;
+};
 
 function SuccessScreen({ expedition, pickupMode, onNew }) {
   const navigate = useNavigate();
   return (
     <div>
-      <TopBar title="Expedition Interville" />
+      <TopBar title="Envoi Interville" />
       <div className="page-container space-y-4 py-4">
         <SuccessHero title="Demande enregistrée !" subtitle="En attente d'acceptation par l'agence de départ.">
           <CopyReference reference={expedition.reference} />
-          <p className="mt-3 font-heading text-lg font-bold text-surface-900">{formatPrice(expedition.montant_expedition)}</p>
+          <p className="mt-3 font-heading text-lg font-bold text-surface-900">{formatExpeditionPrice(expedition.montant_expedition, expedition)}</p>
           {pickupMode && (
             <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
               {PICKUP_MODE_MESSAGE[pickupMode]}
@@ -117,18 +93,14 @@ function SuccessScreen({ expedition, pickupMode, onNew }) {
 
         <div className="flex gap-2">
           <button type="button" className="btn-secondary flex-1" onClick={() => navigate(ROUTES.EXPEDITION_HISTORY)}>
-            Mes expeditions
+            Mes expéditions
           </button>
-          <button
-            type="button"
-            className="btn-primary flex-1"
-            onClick={() => navigate(expeditionDetailPath(expedition.id))}
-          >
-            Voir le detail
+          <button type="button" className="btn-primary flex-1" onClick={() => navigate(expeditionDetailPath(expedition.id))}>
+            Voir le détail
           </button>
         </div>
         <button type="button" className="btn-ghost w-full" onClick={onNew}>
-          Nouvelle expedition
+          Nouvel envoi
         </button>
       </div>
     </div>
@@ -148,6 +120,10 @@ export default function IntervilleFormPage() {
   const [maxStepReached, setMaxStepReached] = useState(1);
   const [countrySheetOpen, setCountrySheetOpen] = useState(false);
   const [agenceSheetOpen, setAgenceSheetOpen] = useState(false);
+  const [communeSheetOpen, setCommuneSheetOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [openColis, setOpenColis] = useState(0);
+  const [expediteurOpen, setExpediteurOpen] = useState(true);
 
   const [agence, setAgence] = useState(null);
   const [destinataireCommuneId, setDestinataireCommuneId] = useState('');
@@ -158,6 +134,7 @@ export default function IntervilleFormPage() {
 
   const [communes, setCommunes] = useState([]);
   const [communesStatus, setCommunesStatus] = useState('idle');
+  const [recentIds, setRecentIds] = useState(() => getRecentCommunes(country.code));
   const [sim, setSim] = useState(null);
   const [simStatus, setSimStatus] = useState('idle');
   const [simError, setSimError] = useState('');
@@ -180,8 +157,9 @@ export default function IntervilleFormPage() {
     draftData,
     (d) => {
       if (d.code_pays !== country.code) return false;
-      setStep(d.step ?? 1);
-      setMaxStepReached(d.maxStepReached ?? 1);
+      // Les brouillons de l'ancien parcours (4 étapes) reprennent à la dernière.
+      setStep(Math.min(d.step ?? 1, LAST_STEP));
+      setMaxStepReached(Math.min(d.maxStepReached ?? 1, LAST_STEP));
       setAgence(d.agence ?? null);
       setDestinataireCommuneId(d.destinataireCommuneId ?? '');
       if (d.colisList?.length) setColisList(d.colisList);
@@ -192,6 +170,10 @@ export default function IntervilleFormPage() {
     },
     draftEmpty
   );
+
+  useEffect(() => {
+    setRecentIds(getRecentCommunes(country.code));
+  }, [country.code]);
 
   // Communes of the departure country — public, gives destinataire_commune_id.
   useEffect(() => {
@@ -231,15 +213,27 @@ export default function IntervilleFormPage() {
     );
   }, [user]);
 
-  const canSimulate =
-    Boolean(agence?.id) &&
-    Boolean(destinataireCommuneId) &&
-    colisList.length > 0 &&
-    colisList.every((c) => Number(c.poids) >= 0.01);
+  const formatOf = (c) => formats.find((f) => f.id === c.format_colis_id) || null;
+  const colisIsValid = (c) => Number(c.poids) >= 0.01 && !overweight(c, formatOf(c));
 
-  // Simulate the tariff on the recap step (debounced, re-runs if inputs change).
+  // Agence sans commune configurée : le store renverrait « Aucune commune n'est
+  // associée à votre agence. » On ne bloque que si l'API l'indique clairement.
+  const agenceSansCommune = Boolean(agence) && 'commune_id' in agence && !agence.commune_id;
+  const trajetOk = Boolean(agence?.id) && !agenceSansCommune && Boolean(destinataireCommuneId);
+  const colisOk = colisList.length > 0 && colisList.every(colisIsValid);
+  const canSimulate = trajetOk && colisOk;
+
+  // Tarif en continu dès l'étape Colis (debounce, relancé si la saisie change,
+  // pas à chaque changement d'étape).
+  const simActive = step >= 2;
   useEffect(() => {
-    if (step < 3 || !canSimulate) return undefined;
+    if (!simActive) return undefined;
+    if (!canSimulate) {
+      setSim(null);
+      setSimStatus('idle');
+      setSimError('');
+      return undefined;
+    }
     let cancelled = false;
     setSimStatus('loading');
     setSimError('');
@@ -258,7 +252,7 @@ export default function IntervilleFormPage() {
           setSimStatus('idle');
         } else {
           setSim(null);
-          setSimError(res?.message || data?.message || 'Simulation impossible pour cette selection.');
+          setSimError(res?.message || data?.message || 'Simulation impossible pour cette sélection.');
           setSimStatus('error');
         }
       } catch (err) {
@@ -267,20 +261,24 @@ export default function IntervilleFormPage() {
         setSimError(
           err.response?.data?.message ||
             Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
-            'Impossible de simuler le tarif pour le moment.'
+            'Impossible de calculer le tarif pour le moment.'
         );
         setSimStatus('error');
       }
-    }, 350);
+    }, 400);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [step, canSimulate, agence, destinataireCommuneId, colisList, retryTick]);
+  }, [simActive, canSimulate, agence, destinataireCommuneId, colisList, retryTick]);
 
   const goToStep = (n) => {
+    // À l'arrivée sur les coordonnées, un expéditeur déjà complet (prérempli
+    // depuis le compte) reste replié ; on l'ouvre s'il manque quelque chose.
+    if (n === 3) setExpediteurOpen(!(contactIsComplete(expediteur) && !identityExpired(expediteur)));
     setStep(n);
     setMaxStepReached((m) => Math.max(m, n));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const resetForm = () => {
@@ -289,9 +287,11 @@ export default function IntervilleFormPage() {
     setMaxStepReached(1);
     setResult(null);
     setSubmitError('');
+    setRecapOpen(false);
     setAgence(null);
     setDestinataireCommuneId('');
     setColisList([applyFormat({ ...EMPTY_COLIS }, defaultFormat(formats))]);
+    setOpenColis(0);
     setExpediteur({
       ...EMPTY_CONTACT,
       nom_prenom: [user?.nom, user?.prenoms].filter(Boolean).join(' '),
@@ -305,17 +305,29 @@ export default function IntervilleFormPage() {
 
   const addColis = () => {
     setColisList((list) => [...list, applyFormat({ ...EMPTY_COLIS }, defaultFormat(formats))]);
+    setOpenColis(colisList.length);
   };
-  const removeColis = (i) => setColisList((list) => list.filter((_, idx) => idx !== i));
+  const removeColis = (i) => {
+    setColisList((list) => list.filter((_, idx) => idx !== i));
+    setOpenColis(Math.max(0, i - 1));
+  };
   const setColisField = (i, field, value) =>
     setColisList((list) => list.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)));
+  const replaceColis = (i, next) => setColisList((list) => list.map((c, idx) => (idx === i ? next : c)));
 
-  const communeNom = communes.find((c) => c.id === destinataireCommuneId)?.nom || '—';
+  const commune = communes.find((c) => c.id === destinataireCommuneId) || null;
+  const communeNom = commune?.nom || '';
+  const recentCommunes = recentIds.map((id) => communes.find((c) => c.id === id)).filter(Boolean);
+
+  const selectCommune = (c) => {
+    setDestinataireCommuneId(c.id);
+    setRecentIds(pushRecentCommune(country.code, c.id));
+  };
 
   // The destinataire's ville is never typed: it always mirrors the commune
   // de destination picked on the Trajet step.
   useEffect(() => {
-    if (communeNom === '—') return;
+    if (!communeNom) return;
     setDestinataire((d) => (d.ville === communeNom ? d : { ...d, ville: communeNom }));
   }, [communeNom]);
 
@@ -326,15 +338,16 @@ export default function IntervilleFormPage() {
     setExpediteur((e) => (e.ville === agenceVille ? e : { ...e, ville: agenceVille }));
   }, [agenceVille]);
 
-  const canContinueStep1 = Boolean(agence?.id) && Boolean(destinataireCommuneId);
-  const canContinueStep2 =
-    colisList.length > 0 &&
-    colisList.every((c) => Number(c.poids) >= 0.01 && !overweight(c, formats.find((f) => f.id === c.format_colis_id)));
-  const canContinueStep3 = contactIsComplete(expediteur) && contactIsComplete(destinataire) && !identityExpired(expediteur);
+  const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
+  const contactsOk = expediteurOk && contactIsComplete(destinataire);
+  const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
+  const total = sim?.tarif?.montant_expedition;
+  const totalLabel = total != null ? formatPrice(total) : null;
 
   const handleSubmit = async () => {
     // The devis is open to guests; login is only required to register.
     if (!isAuthenticated) {
+      setRecapOpen(false);
       dispatch(openAuthSheet({ mode: 'login', reason: 'expedition' }));
       return;
     }
@@ -347,13 +360,17 @@ export default function IntervilleFormPage() {
         destinataire_commune_id: destinataireCommuneId,
         ...contactPayload('expediteur', expediteur),
         ...identityPayload(expediteur),
-        ...contactPayload('destinataire', destinataire),
+        // Interville : pas de position ni d'instructions pour le destinataire
+        // (seul le point d'enlèvement de l'expéditeur est demandé). Retirées
+        // aussi d'un éventuel brouillon saisi avant ce changement.
+        ...contactPayload('destinataire', { ...destinataire, latitude: null, longitude: null, instructions: '' }),
         colis: buildColis(colisList, { withPhoto: true }),
         ...pickupPayload(pickup),
       };
       const res = await expeditionService.storeExpedition(payload);
       if (res?.success && res.expedition) {
         draft.clear();
+        setRecapOpen(false);
         setResult(res.expedition);
       } else {
         const msg = res?.message || "Impossible d'enregistrer la demande.";
@@ -364,7 +381,7 @@ export default function IntervilleFormPage() {
       const msg =
         err.response?.data?.message ||
         Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
-        "Impossible d'enregistrer l'expedition pour le moment.";
+        "Impossible d'enregistrer l'expédition pour le moment.";
       setSubmitError(msg);
       toast.error(msg);
     } finally {
@@ -372,17 +389,31 @@ export default function IntervilleFormPage() {
     }
   };
 
+  // Retour (flèche de l'en-tête ou bouton système) : revient d'une étape ; à la
+  // première, demande confirmation avant de quitter si une saisie existe. Une
+  // feuille ouverte est fermée avant (pile des feuilles, useExitGuard).
+  const dirty = !draftEmpty;
+  const handleBack = () => {
+    if (step > 1) {
+      goToStep(step - 1);
+      return;
+    }
+    if (dirty) exit.requestExit();
+    else exit.leave();
+  };
+  const exit = useExitGuard({ active: dirty && !result, onBack: handleBack, fallback: ROUTES.EXPEDITION_NEW });
+
   if (result) return <SuccessScreen expedition={result} pickupMode={pickup.domicile ? pickup.mode : null} onNew={resetForm} />;
 
   if (!country.code) {
     return (
       <div>
-        <TopBar title="Expedition Interville" back />
+        <TopBar title="Envoi Interville" back />
         <div className="page-container py-4">
           <EmptyState
             icon={MapPinned}
             title="Choisissez votre pays"
-            description="Selectionnez votre pays pour charger les communes et les agences."
+            description="Sélectionnez votre pays pour charger les communes et les agences."
             action={
               <button type="button" className="btn-primary" onClick={() => setCountrySheetOpen(true)}>
                 Choisir un pays
@@ -397,223 +428,352 @@ export default function IntervilleFormPage() {
 
   return (
     <div>
-      <TopBar title="Expedition Interville" back />
-      <div className="page-container py-4">
+      <TopBar
+        title="Envoi Interville"
+        subtitle={`${getFlagEmoji(country.code)} ${country.name}`}
+        back
+        onBack={handleBack}
+        backLabel={step > 1 ? 'Étape précédente' : "Quitter l'envoi"}
+      />
+      <div className="page-container pb-2 pt-1">
         {draft.restored && <DraftRestoredBanner onReset={resetForm} className="mb-3" />}
-        <StepProgress
-          step={step}
-          total={4}
-          labels={STEP_LABELS}
-          onStepClick={goToStep}
-          maxStepReached={maxStepReached}
-        />
+        <StepBar step={step} labels={STEP_LABELS} maxStepReached={maxStepReached} onStepClick={goToStep} />
 
+        {/* ---------- Étape 1 : Trajet ---------- */}
         {step === 1 && (
-          <div className="space-y-4">
-            <p className="text-sm text-surface-500">
-              Depart depuis {getFlagEmoji(country.code)} {country.name}
-            </p>
+          <>
+            <div className="space-y-4">
+              <h2 className="font-heading text-lg font-semibold text-surface-900">D'où part le colis, et où va-t-il ?</h2>
 
-            <div>
-              <p className="mb-1.5 text-sm font-medium text-surface-700">Agence de depart</p>
-              <button
-                type="button"
-                onClick={() => setAgenceSheetOpen(true)}
-                className="input-field flex items-center justify-between text-left"
-              >
-                <span className={agence ? 'text-surface-900' : 'text-surface-400'}>
-                  {agence ? agence.nom_agence : 'Choisir une agence'}
-                </span>
-                <ChevronDown size={16} className="text-surface-400" />
-              </button>
-              <p className="mt-1 text-xs text-surface-400">
-                La commune de depart est celle de l'agence choisie.
-              </p>
-            </div>
+              <div className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-3">
+                <RouteRail />
 
-            <div>
-              <p className="mb-1.5 text-sm font-medium text-surface-700">Commune de destination</p>
-              {communesStatus === 'loading' ? (
-                <div className="input-field text-surface-400">Chargement des communes...</div>
-              ) : communesStatus === 'error' ? (
-                <button
-                  type="button"
-                  onClick={() => setRetryTick((t) => t + 1)}
-                  className="input-field text-left text-red-600"
-                >
-                  Erreur de chargement — reessayer
-                </button>
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium text-surface-700">Départ · agence</p>
+                    <PickerButton
+                      icon={Building2}
+                      selected={Boolean(agence)}
+                      title={agence ? agence.nom_agence : 'Choisir une agence'}
+                      subtitle={agence ? `Commune : ${agenceVille || '—'}` : 'Où vous déposez le colis'}
+                      onClick={() => setAgenceSheetOpen(true)}
+                    />
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium text-surface-700">Arrivée · commune</p>
+                    {communesStatus === 'error' ? (
+                      <button
+                        type="button"
+                        onClick={() => setRetryTick((t) => t + 1)}
+                        className="flex h-16 w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 text-left text-sm font-medium text-red-700"
+                      >
+                        <AlertTriangle size={18} className="shrink-0" /> Communes indisponibles · Réessayer
+                      </button>
+                    ) : (
+                      <PickerButton
+                        icon={MapPin}
+                        trailing={Search}
+                        selected={Boolean(commune)}
+                        title={commune ? commune.nom : communesStatus === 'loading' ? 'Chargement des communes…' : 'Choisir une commune'}
+                        subtitle={commune ? 'Commune du destinataire' : 'Rechercher par nom'}
+                        onClick={() => setCommuneSheetOpen(true)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {recentCommunes.length > 0 && (
+                <div>
+                  <p className="mb-2 text-caption font-semibold uppercase tracking-wide text-surface-500">Destinations récentes</p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentCommunes.map((c) => {
+                      const active = c.id === destinataireCommuneId;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => selectCommune(c)}
+                          className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition active:scale-95 ${
+                            active ? 'bg-primary-600 text-white' : 'bg-white text-surface-700 ring-1 ring-surface-200'
+                          }`}
+                        >
+                          {active && <Check size={14} strokeWidth={3} />} {c.nom}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {agenceSansCommune ? (
+                <ErrorNote message="Cette agence n'a pas de commune configurée : l'envoi Interville n'est pas possible depuis elle. Choisissez une autre agence." />
               ) : (
-                <select
-                  className="input-field"
-                  value={destinataireCommuneId}
-                  onChange={(e) => setDestinataireCommuneId(e.target.value)}
-                >
-                  <option value="">Choisir une commune</option>
-                  {communes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nom}
-                    </option>
-                  ))}
-                </select>
+                <p className="flex items-start gap-2 rounded-xl bg-primary-50 p-3 text-caption text-primary-800">
+                  <MapPinned size={15} className="mt-0.5 shrink-0" />
+                  La commune de départ est celle de l'agence choisie : vous n'avez pas à la saisir.
+                </p>
               )}
             </div>
 
-            <button type="button" className="btn-primary w-full" disabled={!canContinueStep1} onClick={() => goToStep(2)}>
-              Continuer
-            </button>
-          </div>
+            <ActionDock>
+              <button type="button" className="btn-primary h-12 flex-1" disabled={!trajetOk} onClick={() => goToStep(2)}>
+                Continuer
+              </button>
+            </ActionDock>
+          </>
         )}
 
+        {/* ---------- Étape 2 : Colis ---------- */}
         {step === 2 && (
-          <div className="space-y-4">
-            {colisList.map((c, i) => (
-              <div key={i} className="card space-y-3 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-surface-900">Colis {i + 1}</p>
-                  {colisList.length > 1 && (
+          <>
+            <div className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="font-heading text-lg font-semibold text-surface-900">Vos colis</h2>
+                <p className="shrink-0 text-caption text-surface-500">
+                  {agenceVille || agence?.nom_agence} → {communeNom}
+                </p>
+              </div>
+
+              {colisList.map((c, i) => {
+                const open = openColis === i;
+                const format = formatOf(c);
+                const valid = colisIsValid(c);
+                const summary = [
+                  Number(c.poids) > 0 ? fmtKg(c.poids) : 'Poids à indiquer',
+                  dimsOf(c),
+                  c.photo ? 'photo' : null,
+                ].filter(Boolean).join(' · ');
+
+                return (
+                  <div key={i} className="card overflow-hidden">
                     <button
                       type="button"
-                      onClick={() => removeColis(i)}
-                      className="rounded-full p-1.5 text-surface-400 hover:bg-surface-100 hover:text-red-600"
-                      aria-label="Retirer ce colis"
+                      onClick={() => setOpenColis(open ? -1 : i)}
+                      aria-expanded={open}
+                      className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left"
                     >
-                      <Trash2 size={16} />
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          valid ? 'bg-emerald-600 text-white' : 'bg-surface-100 text-surface-500'
+                        }`}
+                      >
+                        {valid ? <Check size={15} strokeWidth={3} /> : i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-surface-900">
+                          Colis {i + 1}{format ? ` · ${format.nom}` : ''}
+                        </span>
+                        <span className={`block truncate text-caption ${valid ? 'text-surface-500' : 'text-amber-700'}`}>{summary}</span>
+                      </span>
+                      <ChevronDown size={18} className={`shrink-0 text-surface-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {open && (
+                      <div className="space-y-4 border-t border-surface-100 px-4 pb-4 pt-3">
+                        <WeightStepper id={`colis-${i}-poids`} value={c.poids} onChange={(v) => setColisField(i, 'poids', v)} />
+
+                        <ColisFormatFields
+                          colis={c}
+                          formats={formats}
+                          status={formatsStatus}
+                          idPrefix={`colis-${i}`}
+                          onChange={(next) => replaceColis(i, next)}
+                        />
+
+                        <label htmlFor={`colis-${i}-valeur`} className="block text-sm font-medium text-surface-700">
+                          Valeur du contenu ({currencyLabel()}, optionnel)
+                          <input
+                            id={`colis-${i}-valeur`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            placeholder="0"
+                            className="input-field mt-1.5"
+                            value={c.prix_estimation ?? ''}
+                            onChange={(e) => setColisField(i, 'prix_estimation', e.target.value.replace(/\D/g, ''))}
+                            onFocus={(e) => e.target.select()}
+                          />
+                          <span className="mt-1 block text-caption font-normal text-surface-400">Valeur approximative de ce qu'il y a dans le colis.</span>
+                        </label>
+
+                        <ProofPicker
+                          file={c.photo}
+                          onChange={(f) => setColisField(i, 'photo', f)}
+                          label="Photo du colis (optionnel)"
+                          icon={Camera}
+                          camera
+                          removeLabel="Retirer la photo du colis"
+                        />
+
+                        {colisList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeColis(i)}
+                            className="btn w-full text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={16} /> Retirer ce colis
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={addColis}
+                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary-200 text-sm font-semibold text-primary-600 transition active:scale-[0.99]"
+              >
+                <Plus size={18} /> Ajouter un colis
+              </button>
+
+              {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
+            </div>
+
+            <ActionDock>
+              <DockTotal
+                label={`Tarif · ${colisList.length} colis`}
+                amount={totalLabel}
+                status={simStatus}
+              />
+              <button
+                type="button"
+                className="btn-primary h-12 flex-1"
+                disabled={!colisOk || !sim || simStatus === 'loading'}
+                onClick={() => goToStep(3)}
+              >
+                Continuer
+              </button>
+            </ActionDock>
+          </>
+        )}
+
+        {/* ---------- Étape 3 : Coordonnées ---------- */}
+        {step === 3 && (
+          <>
+            <div className="space-y-3">
+              <h2 className="font-heading text-lg font-semibold text-surface-900">Qui envoie, qui reçoit ?</h2>
+
+              {expediteurOpen ? (
+                <div className="space-y-2">
+                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined}>
+                    <IdentityFields data={expediteur} onChange={setExpediteur} />
+                  </ContactFields>
+                  {expediteurOk && (
+                    <button type="button" className="btn-ghost w-full" onClick={() => setExpediteurOpen(false)}>
+                      <Check size={16} /> Valider l'expéditeur
                     </button>
                   )}
                 </div>
+              ) : (
+                <ContactSummary title="Expéditeur" data={expediteur} onEdit={() => setExpediteurOpen(true)} />
+              )}
 
-                <label className="block text-sm font-medium text-surface-700">
-                  Poids (kg)
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.1"
-                    className="input-field mt-1.5"
-                    value={c.poids}
-                    onChange={(e) => setColisField(i, 'poids', e.target.value)}
-                  />
-                </label>
+              <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
 
-                <ColisFormatFields
-                  colis={c}
-                  formats={formats}
-                  status={i === 0 ? formatsStatus : 'idle'}
-                  onChange={(next) => setColisList((list) => list.map((x, idx) => (idx === i ? next : x)))}
-                />
+              <PickupOption
+                value={pickup}
+                onChange={setPickup}
+                agence={agence}
+                communeId={agence?.commune_id || communes.find((c) => c.nom === agenceVille)?.id}
+                address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
+              />
 
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="block text-xs font-medium text-surface-600">
-                    Emballage (FCFA, optionnel)
-                    <input type="number" inputMode="numeric" min="0" className="input-field mt-1.5" value={c.prix_emballage ?? ''} onChange={(e) => setColisField(i, 'prix_emballage', e.target.value)} />
-                  </label>
-                  <label className="block text-xs font-medium text-surface-600">
-                    Estimation (FCFA)
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      placeholder="0"
-                      className="input-field mt-1.5"
-                      value={c.prix_estimation ?? ''}
-                      onChange={(e) => setColisField(i, 'prix_estimation', e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                    />
-                  </label>
-                </div>
-                <p className="-mt-1 text-[11px] text-surface-400">Estimation : valeur approximative du contenu du colis.</p>
-
-                <ProofPicker
-                  file={c.photo}
-                  onChange={(f) => setColisField(i, 'photo', f)}
-                  label="Photo du colis"
-                  icon={Camera}
-                  camera
-                  removeLabel="Retirer la photo du colis"
-                />
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={addColis}
-              className="card flex w-full items-center justify-center gap-2 p-4 text-sm font-semibold text-primary-600"
-            >
-              <Plus size={18} /> Ajouter un colis
-            </button>
-
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(1)}>Retour</button>
-              <button type="button" className="btn-primary flex-1" disabled={!canContinueStep2} onClick={() => goToStep(3)}>Continuer</button>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-4">
-            <div className="card divide-y divide-surface-100 p-4 text-sm">
-              <Row label="Agence de depart" value={agence?.nom_agence} />
-              <Row label="Commune d'arrivee" value={communeNom} />
-              <Row label="Colis" value={`${colisList.length} colis`} />
+              {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
+              {!contactsOk && (
+                <p className="text-caption text-surface-500">
+                  Nom, téléphone et adresse sont requis pour l'expéditeur et le destinataire.
+                </p>
+              )}
             </div>
 
-            <TarifCard
-              status={simStatus}
-              error={simError}
-              sim={sim}
-              colisList={colisList}
-              onRetry={() => setRetryTick((t) => t + 1)}
-            />
-
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(2)}>Retour</button>
-              <button type="button" className="btn-primary flex-1" disabled={simStatus === 'loading' || !sim} onClick={() => goToStep(4)}>Continuer</button>
-            </div>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-4">
-            <p className="text-sm text-surface-500">Qui expedie et qui reçoit ce colis ?</p>
-            <ContactFields title="Expediteur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined}>
-              <IdentityFields data={expediteur} onChange={setExpediteur} />
-            </ContactFields>
-            <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} withLocation locationLabel="Point de livraison" />
-            <PickupOption
-              value={pickup}
-              onChange={setPickup}
-              agence={agence}
-              communeId={agence?.commune_id || communes.find((c) => c.nom === agenceVille)?.id}
-              address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
-            />
-
-            {sim?.tarif && <TarifCard status={simStatus} error={simError} sim={sim} colisList={colisList} onRetry={() => setRetryTick((t) => t + 1)} />}
-
-            {submitError && (
-              <div className="card border border-red-100 bg-red-50 p-3 text-sm text-red-700">{submitError}</div>
-            )}
-
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => goToStep(3)}>Retour</button>
+            <ActionDock>
+              <DockTotal label="Total" amount={totalLabel} status={simStatus} />
               <button
                 type="button"
-                className="btn-primary flex-1"
-                disabled={submitting || !canContinueStep3 || !sim}
-                onClick={handleSubmit}
+                className="btn-primary h-12 flex-1"
+                disabled={!contactsOk || !sim || simStatus === 'loading'}
+                onClick={() => {
+                  setSubmitError('');
+                  setRecapOpen(true);
+                }}
               >
-                {submitting ? 'Envoi...' : "Confirmer l'expedition"}
+                Vérifier ma demande
               </button>
-            </div>
-          </div>
+            </ActionDock>
+          </>
         )}
       </div>
 
+      {/* ---------- Vérification avant envoi ---------- */}
+      <BottomSheet open={recapOpen} onClose={() => !submitting && setRecapOpen(false)} title="Vérifiez votre demande">
+        <div className="space-y-4">
+          <div className="divide-y divide-surface-100 rounded-xl border border-surface-100 px-3 text-sm">
+            <Row label="Trajet" value={`${agenceVille || '—'} → ${communeNom || '—'}`} />
+            <Row label="Agence de départ" value={agence?.nom_agence} />
+            <Row label="Colis" value={`${colisList.length} · ${fmtKg(poidsTotal)}`} />
+            <Row label="Expéditeur" value={expediteur.nom_prenom} />
+            <Row label="Destinataire" value={`${destinataire.nom_prenom} · ${destinataire.telephone}`} />
+            <Row
+              label="Remise"
+              value={pickup.domicile ? `Enlèvement à domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Dépôt à l'agence"}
+            />
+          </div>
+
+          <div className="flex items-baseline justify-between gap-3 rounded-2xl bg-primary-50 p-4">
+            <span className="text-sm text-primary-700">Montant total</span>
+            <span className="font-heading text-2xl font-bold text-primary-800">{totalLabel}</span>
+          </div>
+
+          <p className="text-caption text-surface-500">
+            {pickup.domicile && "Le tarif de l'enlèvement est fixé à part. "}
+            L'agence de départ doit accepter votre demande avant de la traiter.
+          </p>
+
+          {submitError && <ErrorNote message={submitError} />}
+
+          <div className="space-y-2">
+            <button type="button" className="btn-primary h-12 w-full" disabled={submitting || !sim} onClick={handleSubmit}>
+              {submitting ? 'Envoi…' : isAuthenticated ? `Confirmer · ${totalLabel}` : 'Se connecter pour confirmer'}
+            </button>
+            <button type="button" className="btn-secondary w-full" disabled={submitting} onClick={() => setRecapOpen(false)}>
+              Modifier
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      <ExitFlowSheet
+        open={exit.confirmOpen}
+        progress={`Étape ${step} sur ${LAST_STEP} · ${STEP_LABELS[step - 1]}`}
+        amount={totalLabel}
+        onStay={exit.stay}
+        onKeep={exit.leave}
+        onDiscard={() => {
+          draft.clear();
+          exit.leave();
+        }}
+      />
       <AgencySelectSheet
         open={agenceSheetOpen}
         onClose={() => setAgenceSheetOpen(false)}
         codePays={country.code}
         currentId={agence?.id}
         onSelect={setAgence}
+      />
+      <CommuneSelectSheet
+        open={communeSheetOpen}
+        onClose={() => setCommuneSheetOpen(false)}
+        communes={communes}
+        status={communesStatus}
+        onRetry={() => setRetryTick((t) => t + 1)}
+        currentId={destinataireCommuneId}
+        recent={recentCommunes}
+        onSelect={selectCommune}
       />
     </div>
   );

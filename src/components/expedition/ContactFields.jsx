@@ -54,11 +54,11 @@ export default function ContactFields({
         </label>
       )}
       <label className="block text-sm font-medium text-surface-700">
-        Nom et prenom
+        Nom et prénom
         <input className="input-field mt-1.5" placeholder="Ex: Jean Kouassi" value={data.nom_prenom} onChange={set('nom_prenom')} />
       </label>
       <label className="block text-sm font-medium text-surface-700">
-        Telephone
+        Téléphone
         <input className="input-field mt-1.5" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ex: 0102030405" value={data.telephone} onChange={set('telephone')} />
       </label>
       <label className="block text-sm font-medium text-surface-700">
@@ -128,7 +128,7 @@ export default function ContactFields({
       )}
 
       <button type="button" onClick={() => setShowMore((v) => !v)} className="text-xs font-semibold text-primary-600">
-        {showMore ? 'Masquer les champs optionnels' : '+ WhatsApp, email, societe, code postal...'}
+        {showMore ? 'Masquer les champs optionnels' : '+ WhatsApp, e-mail, société, code postal…'}
       </button>
       {showMore && (
         <div className="space-y-3 border-t border-surface-100 pt-3">
@@ -153,7 +153,7 @@ export default function ContactFields({
             <input type="email" className="input-field mt-1.5" value={data.email} onChange={set('email')} />
           </label>
           <label className="block text-sm font-medium text-surface-700">
-            Societe (optionnel)
+            Société (optionnel)
             <input className="input-field mt-1.5" value={data.societe} onChange={set('societe')} />
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -162,7 +162,7 @@ export default function ContactFields({
               <input className="input-field mt-1.5" value={data.code_postal} onChange={set('code_postal')} />
             </label>
             <label className="block text-xs font-medium text-surface-600">
-              Etat / Region
+              État / Région
               <input className="input-field mt-1.5" value={data.etat} onChange={set('etat')} />
             </label>
           </div>

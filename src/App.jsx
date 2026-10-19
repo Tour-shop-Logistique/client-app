@@ -50,8 +50,13 @@ const ListingEditPage = lazy(() => import('./pages/Marketplace/ListingEditPage')
 const SalesPage = lazy(() => import('./pages/Marketplace/SalesPage'));
 const SaleDetailPage = lazy(() => import('./pages/Marketplace/SaleDetailPage'));
 const PaymentMethodsPage = lazy(() => import('./pages/Marketplace/PaymentMethodsPage'));
+const DeliveryRatesPage = lazy(() => import('./pages/Marketplace/DeliveryRatesPage'));
 const BalancePage = lazy(() => import('./pages/Marketplace/BalancePage'));
 const SubscriptionPage = lazy(() => import('./pages/Marketplace/SubscriptionPage'));
+
+// Parcours destinataire : colis reçus, livraison à domicile et paiement du livreur.
+const ReceivedListPage = lazy(() => import('./pages/Destinataire/ReceivedListPage'));
+const ReceivedDetailPage = lazy(() => import('./pages/Destinataire/ReceivedDetailPage'));
 
 // Renders the real page only if its backend is wired (src/config/features.js),
 // otherwise the "Page non disponible" screen.
@@ -78,7 +83,7 @@ export default function App() {
   }, [isAuthenticated]);
 
   // Ecoute globale : toasts automatiques sur les evenements temps reel
-  // (statut colis, paiement, offres livreurs, marketplace) quelle que soit la page.
+  // (statut colis, paiement, livreurs, marketplace) quelle que soit la page.
   useRealtimeWithNotifications();
 
   // Push recu app ouverte (relaye par public/push-sw.js) : toast in-app et
@@ -120,6 +125,8 @@ export default function App() {
         <Route path={ROUTES.EXPEDITION_TRACKING} element={gated('expeditionHistory', <ExpeditionDetailPage />)} />
         <Route path={ROUTES.EXPEDITION_HISTORY} element={gated('expeditionHistory', <HistoryPage />)} />
         <Route path={ROUTES.EXPEDITION_DETAIL} element={gated('expeditionHistory', <ExpeditionDetailPage />)} />
+        <Route path={ROUTES.RECEIVED} element={gated('expeditionHistory', <ReceivedListPage />)} />
+        <Route path={ROUTES.RECEIVED_DETAIL} element={gated('expeditionHistory', <ReceivedDetailPage />)} />
 
         <Route path={ROUTES.MARKETPLACE} element={gated('marketplace', <ProductListPage />)} />
         <Route path={ROUTES.MARKETPLACE_PRODUCT} element={gated('marketplace', <ProductDetailPage />)} />
@@ -134,6 +141,7 @@ export default function App() {
         <Route path={ROUTES.MARKETPLACE_SALES} element={gated('marketplace', <SellerOnly><SalesPage /></SellerOnly>)} />
         <Route path={ROUTES.MARKETPLACE_SALE} element={gated('marketplace', <SellerOnly><SaleDetailPage /></SellerOnly>)} />
         <Route path={ROUTES.MARKETPLACE_PAYMENT_METHODS} element={gated('marketplace', <SellerOnly><PaymentMethodsPage /></SellerOnly>)} />
+        <Route path={ROUTES.MARKETPLACE_DELIVERY_RATES} element={gated('marketplace', <SellerOnly><DeliveryRatesPage /></SellerOnly>)} />
         <Route path={ROUTES.MARKETPLACE_BALANCE} element={gated('marketplace', <SellerOnly><BalancePage /></SellerOnly>)} />
         <Route path={ROUTES.MARKETPLACE_SUBSCRIPTION} element={gated('marketplace', <SubscriptionPage />)} />
 

@@ -7,6 +7,7 @@ import marketplaceReducer, { FAVORITES_KEY, RECENT_KEY } from './slices/marketpl
 import agencyReducer from './slices/agencySlice';
 import countryReducer from './slices/countrySlice';
 import { saveJson } from './persist';
+import { setDefaultCurrency } from '../utils/format';
 
 export const store = configureStore({
   reducer: {
@@ -34,3 +35,15 @@ store.subscribe(() => {
   });
   previous = next;
 });
+
+// Devise de l'utilisateur (`user.devise`, ISO 4217) -> devise par defaut des
+// montants affiches (utils/format).
+let lastDevise;
+const syncCurrency = () => {
+  const devise = store.getState().auth.user?.devise;
+  if (devise === lastDevise) return;
+  lastDevise = devise;
+  setDefaultCurrency(devise);
+};
+syncCurrency();
+store.subscribe(syncCurrency);

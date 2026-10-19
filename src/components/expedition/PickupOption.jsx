@@ -34,7 +34,7 @@ export default function PickupOption({ value, onChange, address, agence, commune
         <div className="space-y-3 border-t border-surface-100 pt-3">
           <HomeMissionFields value={value} onChange={onChange} agence={agence} communeId={communeId} kind="enlevement" />
           <p className="text-xs text-surface-500">
-            Le tarif de l’enlèvement est fixé à part : offres des livreurs en récupération express, ou grille de l’agence selon la distance en retrait classique.
+            Le tarif de l’enlèvement s’ajoute au prix de l’expédition. Il est fixé par la grille de l’agence selon la distance : tarif standard en retrait classique, majoré en récupération express.
           </p>
         </div>
       )}

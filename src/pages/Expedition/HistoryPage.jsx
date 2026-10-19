@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { Package, Plus, RefreshCw, ChevronRight, ArrowRight, Clock, Truck, CheckCircle2 } from 'lucide-react';
+import { Package, Plus, RefreshCw, ChevronRight, ArrowRight, Clock, Truck, CheckCircle2, Inbox } from 'lucide-react';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
 import { BoxArt, EmptyParcelArt } from '../../components/illustrations';
 import { fetchExpeditions, fetchExpeditionStats } from '../../store/slices/expeditionSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
-import { formatDate, formatPrice } from '../../utils/format';
+import { formatDate, formatExpeditionPrice } from '../../utils/format';
 import {
   EN_COURS_STATUSES, getProgress, getTypeLabel, STATUS_FILTERS, villeDepart, villeDestination,
 } from '../../utils/expeditionStatus';
@@ -76,7 +76,7 @@ function ExpeditionCard({ exp }) {
           <span className="rounded-full bg-surface-100 px-2 py-0.5">{formatDate(exp.created_at)}</span>
           <span className="rounded-full bg-surface-100 px-2 py-0.5">{getTypeLabel(exp.type_expedition)}</span>
           {nbColis > 0 && <span className="rounded-full bg-surface-100 px-2 py-0.5">{nbColis} colis</span>}
-          <span className="ml-auto font-heading text-sm font-bold text-surface-900">{formatPrice(exp.montant_expedition)}</span>
+          <span className="ml-auto font-heading text-sm font-bold text-surface-900">{formatExpeditionPrice(exp.montant_expedition, exp)}</span>
         </div>
       </div>
 
@@ -175,6 +175,19 @@ export default function HistoryPage() {
             <div className="relative -mt-10">
               <StatCards stats={stats} />
             </div>
+
+            {/* Parcours destinataire : colis envoyés à mon compte / mon numéro. */}
+            <Link
+              to={ROUTES.RECEIVED}
+              className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-card transition active:scale-[0.99]"
+            >
+              <span className="icon-tile h-10 w-10 rounded-xl bg-orange-100 text-amber-700"><Inbox size={18} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-surface-900">Colis reçus</span>
+                <span className="block text-xs text-surface-500">Suivez les colis qui vous sont envoyés et faites-vous livrer</span>
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-surface-300" />
+            </Link>
 
             <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
               {STATUS_FILTERS.map((f) => (

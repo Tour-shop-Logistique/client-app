@@ -45,6 +45,8 @@ const vendeurMoyensPaiement = async (vendeurId) => {
 // POST /marketplace/acheteur/panier/valider — scinde en une commande par vendeur.
 // `adresseLivraison` REQUISE : { nom, telephone, adresse, ville, quartier?,
 // latitude?, longitude?, instructions? } — une seule adresse pour tout le panier.
+// latitude/longitude : obligatoires en pratique pour les modes standard/express.
+// La commune et la distance ne partent PAS ici, mais au choix du mode.
 const validerPanier = async (annonceIds, adresseLivraison) => {
   const { data } = await api.post('/marketplace/acheteur/panier/valider', {
     annonce_ids: annonceIds,
@@ -65,10 +67,49 @@ const mesAchats = async () => {
   return data.commandes ?? [];
 };
 
-// Accessible au vendeur OU a l'acheteur de la commande ; inclut livraison_marketplace.offres.
+// Accessible au vendeur OU a l'acheteur de la commande (avec livraison_marketplace).
 const commandeShow = async (id) => {
   const { data } = await api.get(`/marketplace/acheteur/commandes/show/${id}`);
   return data.commande;
+};
+
+// --- Livraison en 3 modes (MARKETPLACE_LIVRAISON_3_MODES.md) -----------------
+//  - standard        : grille km du backoffice, le backoffice assigne un livreur
+//  - express         : standard x taux express, diffuse au reseau (1er arrive)
+//  - livreur_magasin : tarif du vendeur par commune, le vendeur designe son livreur
+// C'est L'ACHETEUR qui choisit, une fois le paiement confirme par le vendeur.
+
+// GET /marketplace/acheteur/tarifs-livraison — les 3 prix AVANT de choisir.
+// -> { standard, express, livreur_magasin } ; null = mode indisponible.
+const tarifsLivraison = async ({
+  vendeurId, communeDepartId, communeArriveeId, distanceKm,
+}) => {
+  const params = {
+    vendeur_id: vendeurId,
+    commune_depart_id: communeDepartId,
+    commune_arrivee_id: communeArriveeId,
+  };
+  if (distanceKm != null) params.distance_km = distanceKm;
+  const { data } = await api.get('/marketplace/acheteur/tarifs-livraison', { params });
+  return data?.tarifs ?? {};
+};
+
+// GET /marketplace/acheteur/vendeurs/{vendeurId}/tarifs-livraison — tarifs du
+// livreur du vendeur par commune de destination. [] = pas de mode livreur_magasin.
+const tarifsVendeur = async (vendeurId) => {
+  const { data } = await api.get(`/marketplace/acheteur/vendeurs/${vendeurId}/tarifs-livraison`);
+  return Array.isArray(data?.tarifs) ? data.tarifs : [];
+};
+
+// POST /marketplace/acheteur/commandes/{id}/livraison/{standard|express|livreur-magasin}
+// { commune_livraison_id, distance_km? } — commande `payee` requise. `distance_km`
+// calculee par l'app sert a facturer (fallback GPS serveur si absente).
+const choisirLivraison = async (id, mode, { communeLivraisonId, distanceKm }) => {
+  const path = mode === 'livreur_magasin' ? 'livreur-magasin' : mode;
+  const body = { commune_livraison_id: communeLivraisonId };
+  if (distanceKm != null && mode !== 'livreur_magasin') body.distance_km = distanceKm;
+  const { data } = await api.post(`/marketplace/acheteur/commandes/${id}/livraison/${path}`, body);
+  return data;
 };
 
 // --- Vendeur : annonces (section 2) -----------------------------------------
@@ -83,8 +124,8 @@ const annonceShow = async (id) => {
   return data.annonce;
 };
 
-// Cree en `brouillon`. `retrait` = champs `retrait_*` (adresse de retrait, section 2,
-// copiee sur la commande quand le vendeur choisit une livraison par livreur).
+// Cree en `brouillon`. `retrait` = champs `retrait_*` (adresse de retrait, section 2)
+// + `commune_id` (commune de depart, requise pour les tarifs standard / express).
 // Les photos ne s'ajoutent QU'A la creation (max 10, 5 Mo).
 const creerAnnonce = async ({ titre, description, prix, photos = [], retrait = {} }) => {
   const fd = toFormData({ titre, description, prix, ...retrait }, { photos });
@@ -163,27 +204,17 @@ const infirmerPaiement = async (id) => {
   return data.commande;
 };
 
-const livraisonReseau = async (id) => {
-  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/reseau`);
+// Mode livreur_magasin, apres le choix de l'acheteur : le vendeur designe son
+// livreur. `livreurId` (uuid) -> livreur sur plateforme, statut `proposee`
+// (15 min pour accepter, sinon le vendeur re-designe) ; null -> hors plateforme,
+// `assignee` d'emblee, le vendeur marque ensuite la commande livree.
+// Anciennes routes /livraison/reseau, /direct, /hors-plateforme : 410 Gone.
+const assignerLivreurMagasin = async (id, livreurId = null) => {
+  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/magasin/assigner`, { livreur_id: livreurId || null });
   return data.livraison;
 };
 
-// La livraison passe `proposee` : le livreur a 15 min pour accepter. S'il refuse
-// ou ne repond pas, la commande revient `payee` et le vendeur re-choisit.
-const livraisonDirect = async (id, { livreurId, montant }) => {
-  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/direct`, {
-    livreur_id: livreurId,
-    montant,
-  });
-  return data.livraison;
-};
-
-const livraisonHorsPlateforme = async (id) => {
-  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/hors-plateforme`);
-  return data.commande;
-};
-
-// Uniquement en mode hors plateforme.
+// Livreur du magasin hors plateforme (ou ancien mode hors_plateforme).
 const marquerLivree = async (id) => {
   const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/marquer-livree`);
   return data.commande;
@@ -210,16 +241,32 @@ const annulerVente = async (id, motif) => {
   return data;
 };
 
-// Offres actives des livreurs (mode reseau), triees par montant croissant.
-const offresLivraison = async (id) => {
-  const { data } = await api.get(`/marketplace/vendeur/ventes/${id}/livraison/offres`);
-  const list = data?.offres ?? data?.data ?? data?.livraison?.offres ?? [];
-  return Array.isArray(list) ? list : [];
+// --- Vendeur : tarifs de son livreur par commune de destination -------------
+// (offres livreurs /livraison/offres : supprimees, 410 Gone)
+
+const mesTarifsLivraison = async () => {
+  const { data } = await api.get('/marketplace/vendeur/tarifs-livraison');
+  return Array.isArray(data?.tarifs) ? data.tarifs : [];
 };
 
-const accepterOffre = async (id, offreId) => {
-  const { data } = await api.post(`/marketplace/vendeur/ventes/${id}/livraison/offres/${offreId}/accepter`);
-  return data.livraison;
+// Upsert par commune : met a jour le tarif s'il existe deja vers cette commune.
+const enregistrerTarifLivraison = async ({ communeDestinationId, montant }) => {
+  const { data } = await api.post('/marketplace/vendeur/tarifs-livraison', {
+    commune_destination_id: communeDestinationId,
+    montant,
+  });
+  return data?.tarif ?? data;
+};
+
+// { montant?, actif? }
+const modifierTarifLivraison = async (id, fields) => {
+  const { data } = await api.put(`/marketplace/vendeur/tarifs-livraison/${id}`, fields);
+  return data?.tarif ?? data;
+};
+
+const supprimerTarifLivraison = async (id) => {
+  const { data } = await api.delete(`/marketplace/vendeur/tarifs-livraison/${id}`);
+  return data;
 };
 
 // --- Solde informatif (section 8) — hors middleware d'abonnement --------------
@@ -242,6 +289,9 @@ const marketplaceService = {
   declarerPaiementCommande,
   mesAchats,
   commandeShow,
+  tarifsLivraison,
+  tarifsVendeur,
+  choisirLivraison,
   mesAnnonces,
   annonceShow,
   creerAnnonce,
@@ -257,15 +307,15 @@ const marketplaceService = {
   venteShow,
   confirmerPaiement,
   infirmerPaiement,
-  livraisonReseau,
-  livraisonDirect,
-  livraisonHorsPlateforme,
+  assignerLivreurMagasin,
   marquerLivree,
   rechercherLivreur,
   annulerCommande,
   annulerVente,
-  offresLivraison,
-  accepterOffre,
+  mesTarifsLivraison,
+  enregistrerTarifLivraison,
+  modifierTarifLivraison,
+  supprimerTarifLivraison,
   solde,
   soldeHistorique,
 };

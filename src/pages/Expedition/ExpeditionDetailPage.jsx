@@ -21,12 +21,13 @@ import BottomSheet from '../../components/common/BottomSheet';
 import TrackingTimeline from '../../components/expedition/TrackingTimeline';
 import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
 import DeliverySection from '../../components/expedition/DeliverySection';
+import PaymentSection from '../../components/expedition/PaymentSection';
 import RatingSection from '../../components/expedition/RatingSection';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import expeditionService from '../../services/expeditionService';
 import { useRealtimeExpedition } from '../../hooks/useRealtimeUpdates';
 import { cancelExpedition, resetCancelState } from '../../store/slices/expeditionSlice';
-import { formatDate, formatDateTime, formatPrice } from '../../utils/format';
+import { formatDate, formatDateTime, formatExpeditionPrice } from '../../utils/format';
 import { EN_COURS_STATUSES, getStatutMeta, getTypeLabel, isCancelable } from '../../utils/expeditionStatus';
 import { BoxArt, LiveDot } from '../../components/illustrations';
 import { ROUTES } from '../../routes';
@@ -98,7 +99,7 @@ function ContactBlock({ person }) {
   );
 }
 
-function ColisItem({ colis, index }) {
+function ColisItem({ colis, index, expedition }) {
   const dims = [colis.longueur, colis.largeur, colis.hauteur].map(Number);
   const hasDims = dims.some((d) => d > 0);
   const articles = colis.articles ?? [];
@@ -116,10 +117,10 @@ function ColisItem({ colis, index }) {
       <div className="ml-[52px] mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-surface-500">
         {hasDims && <span>{dims.map((d) => d || 0).join(' × ')} cm</span>}
         {Number(colis.prix_emballage) > 0 && (
-          <span>Emballage : {formatPrice(colis.prix_emballage)}</span>
+          <span>Emballage : {formatExpeditionPrice(colis.prix_emballage, expedition)}</span>
         )}
         {Number(colis.prix_estimation) > 0 && (
-          <span>Estimation : {formatPrice(colis.prix_estimation)}</span>
+          <span>Estimation : {formatExpeditionPrice(colis.prix_estimation, expedition)}</span>
         )}
         {articles.length > 0 && <span>{articles.length} article(s)</span>}
       </div>
@@ -253,7 +254,7 @@ export default function ExpeditionDetailPage() {
                 {statut.label}
               </span>
             </div>
-            <p className="mt-3 font-heading text-2xl font-extrabold">{formatPrice(exp.montant_expedition)}</p>
+            <p className="mt-3 font-heading text-2xl font-extrabold">{formatExpeditionPrice(exp.montant_expedition, exp)}</p>
             <p className="text-xs text-white/70">
               {getTypeLabel(exp.type_expedition)} · créée le {formatDate(exp.created_at)}
             </p>
@@ -313,6 +314,8 @@ export default function ExpeditionDetailPage() {
 
         {!closedWithoutDelivery && <DeliverySection expedition={exp} refreshKey={liveTick} />}
 
+        {!closedWithoutDelivery && <PaymentSection expedition={exp} refreshKey={liveTick} />}
+
         <Section icon={<Building2 size={17} />} title="Agence de départ" tint="bg-teal-100 text-teal-600">
           <p className="text-sm font-semibold text-surface-900">
             {exp.agence?.nom_agence || '—'}
@@ -352,7 +355,7 @@ export default function ExpeditionDetailPage() {
           ) : (
             <div className="space-y-2">
               {colis.map((c, i) => (
-                <ColisItem key={c.code_colis || i} colis={c} index={i} />
+                <ColisItem key={c.code_colis || i} colis={c} index={i} expedition={exp} />
               ))}
             </div>
           )}
@@ -364,10 +367,10 @@ export default function ExpeditionDetailPage() {
           <div className="divide-y divide-surface-100">
             <Row label="Type" value={getTypeLabel(exp.type_expedition)} />
             <Row label="Statut" value={statut.label} />
-            <Row label="Montant" value={formatPrice(exp.montant_expedition)} />
+            <Row label="Montant" value={formatExpeditionPrice(exp.montant_expedition, exp)} />
             <Row
               label="Paiement"
-              value={exp.statut_paiement === 'paye' ? 'Payé' : val(exp.statut_paiement) ? 'Non payé' : null}
+              value={exp.statut_paiement === 'paye' ? 'Payé' : val(exp.statut_paiement) ? (Number(exp.montant_paye) > 0 ? 'Partiellement payé' : 'Non payé') : null}
             />
             <Row label="Créée le" value={formatDateTime(exp.created_at)} />
           </div>

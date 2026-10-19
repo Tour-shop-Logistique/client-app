@@ -6,6 +6,9 @@ export const ROUTES = {
   EXPEDITION_TRACKING: '/expeditions/:id/suivi',
   EXPEDITION_DETAIL: '/expeditions/:id',
   EXPEDITION_HISTORY: '/expeditions',
+  // Parcours destinataire (CHANGEMENTS_APPS_CLIENT_LIVREUR §4).
+  RECEIVED: '/colis-recus',
+  RECEIVED_DETAIL: '/colis-recus/:id',
   MARKETPLACE: '/marketplace',
   MARKETPLACE_PRODUCT: '/marketplace/produits/:id',
   MARKETPLACE_CART: '/marketplace/panier',
@@ -19,6 +22,7 @@ export const ROUTES = {
   MARKETPLACE_SALES: '/marketplace/ventes',
   MARKETPLACE_SALE: '/marketplace/ventes/:id',
   MARKETPLACE_PAYMENT_METHODS: '/marketplace/moyens-paiement',
+  MARKETPLACE_DELIVERY_RATES: '/marketplace/tarifs-livraison',
   MARKETPLACE_BALANCE: '/marketplace/solde',
   MARKETPLACE_SUBSCRIPTION: '/marketplace/abonnement',
   AGENCIES: '/agences',
@@ -35,6 +39,7 @@ export const ROUTES = {
 };
 
 export const expeditionDetailPath = (id) => `/expeditions/${id}`;
+export const receivedDetailPath = (id) => `/colis-recus/${id}`;
 export const productPath = (id) => `/marketplace/produits/${id}`;
 export const orderPath = (id) => `/marketplace/achats/${id}`;
 export const salePath = (id) => `/marketplace/ventes/${id}`;

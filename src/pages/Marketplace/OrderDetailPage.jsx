@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useState,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -17,9 +19,16 @@ import {
 import marketplaceService from '../../services/marketplaceService';
 import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import {
-  COMMANDE_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage, copyText, isLivraisonActive, isCommandeAnnulable,
+  COMMANDE_STATUTS, PAYMENT_METHODS, formatMoney, apiErrorMessage, copyText, isCommandeAnnulable,
+  needsDeliveryChoice, deliveryMode, isSelfDelivery,
 } from '../../utils/marketplace';
 import CancelOrderButton from '../../components/marketplace/CancelOrderButton';
+import DeliveryModeOptions from '../../components/marketplace/DeliveryModeOptions';
+import { MODE_META } from '../../components/marketplace/deliveryModes';
+import useDeliveryQuotes from '../../hooks/useDeliveryQuotes';
+import useCommunes from '../../hooks/useCommunes';
+import { deliveryContextOf } from '../../utils/deliveryContext';
+import { formatDistance } from '../../services/routingService';
 import { ROUTES } from '../../routes';
 
 const METHOD_ICONS = { mobile_money: Smartphone, cash: Banknote };
@@ -160,6 +169,123 @@ function DeclarePaymentPanel({ commande, onDeclared }) {
   );
 }
 
+// Choix du mode de livraison par L'ACHETEUR, une fois son paiement confirme
+// (MARKETPLACE_LIVRAISON_3_MODES.md) : il voit les 3 prix, choisit sa commune
+// (liste, jamais du texte libre) et le mode. La distance calculee par l'app est
+// renvoyee : c'est elle qui sert a facturer.
+function DeliveryChoicePanel({ commande, onDone }) {
+  const ctx = useMemo(() => deliveryContextOf(commande), [commande]);
+  const { communes, status: communesStatus } = useCommunes();
+  const [communeId, setCommuneId] = useState(ctx.communeLivraisonId);
+  const [mode, setMode] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [vendorRates, setVendorRates] = useState(null);
+
+  // Commune non memorisee : on la retrouve d'apres la ville de livraison.
+  useEffect(() => {
+    if (communeId || !commande.livraison_ville || communes.length === 0) return;
+    const match = communes.find((c) => c.nom.toLowerCase() === String(commande.livraison_ville).trim().toLowerCase());
+    if (match) setCommuneId(match.id);
+  }, [communeId, communes, commande.livraison_ville]);
+
+  const quotes = useDeliveryQuotes({
+    vendeurId: commande.vendeur_id,
+    communeDepartId: ctx.communeDepartId,
+    communeArriveeId: communeId,
+    from: ctx.from,
+    to: ctx.to,
+  });
+
+  // Apercu impossible (commune de depart inconnue) : standard et express restent
+  // proposes sans prix ; le livreur du vendeur seulement s'il dessert la commune.
+  const noPreview = quotes.status === 'incomplete' || quotes.status === 'error';
+  useEffect(() => {
+    if (!noPreview || !commande.vendeur_id) return;
+    marketplaceService.tarifsVendeur(commande.vendeur_id).then(setVendorRates).catch(() => setVendorRates([]));
+  }, [noPreview, commande.vendeur_id]);
+  const unpricedModes = useMemo(() => {
+    if (!noPreview || !communeId) return [];
+    const vendorServes = (vendorRates ?? []).some((t) => String(t.commune_destination_id) === String(communeId) && t.actif !== false);
+    return ['standard', 'express', ...(vendorServes ? ['livreur_magasin'] : [])];
+  }, [noPreview, communeId, vendorRates]);
+
+  // Mode choisi devenu indisponible (changement de commune) : on le retire.
+  useEffect(() => {
+    if (!mode) return;
+    const available = quotes.tarifs?.[mode] != null || unpricedModes.includes(mode);
+    if (!available && quotes.status !== 'loading') setMode(null);
+  }, [mode, quotes.tarifs, quotes.status, unpricedModes]);
+
+  const submit = async () => {
+    if (!mode || !communeId) return;
+    setBusy(true);
+    try {
+      const res = await marketplaceService.choisirLivraison(commande.id, mode, {
+        communeLivraisonId: communeId,
+        distanceKm: quotes.distanceKm,
+      });
+      toast.success(res?.message || 'Mode de livraison choisi.', {
+        description: mode === 'express'
+          ? 'Votre livraison est proposée aux livreurs disponibles.'
+          : mode === 'standard'
+            ? 'TourShop affecte un livreur à votre commande.'
+            : 'Le vendeur va désigner son livreur.',
+      });
+      onDone();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Impossible de choisir ce mode de livraison.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const price = mode ? quotes.tarifs?.[mode] : null;
+
+  return (
+    <section className="card space-y-4 p-4">
+      <div>
+        <h2 className="text-body font-semibold text-surface-900">Choisissez votre livraison</h2>
+        <p className="text-caption text-surface-500">Le vendeur a confirmé votre paiement. Comment voulez-vous être livré ?</p>
+      </div>
+
+      <label className="block" htmlFor="commune-livraison">
+        <span className="text-caption font-medium text-surface-600">Commune de livraison</span>
+        <select
+          id="commune-livraison"
+          className="input-field mt-1"
+          value={communeId ?? ''}
+          onChange={(e) => setCommuneId(e.target.value || null)}
+          disabled={communesStatus === 'loading'}
+        >
+          <option value="">{communesStatus === 'loading' ? 'Chargement des communes…' : 'Choisir une commune'}</option>
+          {communes.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select>
+      </label>
+
+      {communeId && (
+        <DeliveryModeOptions
+          tarifs={quotes.tarifs}
+          status={quotes.status}
+          value={mode}
+          onSelect={setMode}
+          unpricedModes={unpricedModes}
+        />
+      )}
+      {quotes.distanceKm != null && (
+        <p className="text-caption text-surface-500">Distance estimée : {formatDistance(quotes.distanceKm)} depuis le lieu de retrait.</p>
+      )}
+
+      <motion.button type="button" whileTap={{ scale: 0.97 }} className="btn-shop w-full" disabled={!mode || !communeId || busy} onClick={submit}>
+        {busy ? <Loader2 size={17} className="animate-spin" /> : <Truck size={16} />}
+        {mode ? `Choisir ${MODE_META[mode].title.toLowerCase()}${price != null ? ` · ${formatMoney(price)}` : ''}` : 'Choisir un mode de livraison'}
+      </motion.button>
+      <p className="text-caption text-surface-500">
+        Les frais de livraison se règlent hors application, comme vos articles. Le mode choisi ne pourra plus être changé.
+      </p>
+    </section>
+  );
+}
+
 const HEADLINES = {
   en_attente_paiement: { icon: Wallet, title: 'Paiement attendu', text: 'Payez le vendeur puis déclarez votre paiement.', cls: 'bg-amber-50 text-amber-900' },
   paiement_a_confirmer: { icon: Hourglass, title: 'Vérification en cours', text: 'Le vendeur vérifie la réception de votre paiement.', cls: 'bg-primary-50 text-primary-900' },
@@ -207,8 +333,23 @@ export default function OrderDetailPage() {
 
   const liv = commande?.livraison_marketplace;
   const headline = HEADLINES[commande?.statut];
-  const awaitingShipping = commande?.statut === 'payee' && commande.mode_livraison !== 'hors_plateforme' && !(isLivraisonActive(liv) && liv.statut !== 'proposee');
+  const chooseDelivery = needsDeliveryChoice(commande);
+  const mode = deliveryMode(commande);
   const onTheWay = commande?.statut === 'payee' && liv?.statut === 'en_cours';
+  // Message d'attente selon le mode choisi, tant qu'aucun livreur n'a la course.
+  const waitingText = (() => {
+    if (commande?.statut !== 'payee' || chooseDelivery) return null;
+    if (isSelfDelivery(commande)) return 'Le vendeur vous livre lui-même : il vous contactera.';
+    if (mode === 'livreur_magasin' && (!liv?.livreur_id || ['en_attente', 'refusee', 'expiree', 'proposee'].includes(liv?.statut))) {
+      return 'Le vendeur désigne son livreur pour votre commande.';
+    }
+    if (liv?.statut === 'en_attente') {
+      return mode === 'express'
+        ? 'Votre livraison express est proposée aux livreurs disponibles.'
+        : 'TourShop affecte un livreur à votre commande.';
+    }
+    return null;
+  })();
   // Paiement deja declare puis infirme par le vendeur : re-declarer.
   const paymentRejected = commande?.statut === 'en_attente_paiement' && (infirme || Boolean(commande.paiement_declare_le));
 
@@ -256,8 +397,9 @@ export default function OrderDetailPage() {
                     <p className="text-caption opacity-80">
                       {onTheWay
                         ? 'Le livreur a récupéré votre article : il est en route. Préparez votre code.'
-                        : awaitingShipping ? 'Le vendeur va choisir le mode de livraison.'
-                          : commande.statut === 'annulee' && commande.motif_annulation ? `Motif : « ${commande.motif_annulation} »` : headline.text}
+                        : chooseDelivery ? 'Choisissez maintenant votre mode de livraison.'
+                          : waitingText
+                            || (commande.statut === 'annulee' && commande.motif_annulation ? `Motif : « ${commande.motif_annulation} »` : headline.text)}
                     </p>
                   </div>
                 </div>
@@ -292,6 +434,8 @@ export default function OrderDetailPage() {
                   }}
                 />
               )}
+
+              {chooseDelivery && <DeliveryChoicePanel commande={commande} onDone={load} />}
 
               <DeliveryInfoCard commande={commande} />
               <OrderItemsCard commande={commande} />

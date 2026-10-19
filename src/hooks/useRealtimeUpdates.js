@@ -3,9 +3,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
-import { ROUTES, orderPath, salePath, expeditionDetailPath } from '../routes';
-import marketplaceService from '../services/marketplaceService';
-import { formatMoney } from '../utils/marketplace';
+import { orderPath, salePath, expeditionDetailPath } from '../routes';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
 
@@ -153,27 +151,6 @@ export function useRealtimeMarketplace(commandeId, onUpdate, enabled = true) {
   useRealtimeUpdates(handle, { only: ['marketplace'], enabled });
 }
 
-// Ouvre la vente qui porte une livraison donnée : directement si l'id de commande
-// est connu, sinon en cherchant parmi les ventes du vendeur ; à défaut, l'onglet
-// « Offres à comparer » de la liste.
-async function openSaleOfDelivery(navigate, commandeId, livraisonId) {
-  if (commandeId) {
-    navigate(salePath(commandeId));
-    return;
-  }
-  try {
-    const ventes = await marketplaceService.mesVentes();
-    const vente = ventes.find((c) => String(c.livraison_marketplace?.id) === String(livraisonId));
-    if (vente) {
-      navigate(salePath(vente.id));
-      return;
-    }
-  } catch {
-    /* liste indisponible : repli sur l'onglet */
-  }
-  navigate(`${ROUTES.MARKETPLACE_SALES}?onglet=offers`);
-}
-
 // Role du client connecte dans la commande, quand le payload le permet.
 const roleIn = (item, userId) => {
   const vendeur = item?.vendeur_id ?? item?.commande?.vendeur_id;
@@ -230,7 +207,7 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           const montant = meta?.changes?.montant_expedition;
           const to = montant?.to ?? item?.montant_expedition;
           toast.info('Le tarif de votre expédition a été ajusté après contrôle des colis', {
-            description: [ref && `Expédition ${ref}`, to != null && `Nouveau montant : ${formatPrice(to)}`].filter(Boolean).join(' · ') || undefined,
+            description: [ref && `Expédition ${ref}`, to != null && `Nouveau montant : ${formatPrice(to, item?.devise_origine || undefined)}`].filter(Boolean).join(' · ') || undefined,
             action: openExp,
             duration: 10000,
           });
@@ -239,14 +216,14 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
         case 'expedition.delivered':
           toast.success('Votre colis a ete livre 🎉');
           break;
+        // Offres livreurs dépréciées (express à prix imposé) : plus de toast.
         case 'delivery_offer.received':
-          toast.info('Un livreur a fait une offre pour votre colis');
           break;
         case 'colis.status_changed':
           toast.info('Mise a jour du suivi de votre colis');
           break;
         case 'mission.published':
-          toast.info('Votre demande est diffusée aux livreurs', { description: 'Les offres de prix vont arriver.' });
+          toast.info('Votre demande est diffusée aux livreurs', { description: 'Le premier livreur disponible prendra la course.' });
           break;
 
         // --- Marketplace : commandes ---------------------------------------
@@ -257,7 +234,7 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           break;
         case 'marketplace.CommandeMarketplace.payee':
           if (role !== 'vendeur') {
-            toast.success('Paiement confirmé par le vendeur', { description: 'Il organise maintenant la livraison.', action: open(orderPath) });
+            toast.success('Paiement confirmé par le vendeur', { description: 'Choisissez maintenant votre mode de livraison.', duration: 10000, action: open(orderPath) });
           }
           break;
         case 'marketplace.CommandeMarketplace.paiement_infirme':
@@ -292,7 +269,7 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
         case 'marketplace.LivraisonMarketplace.refusee':
         case 'marketplace.LivraisonMarketplace.expiree':
           toast.warning(meta.action === 'expiree' ? 'Le livreur n’a pas répondu à temps' : 'Le livreur a refusé la livraison', {
-            description: 'Choisissez un autre mode de livraison.',
+            description: 'Désignez un autre livreur pour cette vente.',
             duration: 10000,
             action: open(salePath),
           });
@@ -301,19 +278,9 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           if (role === 'vendeur') toast.info('Le livreur a récupéré l’article', { action: open(salePath) });
           else toast.info('Votre commande est en route 🚚', { action: open(orderPath) });
           break;
-        case 'marketplace.LivraisonMarketplaceOffre.proposee': {
-          // L'offre ne porte que `livraison_marketplace_id` (pas l'id de la
-          // commande) : on retrouve la vente correspondante au toucher du bouton.
-          if (role === 'acheteur') break;
-          const livraisonId = item?.livraison_marketplace_id ?? item?.livraison_id;
-          const montant = item?.montant_propose;
-          toast.info('Nouvelle offre d’un livreur', {
-            description: montant != null ? `${formatMoney(montant)} proposés · comparez les offres.` : 'Comparez les offres de livraison.',
-            duration: 10000,
-            action: { label: 'Voir', onClick: () => openSaleOfDelivery(navigate, commandeId, livraisonId) },
-          });
+        // Offres livreurs supprimées (livraison en 3 modes à prix fixé) : rien à afficher.
+        case 'marketplace.LivraisonMarketplaceOffre.proposee':
           break;
-        }
         default:
           break;
       }

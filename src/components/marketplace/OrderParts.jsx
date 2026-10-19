@@ -5,7 +5,7 @@ import {
 import StatusBadge from './StatusBadge';
 import {
   formatMoney, personName, initials, storageUrl, handleMediaError, copyText, commandeAddress,
-  LIVRAISON_STATUTS, MODES_LIVRAISON, PAYMENT_METHODS,
+  LIVRAISON_STATUTS, MODES_LIVRAISON, PAYMENT_METHODS, deliveryMode, isSelfDelivery,
 } from '../../utils/marketplace';
 import { formatDateTime } from '../../utils/format';
 
@@ -182,16 +182,16 @@ export function DeliveryInfoCard({ commande, showPickup = false }) {
       <dl className="grid grid-cols-2 gap-3 text-body">
         <div>
           <dt className="text-caption text-surface-400">Mode</dt>
-          <dd className="font-medium text-surface-800">{MODES_LIVRAISON[commande.mode_livraison] ?? (liv?.mode === 'direct' ? 'Livreur choisi' : 'Réseau de livreurs')}</dd>
+          <dd className="font-medium text-surface-800">{MODES_LIVRAISON[deliveryMode(commande)] ?? '—'}</dd>
         </div>
-        {liv?.montant_final != null && (
+        {(liv?.montant_final ?? commande.montant_livraison) != null && (
           <div>
             <dt className="text-caption text-surface-400">Frais de livraison</dt>
-            <dd className="font-medium text-surface-800">{formatMoney(liv.montant_final)}</dd>
+            <dd className="font-medium text-surface-800">{formatMoney(liv?.montant_final ?? commande.montant_livraison)}</dd>
           </div>
         )}
       </dl>
-      {commande.mode_livraison === 'hors_plateforme' && (
+      {isSelfDelivery(commande) && (
         <p className="rounded-xl bg-surface-50 p-3 text-caption text-surface-600">
           Le vendeur organise lui-même la livraison, en dehors de l’application.
         </p>

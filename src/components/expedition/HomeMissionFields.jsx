@@ -4,7 +4,7 @@ import useRoute from '../../hooks/useRoute';
 import { isValidPoint, formatDistance, formatEta } from '../../services/routingService';
 import LocationPicker from './LocationPicker';
 import expeditionService from '../../services/expeditionService';
-import { estimatePickupFee } from '../../utils/pickup';
+import { estimateMissionFees, expressDisabledInGrid } from '../../utils/pickup';
 import { formatPrice } from '../../utils/format';
 
 // Champs d'une course du dernier kilomètre (api-enlevement-livraison-client.md) :
@@ -12,17 +12,19 @@ import { formatPrice } from '../../utils/format';
 //  - `kind = 'livraison'`  : chez le destinataire, depuis l'agence d'arrivée.
 // `value` = { mode, vehicule, latitude, longitude, distanceKm, instructions }.
 // La distance PAR LA ROUTE agence -> point est calculée côté app (le serveur
-// n'en calcule pas) ; en mode groupage, la grille de la commune de l'agence
-// (GET grille-tarifs-enlevement) donne un tarif indicatif avant confirmation.
+// n'en calcule pas). La grille de la commune de l'agence
+// (GET grille-tarifs-enlevement) donne les DEUX prix — standard et express
+// (= standard × taux express) — affichés avant que le client choisisse
+// (user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §2).
 
 const MODES = {
   enlevement: [
-    { value: 'express', label: 'Récupération express', hint: 'Les livreurs disponibles proposent un prix, vous choisissez.' },
-    { value: 'groupage', label: 'Retrait classique', hint: 'Tarif fixe selon la distance par la route depuis l’agence.' },
+    { value: 'express', label: 'Récupération express', hint: 'Prix fixe. Le premier livreur disponible vient chercher le colis.' },
+    { value: 'groupage', label: 'Retrait classique', hint: 'Tarif standard. TourShop affecte un livreur de l’agence.' },
   ],
   livraison: [
-    { value: 'express', label: 'Livraison express', hint: 'Les livreurs disponibles proposent un prix, vous choisissez.' },
-    { value: 'groupage', label: 'Livraison classique', hint: 'Tarif fixe selon la distance par la route depuis l’agence d’arrivée.' },
+    { value: 'express', label: 'Livraison express', hint: 'Prix fixe. Le premier livreur disponible apporte le colis.' },
+    { value: 'groupage', label: 'Livraison classique', hint: 'Tarif standard. TourShop affecte un livreur de l’agence d’arrivée.' },
   ],
 };
 
@@ -41,13 +43,14 @@ const agencePoint = (agence) => {
   return isValidPoint(p) ? { ...p, lat: Number(p.lat), lng: Number(p.lng) } : null;
 };
 
-export function Choice({ selected, onClick, icon: Icon, title, hint }) {
+export function Choice({ selected, onClick, icon: Icon, title, hint, aside, disabled }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={selected}
-      className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
+      className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition disabled:opacity-60 ${
         selected ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
       }`}
     >
@@ -60,12 +63,14 @@ export function Choice({ selected, onClick, icon: Icon, title, hint }) {
         <span className="block text-sm font-semibold text-surface-900">{title}</span>
         {hint && <span className="block text-xs text-surface-500">{hint}</span>}
       </span>
+      {aside && <span className="mt-0.5 shrink-0 text-right text-sm font-bold text-surface-900">{aside}</span>}
       {selected && <Check size={16} className="mt-1 shrink-0 text-primary-600" />}
     </button>
   );
 }
 
-export default function HomeMissionFields({ value, onChange, agence, communeId, kind = 'enlevement' }) {
+// `currency` : devise des tarifs de la grille (commune de l'agence).
+export default function HomeMissionFields({ value, onChange, agence, communeId, kind = 'enlevement', currency }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const labels = LABELS[kind];
 
@@ -85,9 +90,9 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKm]);
 
-  // Grille de la commune de l'agence (mode groupage) -> tarif indicatif.
+  // Grille de la commune de l'agence -> prix standard ET express.
   const [grid, setGrid] = useState(null);
-  const wantGrid = value.mode === 'groupage' && Boolean(communeId);
+  const wantGrid = Boolean(communeId);
   useEffect(() => {
     if (!wantGrid) return undefined;
     let alive = true;
@@ -97,14 +102,39 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
     return () => { alive = false; };
   }, [wantGrid, communeId]);
   const gridEmpty = wantGrid && Array.isArray(grid?.data) && grid.data.length === 0;
-  const fee = wantGrid ? estimatePickupFee(grid, routeKm, value.vehicule) : null;
+  const fees = wantGrid ? estimateMissionFees(grid, routeKm, value.vehicule) : null;
+  // Express indisponible : taux non configuré sur la tranche (ou sur toute la grille).
+  const expressOff = (fees && !fees.expressAvailable) || (!fees && expressDisabledInGrid(grid, value.vehicule));
+  const feeOf = (mode) => (mode === 'express' ? fees?.express : fees?.standard) ?? null;
+  const fee = feeOf(value.mode);
+
+  // Mode express choisi alors qu'il n'est pas disponible : repli sur le standard.
+  useEffect(() => {
+    if (expressOff && value.mode === 'express') onChange({ ...value, mode: 'groupage' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expressOff]);
 
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        {MODES[kind].map((m) => (
-          <Choice key={m.value} selected={value.mode === m.value} onClick={() => set({ mode: m.value })} title={m.label} hint={m.hint} />
-        ))}
+        {MODES[kind].map((m) => {
+          const off = m.value === 'express' && expressOff;
+          const price = feeOf(m.value);
+          return (
+            <Choice
+              key={m.value}
+              selected={value.mode === m.value}
+              onClick={() => set({ mode: m.value })}
+              title={m.label}
+              hint={off ? 'Indisponible pour cette distance : choisissez le mode classique.' : m.hint}
+              aside={!off && price != null ? formatPrice(price, currency) : null}
+              disabled={off}
+            />
+          );
+        })}
+        {!fees && !gridEmpty && wantGrid && (
+          <p className="text-xs text-surface-500">Les prix s’affichent dès que la distance par la route est connue.</p>
+        )}
       </div>
 
       <div>
@@ -159,13 +189,13 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
       </div>
       {fee != null && (
         <div className="flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-sm">
-          <span className="text-surface-600">Tarif estimé</span>
-          <strong className="text-primary-800">{formatPrice(fee)}</strong>
+          <span className="text-surface-600">{value.mode === 'express' ? 'Prix express à payer' : 'Tarif standard à payer'}</span>
+          <strong className="text-primary-800">{formatPrice(fee, currency)}</strong>
         </div>
       )}
       {gridEmpty && (
         <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          Aucune grille tarifaire n’est configurée pour cette agence : choisissez plutôt le mode express.
+          Aucune grille tarifaire n’est configurée pour cette agence : le prix sera confirmé par l’agence.
         </p>
       )}
 

@@ -19,6 +19,11 @@ export function isDestinationCompatible(entry, mode) {
   return types.some((t) => entry[t.key]);
 }
 
+// Agence d'arrivée : nom de relation non garanti selon la route (show,
+// destinataire/rechercher…) — lecture défensive.
+export const arrivalAgence = (exp) =>
+  exp?.agence_arrivee ?? exp?.agenceArrivee ?? exp?.agence_destination ?? exp?.agenceDestination ?? null;
+
 // Labels of the available types for an entry, optionally narrowed to a mode.
 export function destinationBadges(entry, mode) {
   if (!entry) return [];
