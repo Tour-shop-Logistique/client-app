@@ -10,7 +10,9 @@ import { isValidPoint } from '../../services/routingService';
 // Helpers associes (EMPTY_ADDRESS, toRetraitPayload, retraitErrors…) : utils/marketplace.js.
 
 // Champs d'adresse partages (retrait vendeur / livraison acheteur).
-// `value` : { nom, telephone, adresse, ville, latitude, longitude, instructions? }
+// `value` : { nom, telephone, adresse, ville, commune_id, latitude, longitude, instructions? }
+// `commune_id` suit la ville choisie : commune de depart de l'annonce ou commune
+// de livraison de l'acheteur, pour les tarifs de livraison.
 // La ville se choisit parmi les communes du pays (backoffice) ; plus de quartier :
 // `adresse` sert de description libre du lieu. Saisie libre de la ville seulement
 // si la liste ne peut pas etre chargee.
@@ -38,6 +40,22 @@ export default function AddressFields({
     if (position) placePoint(position.lat, position.lng, { refocus: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position]);
+
+  // Ancienne adresse (ville seule) : on retrouve sa commune dans la liste pour
+  // renseigner `commune_id`, utilise par les tarifs de livraison.
+  useEffect(() => {
+    if (value.commune_id || !value.ville || communes.length === 0) return;
+    const match = communes.find((c) => c.nom.toLowerCase() === String(value.ville).trim().toLowerCase());
+    if (match) onChange({ ...value, commune_id: match.id, ville: match.nom });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [communes, value.ville, value.commune_id]);
+
+  // Choix dans la liste : nom (`ville`) + UUID (`commune_id`).
+  const selectCommune = (e) => {
+    const nom = e.target.value;
+    const commune = communes.find((c) => c.nom === nom);
+    onChange({ ...value, ville: nom, commune_id: commune?.id ?? null });
+  };
 
   const label = (key, text) => (
     <span className="text-caption font-medium text-surface-600">
@@ -88,7 +106,7 @@ export default function AddressFields({
             id={`${idPrefix}-ville`}
             className={`input-field mt-1 ${errorBorder('ville')}`}
             value={value.ville ?? ''}
-            onChange={set('ville')}
+            onChange={(e) => onChange({ ...value, ville: e.target.value, commune_id: null })}
             disabled={disabled}
             maxLength={100}
             autoComplete="address-level2"
@@ -98,7 +116,7 @@ export default function AddressFields({
             id={`${idPrefix}-ville`}
             className={`input-field mt-1 ${errorBorder('ville')}`}
             value={value.ville ?? ''}
-            onChange={set('ville')}
+            onChange={selectCommune}
             disabled={disabled || status === 'loading'}
           >
             <option value="">{status === 'loading' ? 'Chargement des villes…' : 'Choisir une ville'}</option>

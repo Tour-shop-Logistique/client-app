@@ -6,24 +6,26 @@ import { toast } from 'sonner';
 import BottomSheet from '../common/BottomSheet';
 import MissionRequest from './MissionRequest';
 import expeditionService from '../../services/expeditionService';
-import { formatDateTime, formatPrice } from '../../utils/format';
+import { formatDateTime, formatPrice, expeditionCurrency } from '../../utils/format';
 import { storageUrl, handleMediaError } from '../../utils/marketplace';
 
 // Dernier kilomètre d'une expédition (cahier 4.2 / 4.3, workflow 8.3) :
 //  - missions d'enlèvement / de livraison à domicile (GET /{id}/missions) ;
-//  - offres des livreurs sur une mission express ouverte, et choix d'une offre ;
+//  - en express, prix imposé par le backend (`montant_fixe`) : la course est
+//    diffusée aux livreurs et le premier qui accepte la prend — plus d'offres
+//    à comparer (user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §2) ;
 //  - code de réception à transmettre au livreur ;
 //  - preuves (photo, signature, heure, position) une fois l'étape réalisée.
 // Contrat : REPONSE_AUDIT_CAHIER_DES_CHARGES_CLIENT.md §1 et §2, enrichi par
 // REPONSE_DEMANDE_BACKEND_APP_CLIENT_COMPLETE.md C3 (mode, montant, livreur
 // assigné, annulation d'une mission encore ouverte).
 // Le temps réel est géré par la page (useRealtimeExpedition) : chaque
-// événement change `refreshKey`, qui recharge missions et offres.
+// événement change `refreshKey`, qui recharge les missions.
 
 const MISSION_LABEL = { enlevement: 'Enlèvement à domicile', livraison: 'Livraison à domicile' };
 
 const MISSION_STATUT = {
-  en_attente: { label: 'Ouverte aux offres', className: 'bg-amber-50 text-amber-700' },
+  en_attente: { label: 'Recherche d’un livreur', className: 'bg-amber-50 text-amber-700' },
   // Groupage : le backoffice a proposé la mission à un livreur, qui a 15 min
   // pour l'accepter (PARCOURS_LIVREUR_API.md §4.1bis).
   proposee: { label: 'Livreur en cours d’affectation', className: 'bg-amber-50 text-amber-700' },
@@ -31,23 +33,19 @@ const MISSION_STATUT = {
   terminee: { label: 'Effectuée', className: 'bg-emerald-50 text-emerald-700' },
 };
 
-// Mode groupage : pas d'offres de prix, le backoffice assigne un livreur
-// rattaché (tarif fixe, `montant` connu d'avance).
+// Groupage : le backoffice assigne un livreur rattaché. Express : course
+// diffusée au réseau. Dans les deux cas le tarif est fixé d'avance.
 const isGroupage = (m) => m.mode === 'groupage';
 const statutOf = (m) => (m.statut === 'en_attente' && isGroupage(m)
   ? { label: 'En attente d’un livreur', className: 'bg-amber-50 text-amber-700' }
   : MISSION_STATUT[m.statut]);
 
-// Offre : { id, montant_propose, statut, livreur: { nom, prenoms, telephone } }
-// (api-enlevement-livraison-client.md) ; autres formes lues en repli.
-const offerLivreur = (o) => {
-  const l = o?.livreur || {};
-  const u = l.user || {};
-  const nom = [u.prenoms ?? l.prenoms, u.nom ?? l.nom].filter(Boolean).join(' ') || o?.livreur_nom || 'Livreur TourShop';
-  return { nom, vehicule: l.type_vehicule ?? o?.type_vehicule ?? null };
-};
-const offerAmount = (o) => o?.montant_propose ?? o?.montant ?? null;
 const missionAmount = (m) => m?.montant ?? m?.montant_final ?? m?.montant_fixe ?? null;
+// Enlèvement : tarif de la commune de départ (devise d'origine). Livraison :
+// commune d'arrivée — devise de destination si l'API la fournit.
+const missionCurrency = (m, exp) => (m.type === 'livraison'
+  ? m.devise ?? exp?.devise_destination ?? undefined
+  : m.devise ?? expeditionCurrency(exp));
 const phoneDigits = (t) => String(t || '').replace(/[^\d+]/g, '');
 
 // Livreur assigné (`livreur` n'est renseigné qu'à partir de `assignee`).
@@ -88,8 +86,7 @@ function CourierCard({ livreur }) {
   );
 }
 
-// Annulation d'une mission encore `en_attente` (aucun livreur assigné) : les
-// offres actives sont refusées.
+// Annulation d'une mission encore `en_attente` (aucun livreur assigné).
 function CancelMission({ mission, onDone }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -119,7 +116,7 @@ function CancelMission({ mission, onDone }) {
       <BottomSheet open={open} onClose={() => !busy && setOpen(false)} title="Annuler cette demande ?">
         <div className="space-y-3">
           <p className="text-sm text-surface-600">
-            Plus aucun livreur ne viendra pour {label}. Les offres reçues seront refusées.
+            Plus aucun livreur ne viendra pour {label}.
           </p>
           <button type="button" className="btn w-full bg-red-600 text-white" onClick={run} disabled={busy}>
             {busy && <Loader2 size={16} className="animate-spin" />} Confirmer l’annulation
@@ -132,7 +129,6 @@ function CancelMission({ mission, onDone }) {
     </>
   );
 }
-const isOpenOffer = (o) => !o?.statut || o.statut === 'active' || o.statut === 'en_attente';
 
 // Une seule demande active par type et par expédition (422 sinon).
 const ACTIVE_MISSION = ['en_attente', 'proposee', 'assignee'];
@@ -147,124 +143,6 @@ const DELIVERY_CLOSED = ['en_cours_livraison', 'termined', 'cancelled', 'refused
 
 // Signature : URL, data URL ou base64 brut (le livreur l'envoie en base64).
 const signatureSrc = (data) => (/^(data:|https?:)/i.test(String(data)) ? data : `data:image/png;base64,${data}`);
-
-function OfferList({ mission, onAccepted, refreshKey }) {
-  const [offers, setOffers] = useState(null);
-  const [error, setError] = useState(false);
-  const [target, setTarget] = useState(null);
-  const [accepting, setAccepting] = useState(false);
-
-  const load = useCallback(() => {
-    setError(false);
-    expeditionService
-      .missionOffers(mission.id)
-      .then((res) => {
-        const list = res?.offres ?? res?.data ?? [];
-        setOffers((Array.isArray(list) ? list : []).filter(isOpenOffer));
-      })
-      .catch(() => setError(true));
-  }, [mission.id]);
-
-  useEffect(() => { load(); }, [load, refreshKey]);
-
-  const accept = async () => {
-    setAccepting(true);
-    try {
-      await expeditionService.acceptOffer(mission.id, target.id);
-      // Code de réception : uniquement pour une mission de livraison.
-      toast.success('Offre acceptée', {
-        description: mission.type === 'livraison'
-          ? 'Le destinataire recevra le code de réception par SMS et email.'
-          : 'Le livreur va venir récupérer le colis.',
-      });
-      setTarget(null);
-      onAccepted();
-    } catch (err) {
-      // 404 "Mission non trouvée ou déjà clôturée" / "Offre non trouvée ou déjà
-      // retirée" : la demande a changé entre-temps -> on rafraîchit.
-      if (err.response?.status === 404) {
-        toast.warning('Cette offre n’est plus disponible', { description: 'La liste a été actualisée.' });
-        setTarget(null);
-        load();
-        onAccepted();
-      } else {
-        toast.error(err.response?.data?.message || "Impossible d'accepter cette offre.");
-      }
-    } finally {
-      setAccepting(false);
-    }
-  };
-
-  if (error) {
-    return (
-      <button type="button" onClick={load} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary-600">
-        <RefreshCw size={14} /> Offres indisponibles, réessayer
-      </button>
-    );
-  }
-  if (offers === null) return <p className="mt-3 text-sm text-surface-500">Chargement des offres…</p>;
-  if (offers.length === 0) {
-    return (
-      <p className="mt-3 rounded-xl bg-surface-50 px-3 py-2.5 text-sm text-surface-600">
-        Aucune offre pour l'instant. Les livreurs disponibles proposent leur tarif : vous serez notifié.
-      </p>
-    );
-  }
-
-  const sorted = [...offers].sort((a, b) => Number(offerAmount(a)) - Number(offerAmount(b)));
-
-  return (
-    <>
-      <p className="mt-3 text-xs font-medium text-surface-500">
-        {sorted.length} offre{sorted.length > 1 ? 's' : ''}, de la moins chère à la plus chère
-      </p>
-      <ul className="mt-2 space-y-2">
-        {sorted.map((o) => {
-          const { nom, vehicule } = offerLivreur(o);
-          const VehicleIcon = vehicule === 'voiture' ? Car : Bike;
-          return (
-            <li key={o.id} className="flex items-center gap-3 rounded-xl border border-surface-100 p-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
-                <UserRound size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-surface-900">{nom}</p>
-                {vehicule && (
-                  <p className="flex items-center gap-1 text-xs capitalize text-surface-500">
-                    <VehicleIcon size={13} /> {vehicule}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-sm font-bold text-surface-900">{formatPrice(offerAmount(o))}</span>
-                <button type="button" className="text-sm font-semibold text-primary-600" onClick={() => setTarget(o)}>
-                  Choisir
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <BottomSheet open={Boolean(target)} onClose={() => setTarget(null)} title="Choisir cette offre ?">
-        {target && (
-          <div className="space-y-3">
-            <p className="text-sm text-surface-600">
-              {offerLivreur(target).nom} livrera ce colis pour <strong className="text-surface-900">{formatPrice(offerAmount(target))}</strong>.
-              Les autres offres seront refusées.
-            </p>
-            <button type="button" className="btn-primary w-full" onClick={accept} disabled={accepting}>
-              {accepting ? 'Validation…' : "Accepter l'offre"}
-            </button>
-            <button type="button" className="btn-ghost w-full" onClick={() => setTarget(null)} disabled={accepting}>
-              Retour
-            </button>
-          </div>
-        )}
-      </BottomSheet>
-    </>
-  );
-}
 
 // Contrat api-enlevement-livraison-client.md : `preuve: { photo, signature,
 // latitude, longitude }`. Les anciens noms (`photo_url`, `signature_data`,
@@ -360,7 +238,8 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
                   <p className="text-sm font-semibold text-surface-900">{MISSION_LABEL[m.type] || 'Mission'}</p>
                   {missionAmount(m) != null && (
                     <p className="text-xs text-surface-500">
-                      {isGroupage(m) ? 'Tarif fixe' : 'Tarif convenu'} : <span className="font-semibold text-surface-800">{formatPrice(missionAmount(m))}</span>
+                      {isGroupage(m) ? 'Tarif fixe' : 'Tarif express'} : <span className="font-semibold text-surface-800">{formatPrice(missionAmount(m), missionCurrency(m, expedition))}</span>
+                      {m.type === 'livraison' && expedition.livraison_payee_par_destinataire && <> · payé par le destinataire</>}
                     </p>
                   )}
                 </div>
@@ -369,7 +248,11 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
 
               {m.livreur && <CourierCard livreur={m.livreur} />}
 
-              {m.statut === 'en_attente' && !isGroupage(m) && <OfferList mission={m} onAccepted={load} refreshKey={refreshKey} />}
+              {m.statut === 'en_attente' && !isGroupage(m) && (
+                <p className="mt-3 rounded-xl bg-surface-50 px-3 py-2.5 text-sm text-surface-600">
+                  Course express diffusée aux livreurs disponibles, au prix fixé ci-dessus. Le premier qui l'accepte la prend en charge : vous serez prévenu.
+                </p>
+              )}
               {(m.statut === 'proposee' || (m.statut === 'en_attente' && isGroupage(m))) && (
                 <p className="mt-3 rounded-xl bg-surface-50 px-3 py-2.5 text-sm text-surface-600">
                   TourShop affecte un livreur à votre demande, au tarif fixé par l'agence. Vous serez prévenu dès qu'il l'aura acceptée.

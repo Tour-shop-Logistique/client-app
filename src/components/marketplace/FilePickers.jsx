@@ -135,7 +135,7 @@ export function PhotoPicker({ files, onChange, max = 10 }) {
 // Image unique optionnelle : preuve de paiement (capture d'ecran) ou photo d'un
 // colis (`icon` Camera, `camera` pour proposer aussi l'appareil photo).
 export function ProofPicker({
-  file, onChange, label = 'Capture de la transaction', icon = Receipt, removeLabel = 'Retirer la preuve', camera = false,
+  file, onChange, label = 'Capture de la transaction', icon = Receipt, removeLabel = 'Retirer la preuve', camera = false, optional = true,
 }) {
   const Icon = icon;
   const inputRef = useRef(null);
@@ -170,7 +170,7 @@ export function ProofPicker({
             </span>
             <span>
               <span className="block text-body font-medium text-surface-900">{label}</span>
-              <span className="block text-caption text-surface-500">Optionnel · jpeg, png, webp · 5 Mo max</span>
+              <span className="block text-caption text-surface-500">{optional ? 'Optionnel · ' : 'Obligatoire · '}jpeg, png, webp · 5 Mo max</span>
             </span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -201,7 +201,7 @@ export function ProofPicker({
           </span>
           <span>
             <span className="block text-body font-medium text-surface-900">{label}</span>
-            <span className="block text-caption text-surface-500">Optionnel · jpeg, png, webp · 5 Mo max</span>
+            <span className="block text-caption text-surface-500">{optional ? 'Optionnel · ' : 'Obligatoire · '}jpeg, png, webp · 5 Mo max</span>
           </span>
         </button>
       )}

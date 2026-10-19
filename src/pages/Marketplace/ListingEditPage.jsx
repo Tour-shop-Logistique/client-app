@@ -14,6 +14,7 @@ import {
 } from '../../utils/marketplace';
 import { ROUTES, productPath } from '../../routes';
 
+import { currencyLabel } from '../../utils/format';
 export default function ListingEditPage() {
   const { id } = useParams();
   const handleError = useMarketplaceError();
@@ -241,7 +242,7 @@ export default function ListingEditPage() {
                 value={form.prix}
                 onChange={(e) => setForm((f) => ({ ...f, prix: e.target.value }))}
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-caption font-semibold text-surface-400">FCFA</span>
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-caption font-semibold text-surface-400">{currencyLabel()}</span>
             </div>
           </label>
           <label className="block">

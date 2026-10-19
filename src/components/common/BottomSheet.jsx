@@ -1,13 +1,22 @@
 import { createPortal } from 'react-dom';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { registerSheet } from '../../utils/sheetStack';
 
 export default function BottomSheet({ open, onClose, title, children }) {
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    if (!open) return;
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    if (!open) return undefined;
     document.body.style.overflow = 'hidden';
+    // Empilée : le bouton retour ferme la feuille du dessus avant tout (useExitGuard).
+    const unregister = registerSheet(() => onCloseRef.current?.());
     return () => {
       document.body.style.overflow = '';
+      unregister();
     };
   }, [open]);
 

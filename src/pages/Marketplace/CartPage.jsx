@@ -10,6 +10,9 @@ import TopBar from '../../components/common/TopBar';
 import BottomSheet from '../../components/common/BottomSheet';
 import { ProductImage } from '../../components/marketplace/ProductCard';
 import AddressFields from '../../components/marketplace/AddressFields';
+import DeliveryModeOptions from '../../components/marketplace/DeliveryModeOptions';
+import useDeliveryQuotes from '../../hooks/useDeliveryQuotes';
+import { saveDeliveryContext } from '../../utils/deliveryContext';
 import { EmptyCartArt } from '../../components/illustrations';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import marketplaceService from '../../services/marketplaceService';
@@ -37,10 +40,63 @@ const saveAddress = (addr) => {
   }
 };
 
-const REQUIRED_ADDRESS = ['nom', 'telephone', 'adresse', 'ville'];
+// Position GPS obligatoire : sans elle, les livraisons standard et express ne
+// peuvent pas etre calculees (MARKETPLACE_LIVRAISON_3_MODES.md, etape 1).
+const REQUIRED_ADDRESS = ['nom', 'telephone', 'adresse', 'ville', 'gps'];
 
-const addressErrors = (addr) =>
-  Object.fromEntries(REQUIRED_ADDRESS.filter((k) => !String(addr[k] ?? '').trim()).map((k) => [k, 'Champ requis']));
+const addressErrors = (addr) => {
+  const errs = Object.fromEntries(['nom', 'telephone', 'adresse', 'ville']
+    .filter((k) => !String(addr[k] ?? '').trim()).map((k) => [k, 'Champ requis']));
+  if (addr.latitude == null || addr.longitude == null) errs.gps = 'Enregistrez la position de livraison (nécessaire pour calculer la livraison).';
+  return errs;
+};
+
+const pointOf = (lat, lng) => (lat != null && lng != null ? { lat: Number(lat), lng: Number(lng) } : null);
+
+// Depart d'une commande (un vendeur) : commune et position de retrait du 1er article.
+const groupOrigin = (group) => {
+  const item = group.items.find((i) => i.commune_id) ?? group.items[0];
+  return {
+    communeDepartId: item?.commune_id ?? null,
+    from: pointOf(item?.retrait_latitude, item?.retrait_longitude),
+  };
+};
+
+// Apercu des 3 tarifs de livraison d'un vendeur, avant de commander : l'acheteur
+// choisira son mode une fois son paiement confirme par le vendeur.
+function GroupDeliveryQuotes({ group, address, showVendor }) {
+  const origin = groupOrigin(group);
+  const quotes = useDeliveryQuotes({
+    vendeurId: group.vendeur?.id,
+    communeDepartId: origin.communeDepartId,
+    communeArriveeId: address.commune_id,
+    from: origin.from,
+    to: pointOf(address.latitude, address.longitude),
+  });
+  if (quotes.status === 'idle') return null;
+  return (
+    <div className="space-y-1.5">
+      {showVendor && (
+        <p className="text-caption font-semibold text-surface-700">
+          {group.vendeur ? personName(group.vendeur) : 'Vendeur'}
+        </p>
+      )}
+      {quotes.status === 'incomplete' ? (
+        <p className="rounded-xl bg-surface-50 px-3 py-2 text-caption text-surface-500">
+          {address.commune_id
+            ? 'Les frais de livraison seront affichés après la confirmation du paiement.'
+            : 'Choisissez votre ville dans la liste pour voir les frais de livraison.'}
+        </p>
+      ) : quotes.status === 'error' ? (
+        <p className="rounded-xl bg-surface-50 px-3 py-2 text-caption text-surface-500">
+          Frais de livraison indisponibles pour le moment : ils seront affichés au choix du mode.
+        </p>
+      ) : (
+        <DeliveryModeOptions tarifs={quotes.tarifs} status={quotes.status} compact />
+      )}
+    </div>
+  );
+}
 
 // Corps `adresse_livraison` de panier/valider (champs optionnels omis si vides).
 const toAdresseLivraison = (addr) => {
@@ -160,6 +216,18 @@ export default function CartPage() {
     try {
       const commandes = await marketplaceService.validerPanier(purchasable.map((i) => i.id), toAdresseLivraison(address));
       saveAddress(address);
+      // Contexte de livraison de chaque commande (une par vendeur), pour
+      // reafficher les tarifs au moment ou l'acheteur choisira son mode.
+      commandes.forEach((c) => {
+        const group = groups.find((g) => String(g.vendeur?.id) === String(c.vendeur_id));
+        const origin = group ? groupOrigin(group) : {};
+        saveDeliveryContext(c.id, {
+          communeDepartId: origin.communeDepartId ?? null,
+          communeLivraisonId: address.commune_id ?? null,
+          from: origin.from ?? null,
+          to: pointOf(address.latitude, address.longitude),
+        });
+      });
       const ids = purchasable.map((i) => i.id);
       dispatch(removeManyFromCart(ids));
       dispatch(dropFromCatalogue(ids));
@@ -315,9 +383,9 @@ export default function CartPage() {
                 <span>Articles ({purchasable.length})</span>
                 <span>{formatMoney(total)}</span>
               </div>
-              <div className="flex justify-between text-body text-surface-600">
+              <div className="flex justify-between gap-3 text-body text-surface-600">
                 <span>Livraison</span>
-                <span className="text-caption">Fixée par le vendeur après paiement</span>
+                <span className="text-right text-caption">Standard, express ou livreur du vendeur : vous choisissez après paiement</span>
               </div>
               <div className="flex justify-between border-t border-dashed border-surface-200 pt-2.5">
                 <span className="font-semibold text-surface-900">Total articles</span>
@@ -376,6 +444,18 @@ export default function CartPage() {
             withInstructions
             idPrefix="livraison"
           />
+          {/* Frais de livraison des 3 modes, par vendeur, avant de commander. */}
+          {address.commune_id && (
+            <section className="space-y-2 rounded-2xl border border-surface-100 p-3">
+              <p className="text-body font-semibold text-surface-900">Frais de livraison</p>
+              <p className="text-caption text-surface-500">
+                Vous choisirez votre mode une fois votre paiement confirmé par le vendeur.
+              </p>
+              {groups.map((g) => (
+                <GroupDeliveryQuotes key={g.vendeur?.id ?? 'v'} group={g} address={address} showVendor={groups.length > 1} />
+              ))}
+            </section>
+          )}
           <motion.button type="button" whileTap={{ scale: 0.97 }} className="btn-shop w-full py-3.5" disabled={submitting} onClick={submitOrder}>
             {submitting ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}
             {submitting ? 'Validation…' : `Confirmer la commande · ${formatMoney(total)}`}

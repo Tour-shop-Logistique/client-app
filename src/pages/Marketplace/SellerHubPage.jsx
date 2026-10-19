@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import {
-  ChevronLeft, Tag, Receipt, Wallet, CreditCard, BadgeCheck, Plus, ChevronRight, Info, Truck, Hourglass, Store, Lock,
+  ChevronLeft, Tag, Receipt, Wallet, CreditCard, BadgeCheck, Plus, ChevronRight, Info, Truck, Hourglass, Store, Lock, Route,
 } from 'lucide-react';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import { ShopBagArt, EmptyTagArt } from '../../components/illustrations';
@@ -11,10 +11,14 @@ import AnimatedNumber from '../../components/marketplace/AnimatedNumber';
 import GuestGate from '../../components/marketplace/GuestGate';
 import marketplaceService from '../../services/marketplaceService';
 import { fetchAbonnementStatut } from '../../store/slices/marketplaceSlice';
-import { formatMoney, isAbonnementBloque, personName, ECHEANCE_STATUTS, TONE_CLASSES } from '../../utils/marketplace';
+import {
+  formatMoney, isAbonnementBloque, personName, ECHEANCE_STATUTS, TONE_CLASSES, needsMagasinAssignment,
+} from '../../utils/marketplace';
 import { ROUTES } from '../../routes';
 
-const needsShipping = (c) => c.statut === 'payee' && !c.mode_livraison && !c.livraison_marketplace;
+// L'acheteur choisit le mode ; le vendeur n'a a agir que pour designer son
+// livreur (mode livreur_magasin).
+const needsShipping = needsMagasinAssignment;
 
 export default function SellerHubPage() {
   const dispatch = useDispatch();
@@ -59,7 +63,7 @@ export default function SellerHubPage() {
 
   const todos = [
     toConfirm > 0 && { to: `${ROUTES.MARKETPLACE_SALES}?onglet=confirm`, icon: Hourglass, text: `${toConfirm} paiement${toConfirm > 1 ? 's' : ''} à confirmer`, cls: 'bg-primary-50 text-primary-800' },
-    toShip > 0 && { to: `${ROUTES.MARKETPLACE_SALES}?onglet=ship`, icon: Truck, text: `${toShip} livraison${toShip > 1 ? 's' : ''} à organiser`, cls: 'bg-amber-50 text-amber-900' },
+    toShip > 0 && { to: `${ROUTES.MARKETPLACE_SALES}?onglet=ship`, icon: Truck, text: `${toShip} livreur${toShip > 1 ? 's' : ''} à désigner`, cls: 'bg-amber-50 text-amber-900' },
     !loading && !blocked && moyens.filter((m) => m.actif).length === 0 && {
       to: ROUTES.MARKETPLACE_PAYMENT_METHODS, icon: CreditCard, text: 'Ajoutez vos moyens de paiement', cls: 'bg-shop-100 text-shop-900',
     },
@@ -69,6 +73,7 @@ export default function SellerHubPage() {
     { to: ROUTES.MARKETPLACE_MY_LISTINGS, icon: Tag, color: 'bg-shop-100 text-shop-700', label: 'Mes annonces', sub: `${annonces.length} annonce${annonces.length > 1 ? 's' : ''}` },
     { to: ROUTES.MARKETPLACE_SALES, icon: Receipt, color: 'bg-primary-100 text-primary-600', label: 'Mes ventes', sub: `${ventes.length} commande${ventes.length > 1 ? 's' : ''}` },
     { to: ROUTES.MARKETPLACE_PAYMENT_METHODS, icon: CreditCard, color: 'bg-violet-100 text-violet-700', label: 'Moyens de paiement', sub: `${moyens.filter((m) => m.actif).length} actif(s)` },
+    { to: ROUTES.MARKETPLACE_DELIVERY_RATES, icon: Route, color: 'bg-amber-100 text-amber-700', label: 'Tarifs de livraison', sub: 'Votre livreur, par commune' },
     { to: ROUTES.MARKETPLACE_BALANCE, icon: Wallet, color: 'bg-teal-100 text-teal-600', label: 'Solde & historique', sub: 'Ventes cumulées' },
     {
       to: ROUTES.MARKETPLACE_SUBSCRIPTION,

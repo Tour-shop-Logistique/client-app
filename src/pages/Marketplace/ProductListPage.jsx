@@ -18,6 +18,7 @@ import { ROUTES, productPath } from '../../routes';
 import { annonceCover, formatMoney, personName } from '../../utils/marketplace';
 import { loadJson, saveJson } from '../../store/persist';
 
+import { currencyLabel } from '../../utils/format';
 const SEARCH_HISTORY_KEY = 'marketplace_search_history';
 
 const SORTS = [
@@ -679,7 +680,7 @@ export default function ProductListPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-caption font-medium text-surface-600">
-              Minimum (FCFA)
+              Minimum ({currencyLabel()})
               <input
                 type="number"
                 inputMode="numeric"
@@ -691,7 +692,7 @@ export default function ProductListPage() {
               />
             </label>
             <label className="block text-caption font-medium text-surface-600">
-              Maximum (FCFA)
+              Maximum ({currencyLabel()})
               <input
                 type="number"
                 inputMode="numeric"

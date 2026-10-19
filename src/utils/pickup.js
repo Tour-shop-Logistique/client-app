@@ -3,8 +3,10 @@
 // REPONSE_AUDIT_CAHIER_DES_CHARGES_CLIENT (1).md §6.
 //   - groupage : la demande part au backoffice, qui assigne un livreur rattaché
 //                (tarif fixe par tranche de km) ;
-//   - express  : diffusée aux livreurs indépendants, qui proposent un prix à
-//                accepter ensuite depuis le détail de l'expédition.
+//   - express  : prix imposé = montant standard × taux express, calculé par le
+//                backend ; course diffusée aux livreurs, le premier qui accepte
+//                la prend (plus d'offres à comparer —
+//                user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §2).
 
 export const EMPTY_PICKUP = {
   domicile: false,
@@ -18,13 +20,15 @@ export const EMPTY_PICKUP = {
 
 export const PICKUP_MODE_MESSAGE = {
   groupage: 'Retrait classique : demande transmise, TourShop vous affecte un livreur.',
-  express: 'Récupération express : demande diffusée aux livreurs, les offres de prix arrivent dans le détail de l’expédition.',
+  express: 'Récupération express : prix fixe, la course est proposée aux livreurs disponibles et le premier qui l’accepte vient chercher le colis.',
 };
 
-// Tarif d'enlèvement groupage estimé depuis la grille de l'agence
+// Tarifs estimés depuis la grille de l'agence
 // (GET /expedition/client/grille-tarifs-enlevement) pour une distance routière
-// et un véhicule. Le format exact de la grille n'est pas documenté côté app :
-// lecture défensive (tableau direct, ou sous `data` / `grille` / `tranches`, ou
+// et un véhicule. Tranche : { type_vehicule, km_min, km_max (null = illimitée),
+// montant_standard, taux_express (null = express indisponible), montant_express }.
+// `montant` (ancien nom de `montant_standard`) reste lu en repli. Lecture
+// défensive (tableau direct, ou sous `data` / `grille` / `tranches`, ou
 // regroupé par véhicule), null si aucune tranche ne correspond.
 const firstNum = (obj, keys) => {
   for (const k of keys) {
@@ -46,18 +50,42 @@ const gridRows = (grid) => {
   return [];
 };
 
-export function estimatePickupFee(grid, distanceKm, vehicule) {
+const findRow = (grid, distanceKm, vehicule) => {
   if (distanceKm == null) return null;
   const rows = gridRows(grid).filter((r) => {
     const v = r.type_vehicule ?? r.vehicule;
     return !v || !vehicule || v === vehicule;
   });
-  const row = rows.find((r) => {
+  return rows.find((r) => {
     const min = firstNum(r, ['km_min', 'distance_min', 'min_km', 'tranche_min', 'de', 'min']) ?? 0;
     const max = firstNum(r, ['km_max', 'distance_max', 'max_km', 'tranche_max', 'a', 'max']);
     return distanceKm >= min && (max == null || distanceKm <= max);
-  });
-  return row ? firstNum(row, ['montant', 'tarif', 'prix', 'montant_fixe']) : null;
+  }) ?? null;
+};
+
+// { standard, express, expressAvailable } pour la tranche couvrant la distance,
+// ou null si aucune tranche. `express` = montant_express, sinon standard × taux.
+export function estimateMissionFees(grid, distanceKm, vehicule) {
+  const row = findRow(grid, distanceKm, vehicule);
+  if (!row) return null;
+  const standard = firstNum(row, ['montant_standard', 'montant', 'tarif', 'prix', 'montant_fixe']);
+  const taux = firstNum(row, ['taux_express']);
+  const express = firstNum(row, ['montant_express']) ?? (standard != null && taux != null ? Math.round(standard * taux) : null);
+  return { standard, express, expressAvailable: express != null };
+}
+
+// Tarif d'un mode donné ('groupage' = standard | 'express').
+export function estimatePickupFee(grid, distanceKm, vehicule, mode = 'groupage') {
+  const fees = estimateMissionFees(grid, distanceKm, vehicule);
+  if (!fees) return null;
+  return mode === 'express' ? fees.express : fees.standard;
+}
+
+// La grille signale-t-elle l'express comme indisponible pour TOUTES les
+// tranches du véhicule (taux_express null partout) ?
+export function expressDisabledInGrid(grid, vehicule) {
+  const rows = gridRows(grid).filter((r) => !vehicule || !(r.type_vehicule ?? r.vehicule) || (r.type_vehicule ?? r.vehicule) === vehicule);
+  return rows.length > 0 && rows.every((r) => r.taux_express === null && r.montant_express == null);
 }
 
 // Champs à ajouter au corps de `store` ({} si le client dépose lui-même).

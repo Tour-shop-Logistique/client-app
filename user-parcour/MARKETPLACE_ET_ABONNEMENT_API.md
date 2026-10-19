@@ -18,7 +18,8 @@ Toutes les routes sont préfixées par l'URL de base de l'API et nécessitent un
 - [3. Marketplace — Vendeur (moyens de paiement acceptés)](#3-marketplace--vendeur-moyens-de-paiement-acceptés)
 - [4. Marketplace — Acheteur (catalogue, panier, achats)](#4-marketplace--acheteur-catalogue-panier-achats)
 - [5. Marketplace — Confirmation du paiement (vendeur)](#5-marketplace--confirmation-du-paiement-vendeur)
-- [6. Marketplace — Choix et suivi de la livraison (vendeur)](#6-marketplace--choix-et-suivi-de-la-livraison-vendeur)
+- [6. Marketplace — Suivi de la livraison (vendeur)](#6-marketplace--suivi-de-la-livraison-vendeur)
+- [6bis. Marketplace — Choix du mode de livraison (acheteur)](#6bis-marketplace--choix-du-mode-de-livraison-acheteur)
 - [7. Rôle du livreur dans Marketplace (pas son parcours complet)](#7-rôle-du-livreur-dans-le-module-marketplace-pas-son-parcours-complet)
 - [8. Marketplace — Solde vendeur (informatif)](#8-marketplace--solde-vendeur-informatif)
 - [9. Abonnement marketplace](#9-abonnement-marketplace)
@@ -34,9 +35,9 @@ Toutes les routes sont préfixées par l'URL de base de l'API et nécessitent un
 
 | Rôle | Type utilisateur (`UserType`) | Peut... |
 |---|---|---|
-| Vendeur | `CLIENT` | Publier des annonces, configurer ses moyens de paiement, recevoir des commandes, confirmer la réception d'un paiement, choisir le mode de livraison |
-| Acheteur | `CLIENT` | Parcourir le catalogue, acheter, déclarer un paiement, suivre sa commande |
-| Livreur | `LIVREUR` | Voir les livraisons disponibles (mode réseau, filtrées par ville), proposer un prix, accepter/refuser une affectation directe, livrer avec preuve, valider par code |
+| Vendeur | `CLIENT` | Publier des annonces, configurer ses moyens de paiement, recevoir des commandes, confirmer la réception d'un paiement, gérer ses tarifs de livraison par commune, désigner son livreur (mode `livreur_magasin`) |
+| Acheteur | `CLIENT` | Parcourir le catalogue, acheter, déclarer un paiement, **choisir le mode de livraison** (standard / express / livreur_magasin), suivre sa commande |
+| Livreur | `LIVREUR` | Voir les livraisons disponibles, accepter une livraison express (premier arrivé), accepter/refuser une proposition directe, livrer avec preuve, valider par code |
 
 Un même compte `CLIENT` peut être vendeur et acheteur — ce n'est pas un rôle séparé, c'est contextuel selon qui a créé l'annonce/la commande. **Un vendeur voit ses propres annonces dans son catalogue acheteur** (pour prévisualiser le rendu côté client), mais ne peut pas les acheter (voir [section 4](#4-marketplace--acheteur-catalogue-panier-achats)).
 
@@ -53,23 +54,23 @@ Le **seul** flux d'argent réellement géré par le backoffice est l'**abonnemen
 
 ### 1.3 Modes de livraison d'une commande
 
-Une fois la commande **payée** (c'est-à-dire confirmée par le vendeur, voir [section 5](#5-marketplace--confirmation-du-paiement-vendeur)), le **vendeur** choisit un des trois modes :
+Une fois la commande **payée** (c'est-à-dire confirmée par le vendeur, voir [section 5](#5-marketplace--confirmation-du-paiement-vendeur)), c'est **l'acheteur** qui choisit son mode de livraison. Il voit les 3 prix avant de choisir.
 
 | Mode | Valeur API | Comportement |
 |---|---|---|
-| Réseau de livreurs | `reseau_livreurs` | La livraison est proposée à tous les livreurs du pays. Ils font des offres de prix, le vendeur en accepte une. |
-| Livreur direct | `livreur_direct` | Le vendeur choisit lui-même un livreur (ex. quelqu'un qu'il connaît déjà) et fixe le montant. |
-| Hors plateforme | `hors_plateforme` | Le vendeur livre lui-même ou via un tiers non géré par l'app. Aucune `LivraisonMarketplace` n'est créée. |
+| Standard | `standard` | Prix calculé automatiquement (grille km backoffice). Le backoffice assigne un livreur via son interface. |
+| Express | `express` | Prix = standard × taux express. Diffusé au réseau, premier livreur à accepter remporte la mission. |
+| Livreur du magasin | `livreur_magasin` | Tarif défini par le vendeur par commune. Le vendeur désigne son livreur après le choix de l'acheteur. Ce mode n'est proposé que si le vendeur a configuré un tarif vers la commune de l'acheteur. |
+
+> **Endpoints dépréciés (→ HTTP 410)** : les anciennes routes `/livraison/reseau`, `/livraison/direct`, `/livraison/hors-plateforme`, `/livraison/offres`, `proposer` et `DELETE offre` existent encore mais renvoient 410. Voir la doc détaillée `docs/MARKETPLACE_LIVRAISON_3_MODES.md`.
 
 ### 1.4 Code de validation de livraison
 
 Pour les modes `reseau_livreurs` et `livreur_direct`, un code à 4 chiffres (`code_validation_livraison`) est généré automatiquement sur la commande dès qu'un livreur **accepte** la livraison (voir 1.6 ci-dessous — pas dès l'affectation du vendeur en mode direct). **L'acheteur doit communiquer ce code au livreur** à la remise. Le livreur saisit ce code pour valider la livraison — sans ce code, il ne peut pas clôturer.
 
-### 1.6 Affectation directe : le livreur doit accepter (nouveau)
+### 1.6 Code de validation
 
-En mode `livreur_direct`, le vendeur choisit un livreur et fixe un montant, mais la livraison passe d'abord au statut **`proposee`** (pas `assignee`) — le livreur dispose de **15 minutes** pour l'accepter ou la refuser (voir [section 7.4](#74-accepter-ou-refuser-une-affectation-directe-nouveau)). En mode réseau, ce palier n'existe pas : proposer une offre de prix vaut déjà accord implicite du livreur, l'acceptation par le vendeur assigne directement.
-
-Pour `hors_plateforme`, il n'y a pas de code : le vendeur confirme lui-même que la commande est livrée.
+Pour les modes `standard`, `express` et `livreur_magasin` (quand un livreur sur plateforme est désigné), un code à 4 chiffres (`code_validation_livraison`) est généré automatiquement sur la commande dès qu'un livreur accepte ou est assigné. **L'acheteur doit communiquer ce code au livreur** à la remise.
 
 ### 1.5 Paiement d'une commande : déclaratif, avec confirmation du vendeur
 
@@ -147,6 +148,7 @@ Crée une annonce en statut `brouillon`. Il faut appeler `/publier` ensuite pour
 | `retrait_ville` | string | **oui** | max 100 |
 | `retrait_latitude` | numérique | **oui** | -90 à 90 |
 | `retrait_longitude` | numérique | **oui** | -180 à 180 |
+| `commune_id` | uuid | non | UUID d'une commune (requis pour les modes de livraison standard/express) |
 
 **Adresse de retrait** : saisie une fois sur l'annonce, copiée (snapshot) sur chaque commande au moment où le vendeur choisit un mode de livraison (réseau ou direct) — voir sections 6 et 7. **`retrait_nom`, `retrait_telephone`, `retrait_ville`, `retrait_latitude`, `retrait_longitude` sont obligatoires à la création** (sans eux, le livreur n'a ni moyen de joindre le vendeur, ni point géographique pour calculer une distance ou filtrer les livraisons disponibles par zone, voir [section 7.1](#71-get-marketplacelivreurlivraisons-disponibles)). Seuls `retrait_adresse` et `retrait_quartier` restent optionnels.
 
@@ -572,9 +574,11 @@ Infirme la réception (le vendeur n'a rien reçu, ou une preuve invalide). La co
 
 ---
 
-## 6. Marketplace — Choix et suivi de la livraison (vendeur)
+## 6. Marketplace — Suivi de la livraison (vendeur)
 
-Base : `/marketplace/vendeur` (mêmes routes que la section 2, même middleware d'abonnement). **Les routes de choix de livraison (`livraison/reseau`, `/direct`, `/hors-plateforme`) nécessitent que la commande soit en statut `payee`** (donc après confirmation du paiement, section 5) ; `annuler` et la recherche de livreur par téléphone n'ont pas cette contrainte (voir ci-dessous).
+Base : `/marketplace/vendeur` (mêmes routes que la section 2, même middleware d'abonnement).
+
+> **Le choix du mode de livraison appartient à l'acheteur** (voir section 6bis ci-dessous). Le vendeur n'a plus qu'à désigner son livreur si l'acheteur a choisi le mode `livreur_magasin`, et à marquer livré s'il gère hors plateforme.
 
 ### GET `/marketplace/vendeur/ventes/list`
 
@@ -648,87 +652,65 @@ Recherche un livreur par son numéro de téléphone **exact**, pour préparer un
 
 **Réponse 404** : `{ "success": false, "message": "Aucun livreur trouvé pour ce numéro." }`
 
-### POST `/marketplace/vendeur/ventes/{id}/livraison/reseau`
+### POST `/marketplace/vendeur/ventes/{id}/livraison/magasin/assigner`
 
-Choisit le mode réseau. La commande doit être en statut `payee` (sinon 422 : `"Cette commande n'est pas en attente de choix de livraison."`). Crée une `LivraisonMarketplace` (statut `en_attente`, mode `reseau`), diffuse la disponibilité à tous les livreurs du réseau du pays.
-
-**Réponse 201**
-```json
-{
-  "success": true,
-  "message": "Livraison mise en attente sur le réseau.",
-  "livraison": {
-    "id": "5b1e2b2a-5555-4a3b-9c1a-000000000001",
-    "commande_marketplace_id": "5b1e2b2a-3333-4a3b-9c1a-000000000001",
-    "mode": "reseau",
-    "statut": "en_attente",
-    "livreur_id": null,
-    "montant_final": null
-  }
-}
-```
-
-### POST `/marketplace/vendeur/ventes/{id}/livraison/direct`
-
-Choisit un livreur directement et fixe le montant. La commande doit être en statut `payee`.
+**Uniquement pour le mode `livreur_magasin`**, après que l'acheteur a choisi ce mode. Le vendeur désigne son livreur.
 
 **Corps**
 | Champ | Type | Requis |
 |---|---|---|
-| `livreur_id` | uuid | oui, doit exister dans `users` |
-| `montant` | number | oui, ≥ 0 |
+| `livreur_id` | uuid | non (null = hors plateforme) |
 
-**Réponse 201**
-```json
-{
-  "success": true,
-  "message": "Livraison proposée au livreur.",
-  "livraison": {
-    "id": "5b1e2b2a-5555-4a3b-9c1a-000000000002",
-    "commande_marketplace_id": "5b1e2b2a-3333-4a3b-9c1a-000000000001",
-    "mode": "direct",
-    "statut": "proposee",
-    "livreur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000030",
-    "montant_propose_vendeur": 1500,
-    "montant_final": 1500,
-    "proposee_le": "2026-09-24T10:10:00.000000Z",
-    "expire_le": "2026-09-24T10:25:00.000000Z"
-  }
-}
-```
-⚠️ **Changement de comportement** : la livraison passe désormais en `proposee`, pas `assignee`. Le livreur doit explicitement accepter avant que la livraison ne lui soit réellement confiée (délai 15 minutes, voir section 7.4). `code_validation_livraison` et le démarrage de l'abonnement marketplace du livreur sont **différés jusqu'à son acceptation** — ils n'ont plus lieu à cet appel. Si le livreur refuse ou ne répond pas dans le délai, la commande revient en statut `payee` et le vendeur peut re-choisir un mode de livraison.
+- `livreur_id` présent → livreur sur plateforme, statut `proposee`, 15 min pour accepter/refuser
+- `livreur_id` absent → hors plateforme, statut `assignee` d'emblée
 
-### POST `/marketplace/vendeur/ventes/{id}/livraison/hors-plateforme`
-
-Choisit le mode hors plateforme. Aucune `LivraisonMarketplace` créée, aucun code de validation.
-
-**Réponse 200** : `{ "success": true, "message": "Livraison hors plateforme choisie.", "commande": { "...": "...", "mode_livraison": "hors_plateforme" } }`
+**Réponse 200** : `{ "success": true, "message": "Livreur désigné.", "livraison": { "...": "...", "statut": "proposee|assignee" } }`
 
 ### POST `/marketplace/vendeur/ventes/{id}/livraison/marquer-livree`
 
-**Uniquement pour le mode hors plateforme.** Le vendeur confirme lui-même que la commande a été livrée. Déclenche le crédit informatif du solde vendeur (commission 10 % appliquée, voir [section 8](#8-marketplace--solde-vendeur-informatif)).
+**Pour le mode `livreur_magasin` hors plateforme** (vendeur a désigné sans `livreur_id`). Le vendeur confirme lui-même que la commande a été livrée. Déclenche le crédit informatif du solde vendeur (commission 10 % appliquée, voir [section 8](#8-marketplace--solde-vendeur-informatif)).
 
 **Réponse 200** : `{ "success": true, "message": "Commande marquée comme livrée.", "commande": { "...": "...", "statut": "livree" } }`
 
-### GET `/marketplace/vendeur/ventes/{id}/livraison/offres`
+---
 
-Liste les offres actives des livreurs sur la livraison associée à cette commande (mode réseau uniquement), triées par montant croissant.
+> **Routes dépréciées → HTTP 410** : `GET /livraison/offres`, `POST /livraison/offres/{id}/accepter`, `POST /livraison/reseau`, `POST /livraison/direct`, `POST /livraison/hors-plateforme`. Ces routes répondent encore pour ne pas casser les versions déployées mais retournent 410. Voir `docs/MARKETPLACE_LIVRAISON_3_MODES.md` pour le tableau complet.
 
-**Réponse 200**
+---
+
+## 6bis. Marketplace — Choix du mode de livraison (acheteur)
+
+Base : `/marketplace/acheteur`. Après confirmation du paiement par le vendeur, l'acheteur choisit son mode. Il fournit sa `commune_livraison_id` (UUID sélectionné depuis une liste dans l'UI).
+
+Avant de choisir, l'acheteur peut consulter les 3 prix :
+```
+GET /api/marketplace/acheteur/tarifs-livraison
+  ?vendeur_id=<uuid>&commune_depart_id=<uuid>&commune_arrivee_id=<uuid>&distance_km=2.4
+```
+Réponse : `{ "tarifs": { "standard": 1500, "express": 2250, "livreur_magasin": 2000 } }` — un champ `null` = mode indisponible.
+
+### POST `/marketplace/acheteur/commandes/{id}/livraison/standard`
+### POST `/marketplace/acheteur/commandes/{id}/livraison/express`
+### POST `/marketplace/acheteur/commandes/{id}/livraison/livreur-magasin`
+
+**Corps (même pour les 3)**
 ```json
 {
-  "success": true,
-  "offres": [
-    { "id": "5b1e2b2a-6666-4a3b-9c1a-000000000001", "livreur_id": "5b1e2b2a-1111-4a3b-9c1a-000000000030", "montant_propose": 1500, "statut": "active", "livreur": { "id": "5b1e2b2a-1111-4a3b-9c1a-000000000030", "nom": "Yao", "prenoms": "Paul" } }
-  ]
+  "commune_livraison_id": "<uuid>",
+  "distance_km": 2.4
 }
 ```
 
-### POST `/marketplace/vendeur/ventes/{id}/livraison/offres/{offreId}/accepter`
+- `distance_km` : calculée par l'app via OSM — utilisée pour trouver la tranche tarifaire (cohérent avec les expéditions classiques). Optionnelle : si absente, fallback Haversine sur les GPS stockés.
+- `commune_livraison_id` : UUID sélectionné depuis une liste, jamais texte libre.
+- Le serveur dérive `commune_depart_id` depuis la commune de l'annonce (renseignée par le vendeur).
 
-Le vendeur accepte une offre. Toutes les autres offres actives sur cette livraison passent automatiquement à `refusee`. La livraison passe à `assignee`, `montant_final` = montant de l'offre acceptée, un code de validation est généré sur la commande. **Déclenche le démarrage de l'abonnement marketplace du livreur choisi** (pas celui du vendeur connecté).
+**Réponse 201** : `{ "success": true, "livraison": { "mode": "standard|express|livreur_magasin", "statut": "en_attente", "montant_final": 1500 } }`
 
-**Réponse 200** : `{ "success": true, "message": "Offre acceptée.", "livraison": { "...": "...", "statut": "assignee", "livreur_id": "...", "montant_final": 1500 } }`
+**Erreurs clés** :
+- `422 "La commune de retrait n'est pas définie sur l'annonce."` → vendeur doit renseigner `commune_id` sur son annonce
+- `422 "Les coordonnées GPS sont manquantes."` → GPS non fournis au panier
+- `422 "Un mode de livraison a déjà été sélectionné pour cette commande."` — doublon
 
 ---
 
@@ -742,7 +724,7 @@ Base : `/marketplace/livreur`. **Protégé par le middleware d'abonnement** (voi
 
 ### 7.1 GET `/marketplace/livreur/livraisons-disponibles`
 
-Liste les `LivraisonMarketplace` en mode réseau, statut `en_attente`, **filtrées par ville de retrait du livreur** (ou ville/position passées en requête — voir tableau ci-dessous), avec adresses minimales (ville/quartier seulement, pas de contact ni adresse exacte — confidentialité tant que non assignée).
+Liste les `LivraisonMarketplace` en mode `express` ou `standard`, statut `en_attente`, **filtrées par ville de retrait du livreur** (ou ville/position passées en requête — voir tableau ci-dessous), avec adresses minimales (ville/quartier seulement, pas de contact ni adresse exacte — confidentialité tant que non assignée).
 
 **Query params optionnels**
 | Paramètre | Type | Effet |
@@ -770,33 +752,28 @@ Liste les `LivraisonMarketplace` en mode réseau, statut `en_attente`, **filtré
 ```
 Un livreur sans `ville` renseignée sur son profil continue de voir toutes les livraisons disponibles (pas de régression).
 
-### 7.2 POST `/marketplace/livreur/livraisons/{id}/proposer`
+### 7.2 POST `/marketplace/livreur/livraisons/{id}/accepter-express`
 
-Propose ou met à jour un prix sur une livraison en attente (mode réseau uniquement, la livraison doit encore être `en_attente`, sinon 404).
+Accepte une livraison **mode express** (premier arrivé premier servi). Le prix est imposé par le serveur — pas de saisie.
 
-**Corps** : `{ "montant_propose": 1500 }` (requis, numérique, ≥ 0)
+**Réponse 200** : `{ "success": true, "message": "Livraison acceptée.", "livraison": { "statut": "assignee", "montant_final": 2250 } }`
 
-Idempotent : si le livreur avait déjà une offre active sur cette livraison, son montant est simplement mis à jour (pas de doublon).
+**Erreurs** :
+- `422 "Cette livraison n'est pas en mode express."` — mauvais endpoint
+- `422 "Vous devez être disponible pour accepter une livraison."` — mettre `disponible = true` d'abord
+- `422 "Cette livraison a déjà été prise par un autre livreur."` — race condition normale
 
-**Réponse 201** : `{ "success": true, "message": "Offre enregistrée.", "offre": { "id": "...", "livraison_marketplace_id": "...", "livreur_id": "...", "montant_propose": 1500, "statut": "active" } }`
+> **Routes dépréciées → 410** : `POST /proposer`, `DELETE /offre` existent encore mais retournent 410. Ne pas implémenter.
 
-### 7.3 DELETE `/marketplace/livreur/livraisons/{id}/offre`
+### 7.3 Accepter ou refuser une proposition (`livreur_magasin` sur plateforme)
 
-Retire l'offre active du livreur connecté sur cette livraison (statut passe à `retiree`).
-
-**Réponse 200** : `{ "success": true, "message": "Offre retirée." }`
-
-### 7.4 Accepter ou refuser une affectation directe (nouveau)
-
-Quand le vendeur affecte directement un livreur (sans passer par le réseau d'offres, voir section 6 `livraison/direct`), la livraison passe désormais au statut **`proposee`** (pas `assignee`) avec un délai d'acceptation de **15 minutes**. Le livreur doit explicitement accepter ou refuser — contrairement au mode réseau où proposer une offre vaut déjà accord implicite.
+Quand le vendeur désigne un livreur sur plateforme (mode `livreur_magasin`), la livraison passe au statut `proposee` avec un délai de 15 minutes.
 
 **POST `/marketplace/livreur/livraisons/{id}/accepter`**
 
-Passe la livraison en `assignee`, génère le code de validation sur la commande et **démarre l'abonnement marketplace du livreur** (idempotent) — ces deux effets sont désormais différés jusqu'à cette acceptation, ils n'ont plus lieu à l'affectation par le vendeur.
+**Réponse 200** : `{ "success": true, "message": "Livraison acceptée.", "livraison": { "statut": "assignee", "acceptee_le": "...", "...": "..." } }`
 
-**Réponse 200** : `{ "success": true, "message": "Livraison acceptée.", "livraison": { "id": "...", "statut": "assignee", "acceptee_le": "...", "...": "..." } }`
-
-**Erreurs**
+**Erreurs** :
 | Cas | Code | Message |
 |---|---|---|
 | Livraison pas `proposee` à ce livreur | 404 | `Livraison non trouvée.` |
@@ -805,11 +782,9 @@ Passe la livraison en `assignee`, génère le code de validation sur la commande
 
 **POST `/marketplace/livreur/livraisons/{id}/refuser`**
 
-Corps : `{ "motif": "Trop loin" }` (optionnel, max 255). Passe la livraison en `refusee`, remet la commande en statut `payee` — le vendeur peut alors choisir à nouveau un mode de livraison (réseau ou direct avec un autre livreur).
+Corps : `{ "motif": "Trop loin" }` (optionnel). Remet la commande en `payee` — le vendeur peut ré-assigner.
 
-**Réponse 200** : `{ "success": true, "message": "Livraison refusée." }`
-
-**Expiration automatique** : sans réponse du livreur dans les 15 minutes, une tâche planifiée serveur traite la livraison comme refusée (`motif_refus = "Expiré"`), sans action de l'app.
+**Expiration automatique** : sans réponse dans les 15 minutes, la livraison est traitée comme refusée par cron.
 
 ### 7.5 POST `/marketplace/livreur/livraisons/{id}/demarrer`
 
@@ -1155,67 +1130,85 @@ L'utilisateur déclare avoir payé son abonnement **hors application**, vers un 
 
 ## 10. Workflows complets
 
-### 10.1 Vente simple, livraison réseau
+### 10.1 Vente simple, livraison express
 
 ```
-Vendeur : POST annonces/store (brouillon)
+Vendeur : POST annonces/store { ..., commune_id: <uuid> }  ← commune obligatoire pour les calculs km
 Vendeur : POST annonces/{id}/publier
           → annonce visible catalogue acheteur
           → [effet de bord] démarrage abonnement vendeur si 1ère publication
 Vendeur : POST moyens-paiement/store { methode: mobile_money, numero_destinataire, libelle }
           (une fois, valable pour toutes ses annonces)
 
-Acheteur : GET catalogue/list → choisit article(s) (n'affiche pas ses propres annonces comme achetables)
-Acheteur : GET vendeurs/{vendeurId}/moyens-paiement → affiche les options de paiement du vendeur
-Acheteur : POST panier/valider { annonce_ids: [...] }
+Acheteur : GET catalogue/list → choisit article(s)
+Acheteur : GET acheteur/tarifs-livraison?vendeur_id=...&commune_depart_id=...&commune_arrivee_id=...&distance_km=2.4
+           → { tarifs: { standard: 1500, express: 2250, livreur_magasin: null } }  ← afficher les prix
+Acheteur : GET vendeurs/{vendeurId}/moyens-paiement → options de paiement
+Acheteur : POST panier/valider { annonce_ids: [...], adresse_livraison: { ..., latitude, longitude } }
+           → latitude/longitude OBLIGATOIRES pour standard/express
            → 1 commande par vendeur, statut en_attente_paiement
-Acheteur : (paie le vendeur hors application, ex. mobile money ou cash à la livraison)
+Acheteur : (paie le vendeur hors application)
 Acheteur : POST commandes/{id}/declarer-paiement { payment_method, reference, preuve? }
-           → statut paiement_a_confirmer (PAS encore payee, annonce toujours publiee)
+           → statut paiement_a_confirmer
 
-Vendeur : (vérifie avoir bien reçu l'argent)
 Vendeur : POST ventes/{id}/paiement/confirmer
-          → statut payee, annonce passe vendue, Transaction créée (journal)
-          (ou POST ventes/{id}/paiement/infirmer si rien reçu → retour en_attente_paiement, acheteur re-déclare)
+          → statut payee, annonce passe vendue
+          (ou POST ventes/{id}/paiement/infirmer → retour en_attente_paiement)
 
-Vendeur : POST ventes/{id}/livraison/reseau
-          → LivraisonMarketplace créée, statut en_attente, diffusée à tous les livreurs du pays
+Acheteur : POST acheteur/commandes/{id}/livraison/express { commune_livraison_id: <uuid>, distance_km: 2.4 }
+           → LivraisonMarketplace créée mode express, statut en_attente, diffusée au réseau
+           → prix calculé automatiquement (standard × taux)
 
 Livreur A : GET livraisons-disponibles → voit la livraison
-Livreur A : POST livraisons/{id}/proposer { montant_propose }
-Livreur B : POST livraisons/{id}/proposer { montant_propose }   (offre concurrente)
-
-Vendeur : GET ventes/{id}/livraison/offres → compare les offres
-Vendeur : POST ventes/{id}/livraison/offres/{offreId}/accepter
-          → offre A acceptée, offre B auto-refusée, livraison assignee, code généré
-          → [effet de bord] démarrage abonnement livreur A si 1ère offre acceptée
+Livreur A : POST livraisons/{id}/accepter-express
+            → premier arrivé : livraison assignee, code généré
+            → [effet de bord] démarrage abonnement livreur A si 1ère acceptation
 
 Acheteur : communique le code à Livreur A à la remise
 
-Livreur A : POST livraisons/{id}/demarrer   (récupération chez le vendeur)
+Livreur A : POST livraisons/{id}/demarrer
 Livreur A : POST livraisons/{id}/valider { code, preuve? }
             → commande livree, solde vendeur crédité (informatif, commission 10% déduite)
 ```
 
-### 10.2 Vente avec livreur direct
+### 10.2 Vente avec livreur du magasin (sur plateforme)
 
-Identique à 10.1 jusqu'à la confirmation du paiement (étape vendeur `ventes/{id}/paiement/confirmer`), puis :
 ```
-Vendeur : POST ventes/{id}/livraison/direct { livreur_id, montant }
-          → livraison assignee immédiatement, code généré
-          → [effet de bord] démarrage abonnement de ce livreur si 1ère assignation
+(identique à 10.1 jusqu'à paiement/confirmer)
+
+Vendeur : POST vendeur/tarifs-livraison { commune_destination_id, montant }
+          (une fois, tarif par commune de destination)
+
+Acheteur : POST acheteur/commandes/{id}/livraison/livreur-magasin { commune_livraison_id: <uuid> }
+           → LivraisonMarketplace mode livreur_magasin, statut en_attente
+           → prix = tarif vendeur pour cette commune
+
+Vendeur : POST vendeur/ventes/{id}/livraison/magasin/assigner { livreur_id: <uuid> }
+          → livraison proposee au livreur, 15 min pour accepter
+
+Livreur : POST livraisons/{id}/accepter
+          → livraison assignee, code généré
+          (ou POST livraisons/{id}/refuser → vendeur peut ré-assigner)
+
+Acheteur : communique le code au livreur à la remise
 
 Livreur : POST livraisons/{id}/demarrer
 Livreur : POST livraisons/{id}/valider { code, preuve? }
+          → commande livree
 ```
 
-### 10.3 Vente hors plateforme
+### 10.3 Vente avec livreur du magasin (hors plateforme)
 
 ```
-Vendeur : POST ventes/{id}/livraison/hors-plateforme
-          → mode_livraison = hors_plateforme, pas de code, pas de LivraisonMarketplace
+(identique à 10.2 jusqu'à paiement/confirmer)
 
-Vendeur : (livre lui-même en dehors de l'app)
+Acheteur : POST acheteur/commandes/{id}/livraison/livreur-magasin { commune_livraison_id: <uuid> }
+           → statut en_attente
+
+Vendeur : POST vendeur/ventes/{id}/livraison/magasin/assigner { livreur_id: null }
+          → statut assignee d'emblée, pas de code, vendeur gère sa livraison directement
+
+Vendeur : (livre lui-même ou via son livreur hors app)
 Vendeur : POST ventes/{id}/livraison/marquer-livree
           → commande livree, solde vendeur crédité (informatif) directement
 ```

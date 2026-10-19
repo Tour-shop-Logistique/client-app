@@ -7,9 +7,13 @@ export const defaultFormat = (formats = []) => formats.find((f) => f.is_default)
 // Le format porte des dimensions fixes : elles sont remplies automatiquement.
 export const formatHasDims = (f) => Boolean(f) && [f.longueur_max, f.largeur_max, f.hauteur_max].every((v) => Number(v) > 0);
 
-export const formatDims = (f) => (formatHasDims(f) ? `${f.longueur_max} × ${f.largeur_max} × ${f.hauteur_max} cm` : null);
+// Nombres à la française (0,5 et non 0.5).
+const fr = (v) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 
-export const formatHint = (f) => (f.poids_max != null ? `jusqu'à ${f.poids_max} kg` : 'poids libre');
+export const formatDims = (f) =>
+  (formatHasDims(f) ? `${fr(f.longueur_max)} × ${fr(f.largeur_max)} × ${fr(f.hauteur_max)} cm` : null);
+
+export const formatHint = (f) => (f.poids_max != null ? `jusqu'à ${fr(f.poids_max)} kg` : 'poids libre');
 
 // Applique un format au colis : id + dimensions du format. Format sans
 // dimensions : on vide celles héritées d'un format précédent (saisie libre).
@@ -66,3 +70,25 @@ export const syncColisFormats = (list, formats = []) => {
 // Poids saisi au-dessus du maximum du format choisi.
 export const overweight = (colis, format) =>
   Boolean(format) && format.poids_max != null && Number(colis.poids) > Number(format.poids_max);
+
+// Du plus petit au plus grand (poids max croissant) ; les formats sans limite
+// de poids passent en dernier. Ne modifie pas la liste reçue.
+export const sortFormats = (formats = []) =>
+  [...formats].sort((a, b) => {
+    const aFree = a.poids_max == null;
+    const bFree = b.poids_max == null;
+    if (aFree !== bFree) return aFree ? 1 : -1;
+    return (Number(a.poids_max) || 0) - (Number(b.poids_max) || 0);
+  });
+
+// Le format accepte ce poids (vrai tant qu'aucun poids n'est saisi).
+export const fitsWeight = (format, poids) =>
+  !(Number(poids) > 0) || format.poids_max == null || Number(poids) <= Number(format.poids_max);
+
+// Plus petit format qui accepte le poids saisi : celui qu'on conseille.
+export const suggestFormat = (formats = [], poids) =>
+  Number(poids) > 0 ? sortFormats(formats).find((f) => fitsWeight(f, poids)) || null : null;
+
+// Recherche insensible à la casse et aux accents.
+export const normalizeSearch = (s = '') =>
+  String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();

@@ -28,9 +28,11 @@ const getColisFormats = async (codePays) => {
 };
 
 // GET /api/expedition/client/grille-tarifs-enlevement?commune_id= — tranches
-// actives { type_vehicule, km_min, km_max, montant } dans `data`, partagées
-// enlèvement / livraison à domicile (mode groupage). `data: []` possible si
-// aucune grille n'est configurée (pas une erreur). Lecture : utils/pickup.js.
+// actives { type_vehicule, km_min, km_max (null = illimitée), montant_standard,
+// taux_express (null = express indisponible), montant_express } dans `data`,
+// partagées enlèvement / livraison à domicile. `montant` a été renommé
+// `montant_standard` (changement cassant). `data: []` possible si aucune grille
+// n'est configurée (pas une erreur). Lecture : utils/pickup.js.
 const getPickupTariffGrid = async (communeId) => {
   const { data } = await api.get('/expedition/client/grille-tarifs-enlevement', { params: { commune_id: communeId } });
   return data;
@@ -61,14 +63,11 @@ const listAvailableDestinations = async (codePaysDepart) => {
   return data;
 };
 
-// mode: 'livraison_domicile' | 'recuperation_agence' — see api-devis-client.md
 const getDevis = async (payload) => {
   const { data } = await api.post('/expedition/client/devis', payload);
   return data;
 };
 
-// Nested multipart body, Laravel style: `colis[0][poids]`, `colis[0][photo]`,
-// `colis[0][articles][0][produit_id]`. Empty values are dropped.
 const toNestedFormData = (value, fd = new FormData(), prefix = '') => {
   if (value === undefined || value === null || value === '') return fd;
   if (value instanceof File || value instanceof Blob) {
@@ -140,8 +139,9 @@ const clientMissions = async (id) => {
 // longitude?, instructions? } (utils/pickup.js missionRequestPayload).
 // 201 { message, mission } ; 422 si une demande du même type est déjà en cours
 // ou si `distance_km` sort de la grille de la commune ; 404 si l'expédition
-// n'appartient pas au client. `message` distingue groupage (transmise au
-// backoffice) et express (diffusée aux livreurs).
+// n'appartient pas au client. En express, la mission est créée directement avec
+// son `montant_fixe` (standard × taux express) puis diffusée aux livreurs ; 422
+// si aucun taux express n'est configuré pour la tranche.
 const requestPickup = async (id, payload) => {
   const { data } = await api.post(`/expedition/client/${id}/demander-enlevement`, payload);
   return data;
@@ -152,23 +152,12 @@ const requestHomeDelivery = async (id, payload) => {
   return data;
 };
 
-// GET /api/expedition/client/missions/{missionId}/offres — offres des livreurs
-// sur une mission express encore ouverte.
-const missionOffers = async (missionId) => {
-  const { data } = await api.get(`/expedition/client/missions/${missionId}/offres`);
-  return data;
-};
-
-// POST .../missions/{missionId}/offres/{offreId}/accepter — les autres offres
-// passent `refusee`, la mission `assignee`, le code de réception est envoyé au
-// destinataire (SMS + email).
-const acceptOffer = async (missionId, offreId) => {
-  const { data } = await api.post(`/expedition/client/missions/${missionId}/offres/${offreId}/accepter`);
-  return data;
-};
+// Offres livreurs (GET .../missions/{missionId}/offres, POST .../offres/{offreId}/accepter) :
+// DÉPRÉCIÉES — en express le prix est imposé et le premier livreur qui accepte
+// prend la course (user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §2). Ne plus appeler.
 
 // POST .../missions/{missionId}/annuler — possible tant que la mission est
-// `en_attente` (aucun livreur assigné) ; les offres actives sont refusées.
+// `en_attente` (aucun livreur assigné).
 const cancelMission = async (missionId) => {
   const { data } = await api.post(`/expedition/client/missions/${missionId}/annuler`);
   return data;
@@ -222,8 +211,6 @@ const expeditionService = {
   clientMissions,
   requestPickup,
   requestHomeDelivery,
-  missionOffers,
-  acceptOffer,
   cancelMission,
   getEvaluation,
   rate,

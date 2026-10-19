@@ -249,7 +249,7 @@ Crée **une seule expédition** de type `interville`. À utiliser après une sim
   "destinataire_quartier": null,
 
   "colis": [
-    { "poids": 5, "longueur": 40, "largeur": 30, "hauteur": 20, "format_colis_id": "uuid-format-moyen" }
+    { " poids": 5, "longueur": 40, "largeur": 30, "hauteur": 20, "format_colis_id": "uuid-format-moyen" }
   ]
 }
 ```
