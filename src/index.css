@@ -152,3 +152,12 @@
     animation: none !important;
   }
 }
+
+/* Cartes Leaflet : leurs couches ont un z-index de 400 a 1000, superieur aux
+   feuilles (z-50) et barres fixes (z-30) de l'app. Sans contexte d'empilement
+   propre, une carte restee dans la page passait PAR-DESSUS une feuille ouverte
+   (ex. carte d'enlevement visible sur « Vérifiez votre demande »). */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+}
