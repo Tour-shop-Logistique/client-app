@@ -22,6 +22,7 @@ import {
   formatMoney, personName, initials, apiErrorMessage, EMPTY_ADDRESS,
 } from '../../utils/marketplace';
 import { ROUTES, productPath, orderPath } from '../../routes';
+import { digitsOnly } from '../../utils/digits';
 
 // Derniere adresse de livraison utilisee, pre-remplie au prochain achat.
 const ADDRESS_KEY = 'marketplace_adresse_livraison';
@@ -102,7 +103,7 @@ function GroupDeliveryQuotes({ group, address, showVendor }) {
 const toAdresseLivraison = (addr) => {
   const out = {};
   ['nom', 'telephone', 'adresse', 'ville', 'instructions'].forEach((k) => {
-    const v = String(addr[k] ?? '').trim();
+    const v = k === 'telephone' ? digitsOnly(addr[k]) : String(addr[k] ?? '').trim();
     if (v) out[k] = v;
   });
   if (addr.latitude != null && addr.longitude != null) {

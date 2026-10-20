@@ -157,7 +157,7 @@ export default function EditProfilePage() {
               defaultCountry={(form.codePays || 'CI').toUpperCase()}
               value={form.telephone}
               onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
-              numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'tel' }}
+              numberInputProps={{ type: 'tel', inputMode: 'numeric', autoComplete: 'tel' }}
               placeholder="01 02 03 04 05"
             />
             <FieldError errors={fieldErrors} name="telephone" />

@@ -20,6 +20,7 @@ import {
 } from '../../utils/marketplace';
 import CancelOrderButton from '../../components/marketplace/CancelOrderButton';
 import { ROUTES } from '../../routes';
+import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
 // Secondes restantes avant `expire_le` (null si inconnu).
 function useSecondsLeft(expireLe) {
@@ -233,13 +234,12 @@ function AssignCourierPanel({ commande, onDone, handleError }) {
                 <input
                   id="livreur-telephone"
                   className="input-field flex-1"
-                  type="tel"
-                  inputMode="tel"
+                  {...digitsInputProps}
                   autoComplete="off"
                   placeholder="Ex : 0705060708"
                   value={telephone}
                   onChange={(e) => {
-                    setTelephone(e.target.value);
+                    setTelephone(digitsOnly(e.target.value));
                     setLivreur(null);
                     setSearch({ status: 'idle', error: null });
                   }}

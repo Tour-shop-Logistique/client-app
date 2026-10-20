@@ -8,6 +8,7 @@ import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
 import marketplaceService from '../../services/marketplaceService';
 import { PAYMENT_METHODS } from '../../utils/marketplace';
+import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
 const METHOD_ICONS = { mobile_money: Smartphone, cash: Banknote, bank_transfer: Landmark, card: CreditCard, other: Wallet };
 const OPERATORS = ['Orange Money', 'MTN MoMo', 'Wave', 'Moov Money'];
@@ -175,7 +176,13 @@ export default function PaymentMethodsPage() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, methode: key, libelle: key === 'mobile_money' ? 'Orange Money' : PAYMENT_METHODS[key] }))}
+                  onClick={() => setForm((f) => ({
+                    ...f,
+                    methode: key,
+                    libelle: key === 'mobile_money' ? 'Orange Money' : PAYMENT_METHODS[key],
+                    // Mobile money : chiffres uniquement (un IBAN / RIB garde ses lettres).
+                    numeroDestinataire: key === 'mobile_money' ? digitsOnly(f.numeroDestinataire) : f.numeroDestinataire,
+                  }))}
                   className={`flex flex-col items-center gap-1.5 rounded-2xl border-2 p-3 text-caption font-semibold transition ${
                     active ? 'border-shop-400 bg-shop-50 text-shop-900' : 'border-surface-100 text-surface-600'
                   }`}
@@ -206,12 +213,10 @@ export default function PaymentMethodsPage() {
               {form.methode === 'mobile_money' ? 'Numéro qui reçoit les paiements' : 'Numéro de compte'}
               <input
                 className="input-field mt-1 font-mono"
-                type={form.methode === 'mobile_money' ? 'tel' : 'text'}
-                inputMode={form.methode === 'mobile_money' ? 'tel' : 'text'}
-                maxLength={50}
-                placeholder={form.methode === 'mobile_money' ? '07 00 00 00 00' : 'IBAN / RIB'}
+                {...(form.methode === 'mobile_money' ? { ...digitsInputProps, autoComplete: 'off' } : { type: 'text', inputMode: 'text', maxLength: 50 })}
+                placeholder={form.methode === 'mobile_money' ? '0700000000' : 'IBAN / RIB'}
                 value={form.numeroDestinataire}
-                onChange={(e) => setForm((f) => ({ ...f, numeroDestinataire: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, numeroDestinataire: f.methode === 'mobile_money' ? digitsOnly(e.target.value) : e.target.value }))}
               />
             </label>
           )}

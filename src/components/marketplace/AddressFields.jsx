@@ -6,6 +6,7 @@ import useCommunes from '../../hooks/useCommunes';
 import PickupMap from '../expedition/PickupMap';
 import PlaceSearch from '../expedition/PlaceSearch';
 import { isValidPoint } from '../../services/routingService';
+import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
 // Helpers associes (EMPTY_ADDRESS, toRetraitPayload, retraitErrors…) : utils/marketplace.js.
 
@@ -29,7 +30,8 @@ export default function AddressFields({
   const { communes, status } = useCommunes();
   const countryCode = useSelector((state) => state.country?.code);
   const [focusKey, setFocusKey] = useState(0);
-  const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
+  // Le téléphone n'accepte que des chiffres (saisie et collage).
+  const set = (key) => (e) => onChange({ ...value, [key]: key === 'telephone' ? digitsOnly(e.target.value) : e.target.value });
 
   const placePoint = (lat, lng, { refocus = false } = {}) => {
     onChange({ ...value, latitude: lat, longitude: lng });
@@ -96,7 +98,7 @@ export default function AddressFields({
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         {field('nom', 'Nom du contact', { maxLength: 255, autoComplete: 'name' })}
-        {field('telephone', 'Téléphone', { maxLength: 20, type: 'tel', inputMode: 'tel', autoComplete: 'tel' })}
+        {field('telephone', 'Téléphone', { ...digitsInputProps })}
       </div>
 
       <label className="block" htmlFor={`${idPrefix}-ville`}>

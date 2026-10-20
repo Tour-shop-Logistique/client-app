@@ -334,7 +334,7 @@ export default function AuthSheet() {
                 defaultCountry={(form.codePays || 'CI').toUpperCase()}
                 value={form.telephone}
                 onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
-                numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'username', required: true }}
+                numberInputProps={{ type: 'tel', inputMode: 'numeric', autoComplete: 'username', required: true }}
                 placeholder="01 02 03 04 05"
               />
               {(() => {
@@ -424,7 +424,7 @@ export default function AuthSheet() {
               defaultCountry={(form.codePays || 'CI').toUpperCase()}
               value={form.telephone}
               onChange={(value) => setForm((f) => ({ ...f, telephone: value || '' }))}
-              numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'tel', required: true }}
+              numberInputProps={{ type: 'tel', inputMode: 'numeric', autoComplete: 'tel', required: true }}
               placeholder="01 02 03 04 05"
             />
             {(() => {
@@ -456,7 +456,7 @@ export default function AuthSheet() {
                 defaultCountry={(form.codePays || 'CI').toUpperCase()}
                 value={form.whatsapp}
                 onChange={(value) => setForm((f) => ({ ...f, whatsapp: value || '' }))}
-                numberInputProps={{ type: 'tel', inputMode: 'tel', autoComplete: 'off', required: true }}
+                numberInputProps={{ type: 'tel', inputMode: 'numeric', autoComplete: 'off', required: true }}
                 placeholder="01 02 03 04 05"
               />
             )}

@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { API_URL } from '../services/api';
 import { formatPrice } from './format';
+import { digitsOnly } from './digits';
 
 // Les medias TourShop sont stockes dans le bucket Supabase `tourshop-media`
 // (logos/photos d'agences renvoyes en URL absolue). Les photos/preuves
@@ -240,7 +241,8 @@ export const EMPTY_ADDRESS = {
 export const toRetraitPayload = (addr) => {
   const out = {};
   ['nom', 'telephone', 'adresse', 'ville', 'latitude', 'longitude'].forEach((k) => {
-    const v = addr?.[k];
+    const raw = addr?.[k];
+    const v = k === 'telephone' ? digitsOnly(raw) : raw;
     if (v !== undefined && v !== null && String(v).trim() !== '') out[`retrait_${k}`] = typeof v === 'string' ? v.trim() : v;
   });
   if (addr?.commune_id) out.commune_id = addr.commune_id;
