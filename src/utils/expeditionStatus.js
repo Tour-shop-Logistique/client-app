@@ -68,7 +68,9 @@ export const getMilestones = (exp) => {
   const international = isInternational(exp);
   const steps = MILESTONES.filter((m) => {
     if (m.international && !international) return false;
-    if (m.optional) return Boolean(exp?.[m.date] || exp?.date_prevue_enlevement);
+    // Enlèvement à domicile : visible dès qu'il est demandé, pas seulement une
+    // fois le colis récupéré (le client suit ainsi son enlèvement).
+    if (m.optional) return Boolean(exp?.[m.date] || exp?.date_prevue_enlevement || exp?.is_enlevement_domicile);
     return true;
   }).map((m) => ({ key: m.key, label: m.label, date: exp?.[m.date] || null }));
 
@@ -77,10 +79,16 @@ export const getMilestones = (exp) => {
 
   // Enlèvement planifié mais pas encore fait : on affiche la date prévue.
   const pickup = list.find((s) => s.key === 'enleve');
-  if (pickup && !pickup.done && exp?.date_prevue_enlevement) {
-    pickup.label = 'Enlèvement prévu';
-    pickup.date = exp.date_prevue_enlevement;
-    pickup.planned = true;
+  if (pickup && !pickup.done) {
+    if (exp?.statut_expedition === 'en_cours_enlevement') {
+      pickup.label = 'Livreur en route pour récupérer le colis';
+    } else if (exp?.date_prevue_enlevement) {
+      pickup.label = 'Enlèvement prévu';
+      pickup.date = exp.date_prevue_enlevement;
+      pickup.planned = true;
+    } else {
+      pickup.label = 'Enlèvement à domicile demandé';
+    }
   }
 
   return [{ key: 'cree', label: 'Demande enregistrée', date: exp?.created_at || null, done: true }, ...list];

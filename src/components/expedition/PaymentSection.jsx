@@ -287,6 +287,29 @@ function ProofItem({ preuve, currency }) {
   );
 }
 
+// Composantes de `accounting_details.total_client_due` (montant de base,
+// prestation, emballage, enlèvement, livraison, retard, frais annexes). Noms
+// de champs non figés par la doc : lecture défensive, lignes nulles omises.
+const TOTAL_PARTS = [
+  { key: 'base', label: 'Prix de l’envoi', fields: ['montant_base', 'montant_expedition'] },
+  { key: 'prestation', label: 'Prestation', fields: ['montant_prestation', 'frais_prestation'] },
+  { key: 'emballage', label: 'Emballage', fields: ['frais_emballage', 'montant_emballage', 'prix_emballage'] },
+  { key: 'enlevement', label: 'Enlèvement à domicile', fields: ['frais_enlevement', 'montant_enlevement'] },
+  { key: 'livraison', label: 'Livraison à domicile', fields: ['frais_livraison', 'montant_livraison'] },
+  { key: 'retard', label: 'Frais de retard', fields: ['frais_retard', 'montant_retard'] },
+  { key: 'annexes', label: 'Frais annexes', fields: ['frais_annexes', 'montant_frais_annexes'] },
+];
+
+const totalLines = (expedition) => {
+  const details = expedition?.accounting_details ?? {};
+  const lines = TOTAL_PARTS.map((p) => {
+    const value = p.fields.map((f) => num(details[f])).find((v) => v != null);
+    return value ? { key: p.key, label: p.label, value } : null;
+  }).filter(Boolean);
+  // Une seule ligne = le total lui-même : pas de ventilation utile.
+  return lines.length > 1 ? lines : [];
+};
+
 export default function PaymentSection({
   expedition, viewer = 'client', refreshKey = 0, driverMission = null,
 }) {
@@ -332,6 +355,13 @@ export default function PaymentSection({
 
       {viewer === 'client' && total != null && (
         <dl className="divide-y divide-surface-100 rounded-xl bg-surface-50 px-3 text-sm">
+          {/* Ventilation du total (enlèvement compris), quand l'API la détaille. */}
+          {totalLines(expedition).map((l) => (
+            <div key={l.key} className="flex justify-between py-2">
+              <dt className="text-surface-500">{l.label}</dt>
+              <dd className="font-medium text-surface-800">{formatPrice(l.value, currency)}</dd>
+            </div>
+          ))}
           <div className="flex justify-between py-2">
             <dt className="text-surface-500">Total à régler</dt>
             <dd className="font-semibold text-surface-900">{formatPrice(total, currency)}</dd>

@@ -74,6 +74,33 @@ export function estimateMissionFees(grid, distanceKm, vehicule) {
   return { standard, express, expressAvailable: express != null };
 }
 
+// Détail du tarif d'une course (enlèvement ou livraison à domicile), pour
+// l'afficher au client : tranche de distance appliquée, tarif standard et,
+// en express, la majoration. `total` : montant connu côté serveur s'il est
+// fourni (il fait foi), sinon celui calculé depuis la grille.
+// -> { mode, vehicule, distanceKm, kmMin, kmMax, standard, taux, total } | null
+export function missionFeeDetail({
+  grid, distanceKm, vehicule, mode, total = null,
+}) {
+  const row = findRow(grid, distanceKm, vehicule);
+  const standard = row ? firstNum(row, ['montant_standard', 'montant', 'tarif', 'prix', 'montant_fixe']) : null;
+  const taux = row && mode === 'express' ? firstNum(row, ['taux_express']) : null;
+  const computed = mode === 'express'
+    ? (row ? firstNum(row, ['montant_express']) ?? (standard != null && taux != null ? Math.round(standard * taux) : null) : null)
+    : standard;
+  if (!row && total == null) return null;
+  return {
+    mode: mode === 'express' ? 'express' : 'groupage',
+    vehicule: vehicule ?? row?.type_vehicule ?? null,
+    distanceKm: distanceKm ?? null,
+    kmMin: row ? firstNum(row, ['km_min', 'distance_min', 'min_km', 'tranche_min', 'de', 'min']) ?? 0 : null,
+    kmMax: row ? firstNum(row, ['km_max', 'distance_max', 'max_km', 'tranche_max', 'a', 'max']) : null,
+    standard,
+    taux,
+    total: total ?? computed,
+  };
+}
+
 // Tarif d'un mode donné ('groupage' = standard | 'express').
 export function estimatePickupFee(grid, distanceKm, vehicule, mode = 'groupage') {
   const fees = estimateMissionFees(grid, distanceKm, vehicule);
