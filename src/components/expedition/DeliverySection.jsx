@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Ban, Bike, Car, KeyRound, Loader2, MapPin, MessageCircle, Phone, RefreshCw, Truck, UserRound,
+  Ban, Bike, Car, KeyRound, Loader2, MapPin, MessageCircle, Phone, Receipt, RefreshCw, Truck, UserRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomSheet from '../common/BottomSheet';
 import MissionRequest from './MissionRequest';
+import FeeBreakdown from './FeeBreakdown';
+import { missionFeeDetail } from '../../utils/pickup';
+import { arrivalAgence } from '../../utils/expedition';
 import expeditionService from '../../services/expeditionService';
 import { formatDateTime, formatPrice, expeditionCurrency } from '../../utils/format';
 import { storageUrl, handleMediaError } from '../../utils/marketplace';
@@ -47,6 +50,108 @@ const missionCurrency = (m, exp) => (m.type === 'livraison'
   ? m.devise ?? exp?.devise_destination ?? undefined
   : m.devise ?? expeditionCurrency(exp));
 const phoneDigits = (t) => String(t || '').replace(/[^\d+]/g, '');
+
+// --- Suivi de la course : étapes franchies -----------------------------------
+// Enlèvement : demande -> livreur assigné -> en route (statut_expedition
+// `en_cours_enlevement`) -> colis récupéré (`date_enlevement_client`) -> déposé
+// à l'agence (mission `terminee`). Livraison : … -> en route
+// (`en_cours_livraison`) -> livré.
+const PROGRESS_STEPS = {
+  enlevement: ['Demande envoyée', 'Livreur assigné', 'En route vers vous', 'Colis récupéré', 'Déposé à l’agence'],
+  livraison: ['Demande envoyée', 'Livreur assigné', 'En route', 'Livré'],
+};
+
+const progressIndex = (m, exp) => {
+  const se = exp?.statut_expedition;
+  if (m.type === 'enlevement') {
+    if (m.statut === 'terminee' || exp?.date_livraison_agence) return 4;
+    if (exp?.date_enlevement_client) return 3;
+    if (se === 'en_cours_enlevement') return 2;
+    return m.statut === 'assignee' ? 1 : 0;
+  }
+  if (m.statut === 'terminee' || se === 'termined') return 3;
+  if (se === 'en_cours_livraison') return 2;
+  return m.statut === 'assignee' ? 1 : 0;
+};
+
+function MissionProgress({ mission, expedition }) {
+  const steps = PROGRESS_STEPS[mission.type];
+  if (!steps) return null;
+  const current = progressIndex(mission, expedition);
+  const done = current >= steps.length - 1;
+  return (
+    <ol className="mt-3 space-y-0" aria-label={`Suivi : ${steps[current]}`}>
+      {steps.map((label, i) => {
+        const reached = i <= current;
+        const active = i === current && !done;
+        return (
+          <li key={label} className="relative flex items-center gap-2.5 pb-2 last:pb-0">
+            {i < steps.length - 1 && (
+              <span className={`absolute left-[7px] top-4 h-full w-0.5 ${i < current ? 'bg-emerald-400' : 'bg-surface-200'}`} aria-hidden="true" />
+            )}
+            <span
+              className={`relative z-10 h-4 w-4 shrink-0 rounded-full border-2 ${
+                active ? 'border-primary-600 bg-white ring-4 ring-primary-100' : reached ? 'border-emerald-500 bg-emerald-500' : 'border-surface-300 bg-white'
+              }`}
+              aria-hidden="true"
+            />
+            <span className={`text-xs ${active ? 'font-semibold text-primary-700' : reached ? 'text-surface-700' : 'text-surface-400'}`}>
+              {label}
+              {active && <span className="sr-only"> (étape en cours)</span>}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// --- Détail du tarif de la course --------------------------------------------
+// Montant renvoyé par l'API (il fait foi) + grille de la commune de l'agence
+// pour expliquer le calcul : tranche de distance, tarif standard, majoration.
+function MissionFeeDetail({ mission, expedition, currency }) {
+  const [open, setOpen] = useState(false);
+  const [grid, setGrid] = useState(undefined);
+  const agence = mission.type === 'enlevement' ? expedition.agence : arrivalAgence(expedition);
+  const communeId = agence?.commune_id;
+  const distanceKm = mission.distance_km
+    ?? (mission.type === 'enlevement' ? expedition.distance_domicile_agence : expedition.distance_livraison_agence)
+    ?? null;
+
+  useEffect(() => {
+    if (!open || grid !== undefined) return undefined;
+    if (!communeId) { setGrid(null); return undefined; }
+    let alive = true;
+    expeditionService.getPickupTariffGrid(communeId)
+      .then((g) => { if (alive) setGrid(g); })
+      .catch(() => { if (alive) setGrid(null); });
+    return () => { alive = false; };
+  }, [open, grid, communeId]);
+
+  const detail = missionFeeDetail({
+    grid,
+    distanceKm: distanceKm != null ? Number(distanceKm) : null,
+    vehicule: mission.type_vehicule,
+    mode: mission.mode,
+    total: missionAmount(mission),
+  });
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600"
+      >
+        <Receipt size={12} /> {open ? 'Masquer le détail du tarif' : 'Voir le détail du tarif'}
+      </button>
+      {open && (grid === undefined
+        ? <p className="mt-2 text-xs text-surface-500">Chargement du détail…</p>
+        : <FeeBreakdown detail={detail} currency={currency} className="mt-2" />)}
+    </div>
+  );
+}
 
 // Livreur assigné (`livreur` n'est renseigné qu'à partir de `assignee`).
 function CourierCard({ livreur }) {
@@ -218,7 +323,7 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
     <section className="card p-4">
       <div className="mb-1 flex items-center gap-2 text-primary-600">
         <Truck size={16} />
-        <h2 className="text-sm font-semibold text-surface-900">Livreur</h2>
+        <h2 className="text-sm font-semibold text-surface-900">Enlèvement et livraison à domicile</h2>
       </div>
 
       {error && (
@@ -245,6 +350,12 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
                 </div>
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statut.className}`}>{statut.label}</span>
               </div>
+
+              {missionAmount(m) != null && (
+                <MissionFeeDetail mission={m} expedition={expedition} currency={missionCurrency(m, expedition)} />
+              )}
+
+              {m.statut !== 'annulee' && <MissionProgress mission={m} expedition={expedition} />}
 
               {m.livreur && <CourierCard livreur={m.livreur} />}
 

@@ -26,6 +26,7 @@ import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ProductSelectSheet from '../../components/expedition/ProductSelectSheet';
 import DestinationCountrySheet from '../../components/expedition/DestinationCountrySheet';
 import PickupOption from '../../components/expedition/PickupOption';
+import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import useRequireAuth from '../../hooks/useRequireAuth';
@@ -173,7 +174,7 @@ function GroupTypeChoice({ group, chosen, onSelect }) {
 // Résultat de `store`. Livraison à domicile : une expédition. Récupération en
 // agence : 201 (succès total/partiel) ou 422 (aucune créée), toujours avec
 // `resultats[]` par catégorie — chaque échec porte son `message`.
-function SubmitResultScreen({ result, pickupMode, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
+function SubmitResultScreen({ result, pickupMode, pickupEstimate, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
   const navigate = useNavigate();
   const isGroupage = Array.isArray(result.resultats);
   const successes = isGroupage
@@ -197,7 +198,10 @@ function SubmitResultScreen({ result, pickupMode, categoryNames = {}, onNewExped
           >
             {successes.length === 1 && !partial && <CopyReference reference={successes[0].expedition.reference} />}
             {pickupMode && (
-              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">{PICKUP_MODE_MESSAGE[pickupMode]}</p>
+              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
+                {PICKUP_MODE_MESSAGE[pickupMode]}
+                {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{formatPrice(pickupEstimate.total)}</strong>.</>}
+              </p>
             )}
           </SuccessHero>
         ) : (
@@ -730,6 +734,7 @@ export default function ExtrapaysFormPage() {
       <SubmitResultScreen
         result={submitResult}
         pickupMode={isLD && pickup.domicile ? pickup.mode : null}
+        pickupEstimate={isLD && pickup.domicile ? pickup.estimate : null}
         categoryNames={Array.isArray(devis) ? Object.fromEntries(devis.map((g) => [g.category_id, g.category_nom])) : {}}
         onNewExpedition={resetForm}
         onBack={() => setSubmitResult(null)}
@@ -1221,6 +1226,12 @@ export default function ExtrapaysFormPage() {
                 value={pickup.domicile ? `Enlèvement à domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Dépôt à l'agence"}
               />
             )}
+            {isLD && pickup.domicile && (
+              <Row
+                label="Enlèvement (estimé)"
+                value={pickup.estimate?.total != null ? formatPrice(pickup.estimate.total) : 'Confirmé par l’agence'}
+              />
+            )}
             <Row label="Expéditeur" value={expediteur.nom_prenom} />
             <Row label="Destinataire" value={`${destinataire.nom_prenom} · ${destinataire.telephone}`} />
           </div>
@@ -1247,12 +1258,18 @@ export default function ExtrapaysFormPage() {
             {emballage > 0 && (
               <p className="mt-1 text-right text-caption text-primary-700">dont emballage {formatPrice(emballage)}</p>
             )}
+            {isLD && pickup.domicile && pickup.estimate?.total != null && estimateTotal != null && (
+              <p className="mt-1 text-right text-caption text-primary-700">
+                + enlèvement {formatPrice(pickup.estimate.total)} · total à prévoir {formatPrice(Number(estimateTotal) + Number(pickup.estimate.total))}
+              </p>
+            )}
           </div>
+          {isLD && pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
 
           <p className="flex items-start gap-2 text-caption text-surface-500">
             <Globe2 size={14} className="mt-0.5 shrink-0" />
             <span>
-              Le montant final est recalculé à l'enregistrement. {isLD && pickup.domicile && "L'enlèvement est facturé à part. "}
+              Le montant final est recalculé à l'enregistrement. {isLD && pickup.domicile && "L'enlèvement est facturé en plus de l'envoi ; son montant est confirmé à l'enregistrement. "}
               L'agence de départ doit accepter la demande avant de la traiter.
             </span>
           </p>

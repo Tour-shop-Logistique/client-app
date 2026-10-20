@@ -4,8 +4,9 @@ import useRoute from '../../hooks/useRoute';
 import { isValidPoint, formatDistance, formatEta } from '../../services/routingService';
 import LocationPicker from './LocationPicker';
 import expeditionService from '../../services/expeditionService';
-import { estimateMissionFees, expressDisabledInGrid } from '../../utils/pickup';
+import { estimateMissionFees, expressDisabledInGrid, missionFeeDetail } from '../../utils/pickup';
 import { formatPrice } from '../../utils/format';
+import FeeBreakdown from './FeeBreakdown';
 
 // Champs d'une course du dernier kilomètre (api-enlevement-livraison-client.md) :
 //  - `kind = 'enlevement'` : chez l'expéditeur, depuis l'agence de départ ;
@@ -107,10 +108,25 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
   const expressOff = (fees && !fees.expressAvailable) || (!fees && expressDisabledInGrid(grid, value.vehicule));
   const feeOf = (mode) => (mode === 'express' ? fees?.express : fees?.standard) ?? null;
   const fee = feeOf(value.mode);
+  // Détail du tarif (tranche, standard, majoration express).
+  const feeDetail = fee != null
+    ? missionFeeDetail({ grid, distanceKm: routeKm, vehicule: value.vehicule, mode: value.mode, total: fee })
+    : null;
+
+  // Estimation gardée dans la saisie (`value.estimate`) : le récapitulatif et
+  // l'écran de succès de l'expédition affichent ainsi le montant de l'enlèvement.
+  const estimateKey = feeDetail ? JSON.stringify(feeDetail) : '';
+  useEffect(() => {
+    const current = value.estimate ? JSON.stringify(value.estimate) : '';
+    // `distanceKm` repris ici : plusieurs effets peuvent partir dans le même
+    // rendu, le dernier appel à onChange ne doit pas effacer la distance.
+    if (current !== estimateKey) onChange({ ...value, distanceKm: routeKm, estimate: feeDetail });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimateKey]);
 
   // Mode express choisi alors qu'il n'est pas disponible : repli sur le standard.
   useEffect(() => {
-    if (expressOff && value.mode === 'express') onChange({ ...value, mode: 'groupage' });
+    if (expressOff && value.mode === 'express') onChange({ ...value, distanceKm: routeKm, mode: 'groupage' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expressOff]);
 
@@ -188,9 +204,12 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
         )}
       </div>
       {fee != null && (
-        <div className="flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-sm">
-          <span className="text-surface-600">{value.mode === 'express' ? 'Prix express à payer' : 'Tarif standard à payer'}</span>
-          <strong className="text-primary-800">{formatPrice(fee, currency)}</strong>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-sm">
+            <span className="text-surface-600">{value.mode === 'express' ? 'Prix express à payer' : 'Tarif standard à payer'}</span>
+            <strong className="text-primary-800">{formatPrice(fee, currency)}</strong>
+          </div>
+          <FeeBreakdown detail={feeDetail} currency={currency} />
         </div>
       )}
       {gridEmpty && (

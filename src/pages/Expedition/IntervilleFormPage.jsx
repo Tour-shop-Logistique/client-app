@@ -25,6 +25,7 @@ import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
 import PickupOption from '../../components/expedition/PickupOption';
+import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import {
   EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
@@ -73,7 +74,7 @@ const dimsOf = (c) => {
   return d.every((v) => v > 0) ? `${d.join('×')} cm` : null;
 };
 
-function SuccessScreen({ expedition, pickupMode, onNew }) {
+function SuccessScreen({ expedition, pickupMode, pickupEstimate, onNew }) {
   const navigate = useNavigate();
   return (
     <div>
@@ -85,6 +86,7 @@ function SuccessScreen({ expedition, pickupMode, onNew }) {
           {pickupMode && (
             <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
               {PICKUP_MODE_MESSAGE[pickupMode]}
+              {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{formatPrice(pickupEstimate.total)}</strong>.</>}
             </p>
           )}
         </SuccessHero>
@@ -403,7 +405,7 @@ export default function IntervilleFormPage() {
   };
   const exit = useExitGuard({ active: dirty && !result, onBack: handleBack, fallback: ROUTES.EXPEDITION_NEW });
 
-  if (result) return <SuccessScreen expedition={result} pickupMode={pickup.domicile ? pickup.mode : null} onNew={resetForm} />;
+  if (result) return <SuccessScreen expedition={result} pickupMode={pickup.domicile ? pickup.mode : null} pickupEstimate={pickup.domicile ? pickup.estimate : null} onNew={resetForm} />;
 
   if (!country.code) {
     return (
@@ -722,15 +724,29 @@ export default function IntervilleFormPage() {
               label="Remise"
               value={pickup.domicile ? `Enlèvement à domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Dépôt à l'agence"}
             />
+            {pickup.domicile && (
+              <Row
+                label="Enlèvement (estimé)"
+                value={pickup.estimate?.total != null ? formatPrice(pickup.estimate.total) : 'Confirmé par l’agence'}
+              />
+            )}
           </div>
 
-          <div className="flex items-baseline justify-between gap-3 rounded-2xl bg-primary-50 p-4">
-            <span className="text-sm text-primary-700">Montant total</span>
-            <span className="font-heading text-2xl font-bold text-primary-800">{totalLabel}</span>
+          <div className="rounded-2xl bg-primary-50 p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-primary-700">{pickup.domicile ? 'Montant de l’envoi' : 'Montant total'}</span>
+              <span className="font-heading text-2xl font-bold text-primary-800">{totalLabel}</span>
+            </div>
+            {pickup.domicile && pickup.estimate?.total != null && total != null && (
+              <p className="mt-1 text-right text-caption text-primary-700">
+                + enlèvement {formatPrice(pickup.estimate.total)} · total à prévoir {formatPrice(Number(total) + Number(pickup.estimate.total))}
+              </p>
+            )}
           </div>
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
 
           <p className="text-caption text-surface-500">
-            {pickup.domicile && "Le tarif de l'enlèvement est fixé à part. "}
+            {pickup.domicile && "L'enlèvement est facturé en plus de l'envoi ; son montant est confirmé à l'enregistrement. "}
             L'agence de départ doit accepter votre demande avant de la traiter.
           </p>
 
