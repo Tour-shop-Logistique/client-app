@@ -21,8 +21,15 @@ export const EMPTY_CONTACT = {
   instructions: '',
 };
 
+import { digitsOnly } from './digits';
+
 const E164 = /^\+[1-9]\d{6,14}$/;
-const cleanWhatsapp = (v) => (v || '').replace(/[\s.\-()]/g, '');
+// Saisi en chiffres (indicatif + numéro) ; le « + » E.164 est ajouté ici.
+// Un ancien brouillon (« +225 01-02… ») est nettoyé de la même façon.
+const cleanWhatsapp = (v) => {
+  const digits = digitsOnly(v);
+  return digits ? `+${digits}` : '';
+};
 
 // WhatsApp saisi mais pas au format E.164 (+2250102030405) : 422 côté API.
 export const whatsappInvalid = (data) => {
@@ -32,7 +39,7 @@ export const whatsappInvalid = (data) => {
 
 export function contactIsComplete(data) {
   return Boolean(
-    data.nom_prenom.trim() && data.telephone.trim() && data.adresse.trim() && data.ville.trim()
+    data.nom_prenom.trim() && digitsOnly(data.telephone) && data.adresse.trim() && data.ville.trim()
   ) && !whatsappInvalid(data);
 }
 
@@ -46,7 +53,7 @@ export function contactPayload(prefix, data) {
   };
   const out = {
     [`${prefix}_nom_prenom`]: data.nom_prenom.trim(),
-    [`${prefix}_telephone`]: data.telephone.trim(),
+    [`${prefix}_telephone`]: digitsOnly(data.telephone),
     [`${prefix}_email`]: orNull(data.email),
     [`${prefix}_adresse`]: data.adresse.trim(),
     [`${prefix}_ville`]: data.ville.trim(),

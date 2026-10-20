@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { BookMarked, MapPin, User } from 'lucide-react';
 import LocationPicker from './LocationPicker';
 import { applyFavorite, whatsappInvalid } from '../../utils/contact';
+import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
 // Shared expediteur/destinataire block for the expedition forms.
 // Shape + helpers (EMPTY_CONTACT, contactIsComplete, contactPayload) live in
@@ -59,7 +60,13 @@ export default function ContactFields({
       </label>
       <label className="block text-sm font-medium text-surface-700">
         Téléphone
-        <input className="input-field mt-1.5" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ex: 0102030405" value={data.telephone} onChange={set('telephone')} />
+        <input
+          className="input-field mt-1.5"
+          {...digitsInputProps}
+          placeholder="Ex: 0102030405"
+          value={digitsOnly(data.telephone)}
+          onChange={(e) => onChange({ ...data, telephone: digitsOnly(e.target.value) })}
+        />
       </label>
       <label className="block text-sm font-medium text-surface-700">
         Adresse
@@ -134,16 +141,20 @@ export default function ContactFields({
         <div className="space-y-3 border-t border-surface-100 pt-3">
           <label className="block text-sm font-medium text-surface-700">
             WhatsApp (optionnel)
-            <input
-              className="input-field mt-1.5"
-              type="tel"
-              inputMode="tel"
-              placeholder="Ex: +2250102030405"
-              value={data.whatsapp || ''}
-              onChange={set('whatsapp')}
-            />
+            {/* Chiffres uniquement : le « + » est ajouté automatiquement à l'envoi. */}
+            <div className="relative mt-1.5">
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-surface-500" aria-hidden="true">+</span>
+              <input
+                className="input-field pl-8"
+                {...digitsInputProps}
+                autoComplete="off"
+                placeholder="2250102030405"
+                value={digitsOnly(data.whatsapp)}
+                onChange={(e) => onChange({ ...data, whatsapp: digitsOnly(e.target.value) })}
+              />
+            </div>
             {whatsappInvalid(data) ? (
-              <span className="mt-1 block text-xs text-red-600">Format international attendu : + indicatif + numéro, sans espace.</span>
+              <span className="mt-1 block text-xs text-red-600">Indicatif du pays + numéro, chiffres uniquement (ex : 2250102030405).</span>
             ) : (
               <span className="mt-1 block text-xs font-normal text-surface-400">Pour recevoir aussi les notifications de l’expédition sur WhatsApp.</span>
             )}
