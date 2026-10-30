@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  AlertTriangle, Building2, Camera, Check, ChevronDown, MapPin, MapPinned, Plus, Search, Trash2,
+  AlertTriangle, Building2, Camera, Check, ChevronDown, Globe2, MapPin, MapPinned, Plus, Search, Trash2,
 } from 'lucide-react';
 import {
   ContactSummary, ErrorNote, PickerButton, RouteRail, SummaryRow as Row,
@@ -33,6 +33,7 @@ import {
 import IdentityFields from '../../components/expedition/IdentityFields';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
 import { openAuthSheet } from '../../store/slices/uiSlice';
+import { setCountry } from '../../store/slices/countrySlice';
 import expeditionService from '../../services/expeditionService';
 import { getFlagEmoji } from '../../utils/countries';
 import { formatPrice, formatExpeditionPrice, currencyLabel } from '../../utils/format';
@@ -283,6 +284,20 @@ export default function IntervilleFormPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Changer de pays de départ : agences et communes dépendent du pays, la
+  // sélection en cours (agence, arrivée, estimation) est donc repartie à zéro.
+  const handleChangeCountry = (code) => {
+    if (!code || code === country.code) return;
+    dispatch(setCountry(code));
+    setAgence(null);
+    setDestinataireCommuneId('');
+    setSim(null);
+    setSimStatus('idle');
+    setPickup(EMPTY_PICKUP);
+    setStep(1);
+    setMaxStepReached(1);
+  };
+
   const resetForm = () => {
     draft.clear();
     setStep(1);
@@ -345,6 +360,9 @@ export default function IntervilleFormPage() {
   const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
   const total = sim?.tarif?.montant_expedition;
   const totalLabel = total != null ? formatPrice(total) : null;
+  // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
+  const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
+  const grandTotalLabel = total != null && pickupFee != null ? formatPrice(Number(total) + pickupFee) : totalLabel;
 
   const handleSubmit = async () => {
     // The devis is open to guests; login is only required to register.
@@ -451,6 +469,17 @@ export default function IntervilleFormPage() {
                 <RouteRail />
 
                 <div className="space-y-4">
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium text-surface-700">Pays de départ</p>
+                    <PickerButton
+                      icon={Globe2}
+                      selected
+                      title={`${getFlagEmoji(country.code)}  ${country.name}`}
+                      subtitle="Appuyez pour changer de pays"
+                      onClick={() => setCountrySheetOpen(true)}
+                    />
+                  </div>
+
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-surface-700">Départ · agence</p>
                     <PickerButton
@@ -694,7 +723,11 @@ export default function IntervilleFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label="Total" amount={totalLabel} status={simStatus} />
+              <DockTotal
+                label={pickupFee != null ? 'Total · enlèvement inclus' : 'Total'}
+                amount={grandTotalLabel}
+                status={simStatus}
+              />
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
@@ -773,6 +806,14 @@ export default function IntervilleFormPage() {
           draft.clear();
           exit.leave();
         }}
+      />
+      <CountrySelectSheet
+        open={countrySheetOpen}
+        onClose={() => setCountrySheetOpen(false)}
+        currentCode={country.code}
+        onSelect={handleChangeCountry}
+        title="Pays de départ"
+        description="Les agences et les communes affichées dépendent du pays de départ."
       />
       <AgencySelectSheet
         open={agenceSheetOpen}

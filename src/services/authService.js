@@ -25,7 +25,9 @@ const clearSession = () => {
 };
 
 // POST /api/register — creates the account with email_verified_at = null and
-// emails a 6-digit code (valid 30 min). Never returns a token.
+// emails a 6-digit code (valid 5 min). Never returns a token. Answers 201 even
+// if the email could not be sent: the code is then obtained via
+// resend-email-verification or by logging in (EMAIL_NOT_VERIFIED).
 // The phone goes in two fields: `indicatifTelephone` ("+225") and `telephone`
 // (national number only, "0575081162") — never concatenate the dialing code
 // into `telephone`.
@@ -80,6 +82,9 @@ const resendEmailVerification = async (email) => {
 
 // POST /api/login — the only endpoint that delivers a token. Accepts `email` OR
 // `telephone` plus `password`; `type: "client"` acts as an account filter.
+// 422 `code: "EMAIL_NOT_VERIFIED"` (correct password, unverified email): a fresh
+// code was just sent to `email` (also on WhatsApp) -> open the code screen with
+// that address, verify-email, then replay this login. Test `code`, never `message`.
 const login = async ({ email, telephone, password }) => {
   const payload = { password, type: 'client' };
   if (email) payload.email = email;
@@ -105,7 +110,7 @@ const fetchProfile = async () => {
   return data;
 };
 
-// POST /api/forgot-password — emails a 6-digit code (valid 15 min).
+// POST /api/forgot-password — emails a 6-digit code (valid 5 min).
 // WARNING: an unknown email answers HTTP 200 with `success: false` (not 404),
 // so callers must read the `success` flag, not just the HTTP status.
 const forgotPassword = async (email) => {

@@ -1,5 +1,5 @@
 // Enlèvement à domicile choisi dès l'enregistrement (POST /expedition/client/store,
-// modes `interville` et `livraison_domicile` uniquement) —
+// modes `interville`, `livraison_domicile` et `recuperation_agence`) —
 // REPONSE_AUDIT_CAHIER_DES_CHARGES_CLIENT (1).md §6.
 //   - groupage : la demande part au backoffice, qui assigne un livreur rattaché
 //                (tarif fixe par tranche de km) ;

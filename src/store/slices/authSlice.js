@@ -20,9 +20,16 @@ const initialState = {
   resetCodeVerified: false,
 };
 
+// Code renvoyé par POST /api/login (422) quand le mot de passe est correct mais
+// que l'email n'est pas vérifié. Le backend vient d'envoyer un nouveau code.
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+// `code` et `email` ne sont présents que sur certaines erreurs (ex. EMAIL_NOT_VERIFIED).
 const failure = (err, fallback) => ({
   message: err.response?.data?.message || fallback,
   fieldErrors: err.response?.data?.errors || null,
+  code: err.response?.data?.code || null,
+  email: err.response?.data?.email || null,
 });
 
 // On a device that has no country yet (new machine, cleared storage), take the
@@ -298,7 +305,19 @@ const authSlice = createSlice({
         state.emailVerified = false;
         state.resetCodeVerified = false;
       })
-      .addCase(loginClient.rejected, rejected)
+      .addCase(loginClient.rejected, (state, action) => {
+        if (action.payload?.code === EMAIL_NOT_VERIFIED) {
+          // Pas une erreur d'affichage : un nouveau code vient d'être envoyé à
+          // `email`. L'écran de saisie du code prend le relais (AuthSheet).
+          state.status = 'idle';
+          state.error = null;
+          state.fieldErrors = null;
+          state.pendingEmail = action.payload.email || state.pendingEmail;
+          state.emailVerified = false;
+          return;
+        }
+        rejected(state, action);
+      })
 
       .addCase(restoreSession.fulfilled, (state, action) => {
         state.user = action.payload;
