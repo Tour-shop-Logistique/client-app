@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { setCountry } from '../../store/slices/countrySlice';
 import {
   AlertTriangle, Boxes, Building2, Camera, Check, ChevronDown, Globe2, Home, MapPinned, Plus, RotateCcw, Search, Trash2, X,
 } from 'lucide-react';
@@ -286,6 +287,7 @@ function SubmitResultScreen({ result, pickupMode, pickupEstimate, categoryNames 
 }
 
 export default function ExtrapaysFormPage() {
+  const dispatch = useDispatch();
   const { requireAuth, isAuthenticated } = useRequireAuth();
   const country = useSelector((state) => state.country);
   const user = useSelector((state) => state.auth.user);
@@ -315,8 +317,8 @@ export default function ExtrapaysFormPage() {
   const [typesChoisis, setTypesChoisis] = useState({}); // groupage: { category_id: type_expedition }
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
-  // Enlèvement à domicile : mode livraison_domicile uniquement (pas encore
-  // supporté par le backend en recuperation_agence).
+  // Enlèvement à domicile : disponible dans les deux modes (livraison_domicile
+  // et recuperation_agence), mêmes champs `enlevement_*` dans `store`.
   const [pickup, setPickup] = useState(EMPTY_PICKUP);
 
   const [products, setProducts] = useState([]);
@@ -411,6 +413,26 @@ export default function ExtrapaysFormPage() {
     setPickup(EMPTY_PICKUP);
     setDevis(null);
     setDevisStatus('idle');
+  };
+
+  // Changer de pays de départ : destinations, produits et agences en dépendent,
+  // la sélection en cours est donc repartie à zéro (le mode est conservé).
+  const handleChangeCountry = (code) => {
+    if (!code || code === country.code) return;
+    dispatch(setCountry(code));
+    setPaysDestination('');
+    setVilleDestination('');
+    setAgence(null);
+    setArticles([]);
+    setColisList(isLD ? [{ ...EMPTY_LD_COLIS }] : []);
+    setOpenColis(0);
+    setTypesChoisis({});
+    setProducts([]);
+    setDevis(null);
+    setDevisStatus('idle');
+    setPickup(EMPTY_PICKUP);
+    setStep(1);
+    setMaxStepReached(1);
   };
 
   const handleSelectMode = (value) => {
@@ -624,6 +646,9 @@ export default function ExtrapaysFormPage() {
 
   const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis);
   const totalLabel = estimateTotal != null ? formatPrice(estimateTotal) : null;
+  // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
+  const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
+  const grandTotalLabel = estimateTotal != null && pickupFee != null ? formatPrice(Number(estimateTotal) + pickupFee) : totalLabel;
   const emballage = isLD ? (devis?.details_colis ?? []).reduce((s, d) => s + (Number(d.frais_emballage) || 0), 0) : 0;
   const destination = destinations.find((d) => d.code_pays === paysDestination);
 
@@ -656,7 +681,6 @@ export default function ExtrapaysFormPage() {
             // Photo facultative (mode LD uniquement) : envoi multipart.
             photo: c.photo || undefined,
           })),
-          ...pickupPayload(pickup),
         };
       } else {
         payload = {
@@ -667,6 +691,7 @@ export default function ExtrapaysFormPage() {
           types_choisis: typesChoisis,
         };
       }
+      Object.assign(payload, pickupPayload(pickup));
       if (villeRequise) payload.ville_destination = villeDestination;
 
       const result = await expeditionService.storeExpedition(payload);
@@ -733,8 +758,8 @@ export default function ExtrapaysFormPage() {
     return (
       <SubmitResultScreen
         result={submitResult}
-        pickupMode={isLD && pickup.domicile ? pickup.mode : null}
-        pickupEstimate={isLD && pickup.domicile ? pickup.estimate : null}
+        pickupMode={pickup.domicile ? pickup.mode : null}
+        pickupEstimate={pickup.domicile ? pickup.estimate : null}
         categoryNames={Array.isArray(devis) ? Object.fromEntries(devis.map((g) => [g.category_id, g.category_nom])) : {}}
         onNewExpedition={resetForm}
         onBack={() => setSubmitResult(null)}
@@ -817,10 +842,13 @@ export default function ExtrapaysFormPage() {
                 <div className="space-y-4">
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-surface-700">Départ</p>
-                    <div className="flex h-16 items-center gap-3 rounded-xl border border-surface-200 bg-surface-100 px-3">
-                      <span className="text-2xl leading-none">{getFlagEmoji(country.code)}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-surface-700">{country.name}</span>
-                    </div>
+                    <PickerButton
+                      icon={Globe2}
+                      selected
+                      title={`${getFlagEmoji(country.code)}  ${country.name}`}
+                      subtitle="Appuyez pour changer de pays"
+                      onClick={() => setCountrySheetOpen(true)}
+                    />
                   </div>
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-surface-700">Destination</p>
@@ -1167,15 +1195,13 @@ export default function ExtrapaysFormPage() {
                 locationLabel="Point de livraison"
               />
 
-              {isLD && (
-                <PickupOption
-                  value={pickup}
-                  onChange={setPickup}
-                  agence={agence}
-                  communeId={agence?.commune_id}
-                  address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
-                />
-              )}
+              <PickupOption
+                value={pickup}
+                onChange={setPickup}
+                agence={agence}
+                communeId={agence?.commune_id}
+                address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
+              />
 
               {!contactsOk && (
                 <p className="text-caption text-surface-500">
@@ -1185,7 +1211,11 @@ export default function ExtrapaysFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <DockTotal
+                label={pickupFee != null ? 'Estimation · enlèvement inclus' : 'Estimation'}
+                amount={grandTotalLabel}
+                status={devisStatus}
+              />
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
@@ -1220,13 +1250,11 @@ export default function ExtrapaysFormPage() {
                   : `${articles.length} · ${fmtKg(articles.reduce((s, a) => s + (Number(a.poids) || 0), 0))}`
               }
             />
-            {isLD && (
-              <Row
-                label="Remise"
-                value={pickup.domicile ? `Enlèvement à domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Dépôt à l'agence"}
-              />
-            )}
-            {isLD && pickup.domicile && (
+            <Row
+              label="Remise"
+              value={pickup.domicile ? `Enlèvement à domicile (${pickup.mode === 'groupage' ? 'retrait classique' : 'récupération express'})` : "Dépôt à l'agence"}
+            />
+            {pickup.domicile && (
               <Row
                 label="Enlèvement (estimé)"
                 value={pickup.estimate?.total != null ? formatPrice(pickup.estimate.total) : 'Confirmé par l’agence'}
@@ -1258,18 +1286,18 @@ export default function ExtrapaysFormPage() {
             {emballage > 0 && (
               <p className="mt-1 text-right text-caption text-primary-700">dont emballage {formatPrice(emballage)}</p>
             )}
-            {isLD && pickup.domicile && pickup.estimate?.total != null && estimateTotal != null && (
+            {pickup.domicile && pickup.estimate?.total != null && estimateTotal != null && (
               <p className="mt-1 text-right text-caption text-primary-700">
                 + enlèvement {formatPrice(pickup.estimate.total)} · total à prévoir {formatPrice(Number(estimateTotal) + Number(pickup.estimate.total))}
               </p>
             )}
           </div>
-          {isLD && pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
 
           <p className="flex items-start gap-2 text-caption text-surface-500">
             <Globe2 size={14} className="mt-0.5 shrink-0" />
             <span>
-              Le montant final est recalculé à l'enregistrement. {isLD && pickup.domicile && "L'enlèvement est facturé en plus de l'envoi ; son montant est confirmé à l'enregistrement. "}
+              Le montant final est recalculé à l'enregistrement. {pickup.domicile && "L'enlèvement est facturé en plus de l'envoi ; son montant est confirmé à l'enregistrement. "}
               L'agence de départ doit accepter la demande avant de la traiter.
             </span>
           </p>
@@ -1297,6 +1325,14 @@ export default function ExtrapaysFormPage() {
           draft.clear();
           exit.leave();
         }}
+      />
+      <CountrySelectSheet
+        open={countrySheetOpen}
+        onClose={() => setCountrySheetOpen(false)}
+        currentCode={country.code}
+        onSelect={handleChangeCountry}
+        title="Pays de départ"
+        description="Les destinations, produits et agences proposés dépendent du pays de départ."
       />
       <DestinationCountrySheet
         open={destSheetOpen}

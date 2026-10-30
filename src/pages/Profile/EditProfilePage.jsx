@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { MapPin, UserCog } from 'lucide-react';
 import { toast } from 'sonner';
+import fr from 'react-phone-number-input/locale/fr';
 import PhoneInput, { isPossiblePhoneNumber, parsePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
 import 'react-phone-number-input/style.css';
@@ -149,6 +150,7 @@ export default function EditProfilePage() {
           <div className="text-sm font-medium text-surface-700">
             Téléphone
             <PhoneInput
+              labels={fr}
               key={form.codePays || 'CI'}
               className="phone-field mt-1.5"
               flags={flags}

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
+import fr from 'react-phone-number-input/locale/fr';
 import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
 import flags from 'react-phone-number-input/flags';
 import 'react-phone-number-input/style.css';
@@ -21,6 +22,7 @@ import {
   resetPassword,
   resetAuthFlow,
   clearAuthError,
+  EMAIL_NOT_VERIFIED,
 } from '../../store/slices/authSlice';
 import { flushPendingAuthAction, clearPendingAuthAction } from '../../hooks/useRequireAuth';
 
@@ -59,6 +61,11 @@ const EMPTY_FORM = {
 
 // whatsapp_number: full E.164, no separator (api-authentification-client.md).
 const E164 = /^\+[1-9]\d{6,14}$/;
+
+// Les codes (vérification d'email et réinitialisation) expirent après 5 minutes.
+const CODE_TTL_MS = 5 * 60 * 1000;
+const formatRemaining = (seconds) =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 // Connexion : par téléphone OU par email (l'API accepte l'un ou l'autre avec
 // `type: "client"`). Le dernier mode utilisé est retenu sur l'appareil.
@@ -119,6 +126,28 @@ export default function AuthSheet() {
 
   const loading = status === 'loading';
 
+  // Compte à rebours du code courant (vérification d'email ou réinitialisation).
+  const [codeExpiresAt, setCodeExpiresAt] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const startCodeTimer = useCallback(() => {
+    const t = Date.now();
+    setNow(t);
+    setCodeExpiresAt(t + CODE_TTL_MS);
+  }, []);
+  useEffect(() => {
+    if (!open || !codeExpiresAt) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [open, codeExpiresAt]);
+  const remainingSeconds = codeExpiresAt ? Math.max(0, Math.ceil((codeExpiresAt - now) / 1000)) : null;
+
+  // D'où l'on arrive sur l'écran « verify » : inscription ou connexion. Sert au
+  // bouton « Modifier l'adresse » et au rejeu du login après validation.
+  const [verifyOrigin, setVerifyOrigin] = useState('register');
+  // Identifiants tapés au login, rejoués tels quels après verify-email : le client
+  // ne les ressaisit pas (le téléphone n'est pas l'email à vérifier).
+  const loginCredentials = useRef(null);
+
   // Seed the form only on the rising edge of `open`: registering dispatches
   // setCountry, which would otherwise re-trigger this and wipe the form while
   // the user is on the verify step. The register step is pre-filled with the
@@ -129,11 +158,16 @@ export default function AuthSheet() {
       wasOpen.current = true;
       setMode(initialMode || 'login');
       setForm({ ...EMPTY_FORM, codePays: storedCountryCode || '', codeParrain: referralFromUrl });
+      loginCredentials.current = null;
+      setVerifyOrigin('register');
+      setCodeExpiresAt(null);
+      // Ouverture directe sur la saisie du code (ex. changement d'email du profil).
+      if (initialMode === 'verify') startCodeTimer();
       dispatch(clearAuthError());
     } else if (!open) {
       wasOpen.current = false;
     }
-  }, [open, initialMode, dispatch, storedCountryCode]);
+  }, [open, initialMode, dispatch, storedCountryCode, startCodeTimer]);
 
   const goTo = useCallback((next) => {
     dispatch(clearAuthError());
@@ -171,7 +205,21 @@ export default function AuthSheet() {
       credentials = { telephone: splitPhone(form.telephone.trim()).national };
     }
     const result = await dispatch(loginClient({ ...credentials, password: form.password }));
-    if (loginClient.fulfilled.match(result)) finishAuthenticated();
+    if (loginClient.fulfilled.match(result)) {
+      finishAuthenticated();
+      return;
+    }
+    // Email non vérifié (mot de passe correct) : le backend vient d'envoyer un
+    // nouveau code. On ouvre la saisie du code sur l'adresse renvoyée.
+    if (result.payload?.code === EMAIL_NOT_VERIFIED) {
+      loginCredentials.current = { ...credentials, password: form.password };
+      if (result.payload.email) setForm((f) => ({ ...f, email: result.payload.email, code: '' }));
+      else setForm((f) => ({ ...f, code: '' }));
+      setVerifyOrigin('login');
+      startCodeTimer();
+      toast.info('Email non vérifié : un nouveau code vient de vous être envoyé.');
+      goTo('verify');
+    }
   };
 
   const handleRegister = async (e) => {
@@ -211,6 +259,9 @@ export default function AuthSheet() {
     }));
     if (registerClient.fulfilled.match(result)) {
       toast.success('Code de vérification envoyé par email.');
+      loginCredentials.current = null;
+      setVerifyOrigin('register');
+      startCodeTimer();
       goTo('verify');
     }
   };
@@ -221,15 +272,20 @@ export default function AuthSheet() {
     const result = await dispatch(verifyEmailCode({ email, code: form.code.trim() }));
     if (!verifyEmailCode.fulfilled.match(result)) return;
 
-    // Email verified -> log in straight away if we still hold the password.
-    if (form.password) {
-      const login = await dispatch(loginClient({ email, password: form.password }));
+    // Email verified -> log in straight away. verify-email returns no token, so
+    // replay the credentials typed at login, or the register email + password.
+    const credentials = loginCredentials.current
+      || (form.password ? { email, password: form.password } : null);
+    if (credentials) {
+      const login = await dispatch(loginClient(credentials));
       if (loginClient.fulfilled.match(login)) {
         finishAuthenticated();
         return;
       }
     }
     toast.success('Email vérifié. Connectez-vous.');
+    loginCredentials.current = null;
+    setCodeExpiresAt(null);
     setForm({ ...EMPTY_FORM, email });
     setLoginMethod('email');
     goTo('login');
@@ -238,7 +294,10 @@ export default function AuthSheet() {
   const handleResend = async () => {
     const email = (pendingEmail || form.email).trim();
     const result = await dispatch(resendVerification(email));
-    if (resendVerification.fulfilled.match(result)) toast.success('Nouveau code envoyé.');
+    if (resendVerification.fulfilled.match(result)) {
+      startCodeTimer();
+      toast.success('Nouveau code envoyé.');
+    }
   };
 
   const handleForgot = async (e) => {
@@ -247,6 +306,7 @@ export default function AuthSheet() {
     if (forgotPassword.fulfilled.match(result)) {
       toast.success('Code de réinitialisation envoyé par email.');
       setForm((f) => ({ ...f, code: '', password: '', passwordConfirmation: '' }));
+      startCodeTimer();
       goTo('resetCode');
     }
   };
@@ -266,7 +326,10 @@ export default function AuthSheet() {
   const handleResendResetCode = async () => {
     const email = (pendingEmail || form.email).trim();
     const result = await dispatch(forgotPassword(email));
-    if (forgotPassword.fulfilled.match(result)) toast.success('Nouveau code envoyé.');
+    if (forgotPassword.fulfilled.match(result)) {
+      startCodeTimer();
+      toast.success('Nouveau code envoyé.');
+    }
   };
 
   // Step 2: the code was already validated, it is only replayed to the API.
@@ -303,13 +366,6 @@ export default function AuthSheet() {
       </p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-      {/* Compte non vérifié : le code se saisit avec l'adresse email, que l'on ne
-          connaît pas quand on se connecte par téléphone. */}
-      {error && mode === 'login' && loginMethod === 'telephone' && /vérifier votre adresse/i.test(error) && (
-        <button type="button" className="mb-3 text-sm font-semibold text-primary-600" onClick={() => setLoginMethod('email')}>
-          Me connecter avec mon email pour saisir le code
-        </button>
-      )}
 
       {mode === 'login' && (
         <form onSubmit={handleLogin} className="space-y-3">
@@ -325,6 +381,7 @@ export default function AuthSheet() {
               Numéro de téléphone
               {/* Même champ qu'à l'inscription : indicatif + numéro national. */}
               <PhoneInput
+                labels={fr}
                 key={`login-${form.codePays || 'CI'}`}
                 className="phone-field mt-1.5"
                 flags={flags}
@@ -415,6 +472,7 @@ export default function AuthSheet() {
                 react-phone-number-input renvoie la valeur au format E.164
                 (ex. "+2250102030405") qu'on envoie telle quelle à l'API. */}
             <PhoneInput
+              labels={fr}
               key={form.codePays || 'CI'}
               className="phone-field mt-1.5"
               flags={flags}
@@ -447,6 +505,7 @@ export default function AuthSheet() {
             </label>
             {!form.whatsappSame && (
               <PhoneInput
+                labels={fr}
                 key={`wa-${form.codePays || 'CI'}`}
                 className="phone-field mt-1.5"
                 flags={flags}
@@ -509,9 +568,16 @@ export default function AuthSheet() {
       {mode === 'verify' && (
         <form onSubmit={handleVerify} className="space-y-3">
           <p className="text-sm text-surface-500">
-            Code à 6 chiffres envoyé à{' '}
-            <span className="font-medium text-surface-900">{verifyEmailAddress}</span>{' '}
-            (valable 30 minutes).
+            Un code à 6 chiffres a été envoyé à{' '}
+            <span className="font-medium text-surface-900">{verifyEmailAddress}</span>.
+            Pensez à vérifier vos courriers indésirables.
+          </p>
+          <p className="text-xs text-surface-400">
+            {remainingSeconds === null
+              ? 'Le code est valable 5 minutes.'
+              : remainingSeconds > 0
+                ? `Code valable encore ${formatRemaining(remainingSeconds)}.`
+                : 'Le code a expiré : demandez-en un nouveau.'}
           </p>
           <label className="block text-sm font-medium text-surface-700">
             Code de vérification
@@ -530,8 +596,12 @@ export default function AuthSheet() {
             <button type="button" className="font-medium text-primary-600" onClick={handleResend} disabled={loading}>
               Renvoyer le code
             </button>
-            <button type="button" className="text-surface-500" onClick={() => goTo('register')}>
-              Modifier l'adresse
+            <button
+              type="button"
+              className="text-surface-500"
+              onClick={() => goTo(verifyOrigin === 'login' ? 'login' : 'register')}
+            >
+              {verifyOrigin === 'login' ? 'Retour à la connexion' : "Modifier l'adresse"}
             </button>
           </div>
         </form>
@@ -561,7 +631,11 @@ export default function AuthSheet() {
           <p className="text-sm text-surface-500">
             Code envoyé à{' '}
             <span className="font-medium text-surface-900">{verifyEmailAddress}</span>{' '}
-            (valable 15 minutes).
+            {remainingSeconds === null
+              ? '(valable 5 minutes).'
+              : remainingSeconds > 0
+                ? `(valable encore ${formatRemaining(remainingSeconds)}).`
+                : '(expiré : demandez-en un nouveau).'}
           </p>
           <label className="block text-sm font-medium text-surface-700">
             Code de réinitialisation
