@@ -37,6 +37,7 @@ import { setCountry } from '../../store/slices/countrySlice';
 import expeditionService from '../../services/expeditionService';
 import { getFlagEmoji } from '../../utils/countries';
 import { formatPrice, formatExpeditionPrice, currencyLabel } from '../../utils/format';
+import { departureCurrency } from '../../utils/currency';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import ColisFormatFields from '../../components/expedition/ColisFormatFields';
@@ -76,6 +77,7 @@ const dimsOf = (c) => {
 };
 
 function SuccessScreen({ expedition, pickupMode, pickupEstimate, onNew }) {
+  const fmt = (v) => formatExpeditionPrice(v, expedition);
   const navigate = useNavigate();
   return (
     <div>
@@ -87,7 +89,7 @@ function SuccessScreen({ expedition, pickupMode, pickupEstimate, onNew }) {
           {pickupMode && (
             <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
               {PICKUP_MODE_MESSAGE[pickupMode]}
-              {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{formatPrice(pickupEstimate.total)}</strong>.</>}
+              {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{fmt(pickupEstimate.total)}</strong>.</>}
             </p>
           )}
         </SuccessHero>
@@ -117,6 +119,9 @@ export default function IntervilleFormPage() {
   const dispatch = useDispatch();
   const country = useSelector((s) => s.country);
   const user = useSelector((s) => s.auth.user);
+  // Devise des montants : celle du pays de départ choisi (peut différer du compte).
+  const currency = departureCurrency(country.code, user);
+  const fmt = (v) => formatPrice(v, currency);
   const isAuthenticated = useSelector((s) => s.auth.isAuthenticated);
 
   const [step, setStep] = useState(1);
@@ -359,10 +364,10 @@ export default function IntervilleFormPage() {
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
   const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
   const total = sim?.tarif?.montant_expedition;
-  const totalLabel = total != null ? formatPrice(total) : null;
+  const totalLabel = total != null ? fmt(total) : null;
   // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
   const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
-  const grandTotalLabel = total != null && pickupFee != null ? formatPrice(Number(total) + pickupFee) : totalLabel;
+  const grandTotalLabel = total != null && pickupFee != null ? fmt(Number(total) + pickupFee) : totalLabel;
 
   const handleSubmit = async () => {
     // The devis is open to guests; login is only required to register.
@@ -615,7 +620,7 @@ export default function IntervilleFormPage() {
                         />
 
                         <label htmlFor={`colis-${i}-valeur`} className="block text-sm font-medium text-surface-700">
-                          Valeur du contenu ({currencyLabel()}, optionnel)
+                          Valeur du contenu ({currencyLabel(currency)}, optionnel)
                           <input
                             id={`colis-${i}-valeur`}
                             type="text"
@@ -712,6 +717,7 @@ export default function IntervilleFormPage() {
                 agence={agence}
                 communeId={agence?.commune_id || communes.find((c) => c.nom === agenceVille)?.id}
                 address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
+                currency={currency}
               />
 
               {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
@@ -760,7 +766,7 @@ export default function IntervilleFormPage() {
             {pickup.domicile && (
               <Row
                 label="Enlèvement (estimé)"
-                value={pickup.estimate?.total != null ? formatPrice(pickup.estimate.total) : 'Confirmé par l’agence'}
+                value={pickup.estimate?.total != null ? fmt(pickup.estimate.total) : 'Confirmé par l’agence'}
               />
             )}
           </div>
@@ -772,11 +778,14 @@ export default function IntervilleFormPage() {
             </div>
             {pickup.domicile && pickup.estimate?.total != null && total != null && (
               <p className="mt-1 text-right text-caption text-primary-700">
-                + enlèvement {formatPrice(pickup.estimate.total)} · total à prévoir {formatPrice(Number(total) + Number(pickup.estimate.total))}
+                + enlèvement {fmt(pickup.estimate.total)} · total à prévoir {fmt(Number(total) + Number(pickup.estimate.total))}
               </p>
             )}
           </div>
-          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} />}
+          <p className="text-caption text-surface-500">
+            La livraison à domicile se demande ensuite depuis le détail de l'expédition : son tarif est calculé selon la distance depuis l'agence d'arrivée et affiché avant confirmation.
+          </p>
 
           <p className="text-caption text-surface-500">
             {pickup.domicile && "L'enlèvement est facturé en plus de l'envoi ; son montant est confirmé à l'enregistrement. "}

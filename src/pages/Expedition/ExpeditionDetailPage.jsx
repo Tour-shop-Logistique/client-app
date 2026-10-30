@@ -152,6 +152,11 @@ export default function ExpeditionDetailPage() {
     setLiveTick((t) => t + 1);
   }, [id]));
 
+  // Après une demande d'enlèvement / de livraison : le total à régler change.
+  const refreshExpedition = useCallback(() => {
+    expeditionService.clientShow(id).then((res) => setExp(res.data ?? res)).catch(() => {});
+  }, [id]);
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -312,7 +317,7 @@ export default function ExpeditionDetailPage() {
           </Section>
         )}
 
-        {!closedWithoutDelivery && <DeliverySection expedition={exp} refreshKey={liveTick} />}
+        {!closedWithoutDelivery && <DeliverySection expedition={exp} refreshKey={liveTick} onChanged={refreshExpedition} />}
 
         {!closedWithoutDelivery && <PaymentSection expedition={exp} refreshKey={liveTick} />}
 

@@ -296,7 +296,7 @@ function Proof({ preuve: raw }) {
   );
 }
 
-export default function DeliverySection({ expedition, refreshKey = 0 }) {
+export default function DeliverySection({ expedition, refreshKey = 0, onChanged }) {
   const [missions, setMissions] = useState(null);
   const [error, setError] = useState(false);
 
@@ -309,6 +309,13 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
   }, [expedition.id]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
+
+  // Une course demandée ou annulée change le total à régler : l'expédition est
+  // rechargée en plus des missions.
+  const reload = useCallback(() => {
+    load();
+    onChanged?.();
+  }, [load, onChanged]);
 
   const visible = (missions ?? []).filter((m) => statutOf(m));
   const expStatut = expedition.statut_expedition;
@@ -386,7 +393,7 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
 
               {m.preuve && <Proof preuve={m.preuve} />}
 
-              {m.statut === 'en_attente' && <CancelMission mission={m} onDone={load} />}
+              {m.statut === 'en_attente' && <CancelMission mission={m} onDone={reload} />}
             </div>
           );
         })}
@@ -394,8 +401,8 @@ export default function DeliverySection({ expedition, refreshKey = 0 }) {
 
       {(canRequestPickup || canRequestDelivery) && (
         <div className={`space-y-2 ${visible.length ? 'mt-3 border-t border-surface-100 pt-3' : 'mt-2'}`}>
-          {canRequestPickup && <MissionRequest expedition={expedition} kind="enlevement" onDone={load} />}
-          {canRequestDelivery && <MissionRequest expedition={expedition} kind="livraison" onDone={load} />}
+          {canRequestPickup && <MissionRequest expedition={expedition} kind="enlevement" onDone={reload} />}
+          {canRequestDelivery && <MissionRequest expedition={expedition} kind="livraison" onDone={reload} />}
         </div>
       )}
     </section>

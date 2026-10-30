@@ -6,8 +6,10 @@ import HomeMissionFields from './HomeMissionFields';
 import expeditionService from '../../services/expeditionService';
 import destinataireService from '../../services/destinataireService';
 import { missionRequestPayload } from '../../utils/pickup';
-import { expeditionCurrency } from '../../utils/format';
+import { expeditionCurrency, formatPrice } from '../../utils/format';
+import { departureCurrency } from '../../utils/currency';
 import { arrivalAgence } from '../../utils/expedition';
+import { useSelector } from 'react-redux';
 
 // Demande d'enlèvement ou de livraison à domicile APRÈS la création de
 // l'expédition (api-enlevement-livraison-client.md) :
@@ -65,6 +67,7 @@ const errorMessage = (err) => {
 
 export default function MissionRequest({ expedition, kind, onDone, viewer = 'client' }) {
   const asRecipient = viewer === 'destinataire';
+  const user = useSelector((s) => s.auth.user);
   const copy = asRecipient ? COPY.destinataire : COPY[kind];
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -77,7 +80,10 @@ export default function MissionRequest({ expedition, kind, onDone, viewer = 'cli
     : agence?.commune_id ?? expedition.destinataire_commune_id;
   // Enlèvement : grille de la commune de départ (devise d'origine). Livraison :
   // commune d'arrivée — devise de destination si fournie, sinon celle de l'utilisateur.
-  const currency = kind === 'enlevement' ? expeditionCurrency(expedition) : expedition.devise_destination ?? undefined;
+  // À défaut de `devise_destination`, devise du pays d'arrivée.
+  const currency = kind === 'enlevement'
+    ? expeditionCurrency(expedition)
+    : expedition.devise_destination ?? departureCurrency(expedition.code_pays_destination, user);
 
   const openSheet = () => {
     setValue(initialValue(expedition, kind));
@@ -94,10 +100,17 @@ export default function MissionRequest({ expedition, kind, onDone, viewer = 'cli
       if (asRecipient) res = await destinataireService.requestDelivery(expedition.id, payload);
       else if (kind === 'enlevement') res = await expeditionService.requestPickup(expedition.id, payload);
       else res = await expeditionService.requestHomeDelivery(expedition.id, payload);
+      // Montant calculé par le serveur (il fait foi, l'estimation de la grille
+      // n'était qu'indicative) : rappelé dès la confirmation.
+      const mission = res?.mission ?? res?.data ?? null;
+      const amount = mission?.montant ?? mission?.montant_final ?? mission?.montant_fixe ?? null;
+      const detail = value.mode === 'express'
+        ? 'Course diffusée aux livreurs disponibles : le premier qui l’accepte la prend en charge.'
+        : 'TourShop affecte un livreur au tarif fixé par l’agence.';
       toast.success(res?.message || 'Demande envoyée.', {
-        description: value.mode === 'express'
-          ? 'Course diffusée aux livreurs disponibles : le premier qui l’accepte la prend en charge.'
-          : 'TourShop affecte un livreur au tarif fixé par l’agence.',
+        description: amount != null
+          ? `Montant de la course : ${formatPrice(amount, mission?.devise ?? currency)}. ${detail}`
+          : detail,
       });
       setOpen(false);
       onDone?.(res);

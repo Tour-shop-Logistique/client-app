@@ -38,6 +38,7 @@ import { getCountryName, getFlagEmoji } from '../../utils/countries';
 import { isDestinationCompatible, destinationBadges } from '../../utils/expedition';
 import { isAfricanCountry } from '../../utils/africa';
 import { formatPrice } from '../../utils/format';
+import { departureCurrency } from '../../utils/currency';
 import { decimalClean, decimalDisplay, fmtKg } from '../../utils/decimal';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
@@ -113,7 +114,8 @@ const dimsOf = (c) => {
 };
 
 // Choix du type d'expédition d'une catégorie (groupage), en cartes à choix unique.
-function GroupTypeChoice({ group, chosen, onSelect }) {
+function GroupTypeChoice({ group, chosen, onSelect, currency }) {
+  const fmt = (v) => formatPrice(v, currency);
   const types = group.types_eligibles;
   return (
     <div className="card space-y-2.5 p-4">
@@ -162,7 +164,7 @@ function GroupTypeChoice({ group, chosen, onSelect }) {
                   {types.length === 1 && <span className="block text-caption text-surface-500">Seul mode disponible</span>}
                   {cheapest && <span className="block text-caption text-teal-700">Le moins cher</span>}
                 </span>
-                <span className="shrink-0 font-heading text-sm font-bold text-surface-900">{formatPrice(t.montant_expedition)}</span>
+                <span className="shrink-0 font-heading text-sm font-bold text-surface-900">{fmt(t.montant_expedition)}</span>
               </button>
             );
           })}
@@ -175,8 +177,9 @@ function GroupTypeChoice({ group, chosen, onSelect }) {
 // Résultat de `store`. Livraison à domicile : une expédition. Récupération en
 // agence : 201 (succès total/partiel) ou 422 (aucune créée), toujours avec
 // `resultats[]` par catégorie — chaque échec porte son `message`.
-function SubmitResultScreen({ result, pickupMode, pickupEstimate, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
+function SubmitResultScreen({ result, pickupMode, pickupEstimate, currency, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
   const navigate = useNavigate();
+  const fmt = (v) => formatPrice(v, currency);
   const isGroupage = Array.isArray(result.resultats);
   const successes = isGroupage
     ? result.resultats.filter((r) => r.success)
@@ -201,7 +204,7 @@ function SubmitResultScreen({ result, pickupMode, pickupEstimate, categoryNames 
             {pickupMode && (
               <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
                 {PICKUP_MODE_MESSAGE[pickupMode]}
-                {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{formatPrice(pickupEstimate.total)}</strong>.</>}
+                {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{fmt(pickupEstimate.total)}</strong>.</>}
               </p>
             )}
           </SuccessHero>
@@ -235,7 +238,7 @@ function SubmitResultScreen({ result, pickupMode, pickupEstimate, categoryNames 
                     {typeLabel(exp.type_expedition)} · <span className="font-mono">{exp.reference}</span>
                   </span>
                 </span>
-                <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{formatPrice(exp.montant_expedition)}</span>
+                <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{fmt(exp.montant_expedition)}</span>
               </button>
             ))}
             {failures.map((f, i) => (
@@ -291,6 +294,9 @@ export default function ExtrapaysFormPage() {
   const { requireAuth, isAuthenticated } = useRequireAuth();
   const country = useSelector((state) => state.country);
   const user = useSelector((state) => state.auth.user);
+  // Devise des montants : celle du pays de départ choisi (peut différer du compte).
+  const currency = departureCurrency(country.code, user);
+  const fmt = (v) => formatPrice(v, currency);
 
   const [step, setStep] = useState(1);
   const [maxStepReached, setMaxStepReached] = useState(1);
@@ -645,10 +651,10 @@ export default function ExtrapaysFormPage() {
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
 
   const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis);
-  const totalLabel = estimateTotal != null ? formatPrice(estimateTotal) : null;
+  const totalLabel = estimateTotal != null ? fmt(estimateTotal) : null;
   // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
   const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
-  const grandTotalLabel = estimateTotal != null && pickupFee != null ? formatPrice(Number(estimateTotal) + pickupFee) : totalLabel;
+  const grandTotalLabel = estimateTotal != null && pickupFee != null ? fmt(Number(estimateTotal) + pickupFee) : totalLabel;
   const emballage = isLD ? (devis?.details_colis ?? []).reduce((s, d) => s + (Number(d.frais_emballage) || 0), 0) : 0;
   const destination = destinations.find((d) => d.code_pays === paysDestination);
 
@@ -760,6 +766,7 @@ export default function ExtrapaysFormPage() {
         result={submitResult}
         pickupMode={pickup.domicile ? pickup.mode : null}
         pickupEstimate={pickup.domicile ? pickup.estimate : null}
+        currency={currency}
         categoryNames={Array.isArray(devis) ? Object.fromEntries(devis.map((g) => [g.category_id, g.category_nom])) : {}}
         onNewExpedition={resetForm}
         onBack={() => setSubmitResult(null)}
@@ -961,7 +968,7 @@ export default function ExtrapaysFormPage() {
                         <span className={`block truncate text-caption ${valid ? 'text-surface-500' : 'text-amber-700'}`}>{summary}</span>
                       </span>
                       {prix != null && devisStatus === 'idle' && (
-                        <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{formatPrice(prix)}</span>
+                        <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{fmt(prix)}</span>
                       )}
                       <ChevronDown size={18} className={`shrink-0 text-surface-400 transition-transform ${open ? 'rotate-180' : ''}`} />
                     </button>
@@ -1151,7 +1158,7 @@ export default function ExtrapaysFormPage() {
                     <ErrorNote message="Aucun tarif pour ces articles vers cette destination. Modifiez les articles ou la destination." />
                   )}
                   {groupes.map((g) => (
-                    <GroupTypeChoice key={g.category_id} group={g} chosen={typesChoisis[g.category_id]} onSelect={handleSelectType} />
+                    <GroupTypeChoice key={g.category_id} group={g} chosen={typesChoisis[g.category_id]} onSelect={handleSelectType} currency={currency} />
                   ))}
                 </div>
               )}
@@ -1200,6 +1207,7 @@ export default function ExtrapaysFormPage() {
                 onChange={setPickup}
                 agence={agence}
                 communeId={agence?.commune_id}
+                currency={currency}
                 address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
               />
 
@@ -1257,7 +1265,7 @@ export default function ExtrapaysFormPage() {
             {pickup.domicile && (
               <Row
                 label="Enlèvement (estimé)"
-                value={pickup.estimate?.total != null ? formatPrice(pickup.estimate.total) : 'Confirmé par l’agence'}
+                value={pickup.estimate?.total != null ? fmt(pickup.estimate.total) : 'Confirmé par l’agence'}
               />
             )}
             <Row label="Expéditeur" value={expediteur.nom_prenom} />
@@ -1271,7 +1279,7 @@ export default function ExtrapaysFormPage() {
                 return (
                   <div key={g.category_id} className="flex items-start justify-between gap-3">
                     <span className="min-w-0 text-surface-600">{g.category_nom} · {typeLabel(t?.type_expedition)}</span>
-                    <span className="shrink-0 font-semibold text-surface-900">{t ? formatPrice(t.montant_expedition) : '—'}</span>
+                    <span className="shrink-0 font-semibold text-surface-900">{t ? fmt(t.montant_expedition) : '—'}</span>
                   </div>
                 );
               })}
@@ -1284,15 +1292,18 @@ export default function ExtrapaysFormPage() {
               <span className="font-heading text-2xl font-bold text-primary-800">{totalLabel}</span>
             </div>
             {emballage > 0 && (
-              <p className="mt-1 text-right text-caption text-primary-700">dont emballage {formatPrice(emballage)}</p>
+              <p className="mt-1 text-right text-caption text-primary-700">dont emballage {fmt(emballage)}</p>
             )}
             {pickup.domicile && pickup.estimate?.total != null && estimateTotal != null && (
               <p className="mt-1 text-right text-caption text-primary-700">
-                + enlèvement {formatPrice(pickup.estimate.total)} · total à prévoir {formatPrice(Number(estimateTotal) + Number(pickup.estimate.total))}
+                + enlèvement {fmt(pickup.estimate.total)} · total à prévoir {fmt(Number(estimateTotal) + Number(pickup.estimate.total))}
               </p>
             )}
           </div>
-          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} />}
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} />}
+          {!isLD && <p className="text-caption text-surface-500">
+            La livraison à domicile se demande ensuite depuis le détail de l'expédition : son tarif est calculé selon la distance depuis l'agence d'arrivée et affiché avant confirmation.
+          </p>}
 
           <p className="flex items-start gap-2 text-caption text-surface-500">
             <Globe2 size={14} className="mt-0.5 shrink-0" />

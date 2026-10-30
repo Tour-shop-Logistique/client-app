@@ -7,7 +7,7 @@ import HomeMissionFields, { Choice } from './HomeMissionFields';
 // est envoyée en `enlevement_distance_km`. Champs : HomeMissionFields ;
 // valeur et payload : src/utils/pickup.js.
 
-export default function PickupOption({ value, onChange, address, agence, communeId }) {
+export default function PickupOption({ value, onChange, address, agence, communeId, currency }) {
   const set = (patch) => onChange({ ...value, ...patch });
 
   return (
@@ -32,7 +32,7 @@ export default function PickupOption({ value, onChange, address, agence, commune
 
       {value.domicile && (
         <div className="space-y-3 border-t border-surface-100 pt-3">
-          <HomeMissionFields value={value} onChange={onChange} agence={agence} communeId={communeId} kind="enlevement" />
+          <HomeMissionFields value={value} onChange={onChange} agence={agence} communeId={communeId} kind="enlevement" currency={currency} />
           <p className="text-xs text-surface-500">
             Le tarif de l’enlèvement s’ajoute au prix de l’expédition. Il est fixé par la grille de l’agence selon la distance : tarif standard en retrait classique, majoré en récupération express.
           </p>
