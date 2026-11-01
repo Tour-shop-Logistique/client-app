@@ -37,10 +37,38 @@ export const whatsappInvalid = (data) => {
   return Boolean(v) && !E164.test(v);
 };
 
+// E-mail saisi mais invalide (l'API le refuse en 422). Vide = valide (optionnel).
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const emailInvalid = (data) => {
+  const v = (data?.email || '').trim();
+  return Boolean(v) && !EMAIL.test(v);
+};
+
+// Champs obligatoires non remplis (ou invalides), dans l'ordre d'affichage.
+export function contactMissing(data) {
+  const missing = [];
+  if (!data.nom_prenom.trim()) missing.push('nom_prenom');
+  if (!digitsOnly(data.telephone)) missing.push('telephone');
+  if (!data.adresse.trim()) missing.push('adresse');
+  if (!data.ville.trim()) missing.push('ville');
+  if (emailInvalid(data)) missing.push('email');
+  if (whatsappInvalid(data)) missing.push('whatsapp');
+  return missing;
+}
+
 export function contactIsComplete(data) {
-  return Boolean(
-    data.nom_prenom.trim() && digitsOnly(data.telephone) && data.adresse.trim() && data.ville.trim()
-  ) && !whatsappInvalid(data);
+  return contactMissing(data).length === 0;
+}
+
+// Fait defiler jusqu'au premier champ en erreur (marque `data-invalid`) et lui
+// donne le focus. A appeler juste apres avoir active l'affichage des erreurs.
+export function focusFirstInvalid() {
+  setTimeout(() => {
+    const el = document.querySelector('[data-invalid="true"]');
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+  }, 120);
 }
 
 // Prefixes the fields (`expediteur_*` / `destinataire_*`), trims, and turns ""

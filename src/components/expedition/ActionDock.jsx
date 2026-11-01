@@ -21,7 +21,7 @@ export default function ActionDock({ children }) {
 }
 
 // Montant affiché à gauche du bouton principal, avec état de calcul.
-export function DockTotal({ label, amount, status = 'idle' }) {
+export function DockTotal({ label, amount, status = 'idle', detail }) {
   return (
     <div className="min-w-0 shrink-0" aria-live="polite">
       <p className="text-caption text-surface-500">{label}</p>
@@ -32,6 +32,7 @@ export function DockTotal({ label, amount, status = 'idle' }) {
           {amount || '—'}
         </p>
       )}
+      {detail && status !== 'loading' && <p className="whitespace-nowrap text-caption text-surface-500">{detail}</p>}
     </div>
   );
 }

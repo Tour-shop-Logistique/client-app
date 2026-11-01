@@ -44,7 +44,7 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, identityExpired, identityPayload,
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
@@ -650,6 +650,20 @@ export default function ExtrapaysFormPage() {
 
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
 
+  // « Vérifier ma demande » reste cliquable : si un champ obligatoire manque, on
+  // affiche les erreurs et on renvoie sur le premier champ à compléter.
+  const [showContactErrors, setShowContactErrors] = useState(false);
+  const handleVerify = () => {
+    if (!contactsOk) {
+      setShowContactErrors(true);
+      if (!expediteurOk) setExpediteurOpen(true);
+      focusFirstInvalid();
+      return;
+    }
+    setSubmitError('');
+    setRecapOpen(true);
+  };
+
   const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis);
   const totalLabel = estimateTotal != null ? fmt(estimateTotal) : null;
   // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
@@ -1181,7 +1195,7 @@ export default function ExtrapaysFormPage() {
 
               {expediteurOpen ? (
                 <div className="space-y-2">
-                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur}>
+                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} showErrors={showContactErrors}>
                     <IdentityFields data={expediteur} onChange={setExpediteur} />
                   </ContactFields>
                   {expediteurOk && (
@@ -1200,6 +1214,8 @@ export default function ExtrapaysFormPage() {
                 onChange={setDestinataire}
                 withLocation={isLD}
                 locationLabel="Point de livraison"
+                showErrors={showContactErrors}
+                emailHint="Pour que le destinataire reçoive les notifications de suivi de son colis (prise en charge, en route, livré), renseignez son adresse e-mail."
               />
 
               <PickupOption
@@ -1221,17 +1237,15 @@ export default function ExtrapaysFormPage() {
             <ActionDock>
               <DockTotal
                 label={pickupFee != null ? 'Estimation · enlèvement inclus' : 'Estimation'}
+                detail={pickupFee != null ? `dont enlèvement ${fmt(pickupFee)}` : null}
                 amount={grandTotalLabel}
                 status={devisStatus}
               />
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
-                disabled={!contactsOk || !canContinueContenu}
-                onClick={() => {
-                  setSubmitError('');
-                  setRecapOpen(true);
-                }}
+                disabled={contactsOk && !canContinueContenu}
+                onClick={handleVerify}
               >
                 Vérifier ma demande
               </button>

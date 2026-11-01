@@ -29,6 +29,7 @@ export default function IdentityFields({ data, onChange }) {
           <input
             type="date"
             className={`input-field mt-1.5 ${expired ? 'border-red-400' : ''}`}
+            {...(expired ? { 'data-invalid': 'true', 'aria-invalid': true } : {})}
             value={data.date_expiration_piece_identite ?? ''}
             onChange={set('date_expiration_piece_identite')}
           />

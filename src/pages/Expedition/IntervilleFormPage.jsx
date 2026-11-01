@@ -28,7 +28,7 @@ import PickupOption from '../../components/expedition/PickupOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, identityExpired, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, identityExpired, identityPayload,
 } from '../../utils/contact';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
@@ -362,6 +362,20 @@ export default function IntervilleFormPage() {
 
   const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
+
+  // « Vérifier ma demande » reste cliquable : si un champ obligatoire manque, on
+  // affiche les erreurs et on renvoie sur le premier champ à compléter.
+  const [showContactErrors, setShowContactErrors] = useState(false);
+  const handleVerify = () => {
+    if (!contactsOk) {
+      setShowContactErrors(true);
+      if (!expediteurOk) setExpediteurOpen(true);
+      focusFirstInvalid();
+      return;
+    }
+    setSubmitError('');
+    setRecapOpen(true);
+  };
   const poidsTotal = colisList.reduce((s, c) => s + (Number(c.poids) || 0), 0);
   const total = sim?.tarif?.montant_expedition;
   const totalLabel = total != null ? fmt(total) : null;
@@ -696,7 +710,7 @@ export default function IntervilleFormPage() {
 
               {expediteurOpen ? (
                 <div className="space-y-2">
-                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined}>
+                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined} showErrors={showContactErrors}>
                     <IdentityFields data={expediteur} onChange={setExpediteur} />
                   </ContactFields>
                   {expediteurOk && (
@@ -709,7 +723,14 @@ export default function IntervilleFormPage() {
                 <ContactSummary title="Expéditeur" data={expediteur} onEdit={() => setExpediteurOpen(true)} />
               )}
 
-              <ContactFields title="Destinataire" data={destinataire} onChange={setDestinataire} villeFixed={communeNom} />
+              <ContactFields
+                title="Destinataire"
+                data={destinataire}
+                onChange={setDestinataire}
+                villeFixed={communeNom}
+                showErrors={showContactErrors}
+                emailHint="Pour que le destinataire reçoive les notifications de suivi de son colis (prise en charge, en route, livré), renseignez son adresse e-mail."
+              />
 
               <PickupOption
                 value={pickup}
@@ -731,17 +752,15 @@ export default function IntervilleFormPage() {
             <ActionDock>
               <DockTotal
                 label={pickupFee != null ? 'Total · enlèvement inclus' : 'Total'}
+                detail={pickupFee != null ? `dont enlèvement ${fmt(pickupFee)}` : null}
                 amount={grandTotalLabel}
                 status={simStatus}
               />
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
-                disabled={!contactsOk || !sim || simStatus === 'loading'}
-                onClick={() => {
-                  setSubmitError('');
-                  setRecapOpen(true);
-                }}
+                disabled={contactsOk && (!sim || simStatus === 'loading')}
+                onClick={handleVerify}
               >
                 Vérifier ma demande
               </button>
