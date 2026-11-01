@@ -49,7 +49,7 @@ import { getRecentCommunes, pushRecentCommune } from '../../utils/recentCommunes
 // de vérification avant l'enregistrement. Le tarif (simulate-interville) n'est
 // plus une étape : il s'affiche en continu dans la barre d'action dès que
 // l'agence, la commune et des colis valides sont connus.
-const STEP_LABELS = ['Trajet', 'Colis', 'Coordonnées'];
+const STEP_LABELS = ['Trajet', 'Colis', 'Coordonnées', 'Remise'];
 const LAST_STEP = STEP_LABELS.length;
 
 // Pas de montant d'emballage en Interville : ni saisi, ni envoyé.
@@ -132,6 +132,7 @@ export default function IntervilleFormPage() {
   const [recapOpen, setRecapOpen] = useState(false);
   const [openColis, setOpenColis] = useState(0);
   const [expediteurOpen, setExpediteurOpen] = useState(true);
+  const [destinataireOpen, setDestinataireOpen] = useState(true);
 
   const [agence, setAgence] = useState(null);
   const [destinataireCommuneId, setDestinataireCommuneId] = useState('');
@@ -276,7 +277,10 @@ export default function IntervilleFormPage() {
   const goToStep = (n) => {
     // À l'arrivée sur les coordonnées, un expéditeur déjà complet (prérempli
     // depuis le compte) reste replié ; on l'ouvre s'il manque quelque chose.
-    if (n === 3) setExpediteurOpen(!(contactIsComplete(expediteur) && !identityExpired(expediteur)));
+    if (n === 3) {
+      setExpediteurOpen(!(contactIsComplete(expediteur) && !identityExpired(expediteur)));
+      setDestinataireOpen(!contactIsComplete(destinataire));
+    }
     setStep(n);
     setMaxStepReached((m) => Math.max(m, n));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -356,13 +360,26 @@ export default function IntervilleFormPage() {
   const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
 
-  // « Vérifier ma demande » reste cliquable : si un champ obligatoire manque, on
-  // affiche les erreurs et on renvoie sur le premier champ à compléter.
+  // « Continuer » reste cliquable : si un champ obligatoire manque, on affiche
+  // les erreurs et on renvoie sur le premier champ à compléter.
   const [showContactErrors, setShowContactErrors] = useState(false);
-  const handleVerify = () => {
+  const handleContinue = () => {
     if (!contactsOk) {
       setShowContactErrors(true);
       if (!expediteurOk) setExpediteurOpen(true);
+      if (!contactIsComplete(destinataire)) setDestinataireOpen(true);
+      focusFirstInvalid();
+      return;
+    }
+    goToStep(4);
+  };
+
+  // Étape 4 (« Remise ») -> récapitulatif. Si un contact a été invalidé entre-temps,
+  // retour à l'étape 3 avec les erreurs.
+  const handleVerify = () => {
+    if (!contactsOk) {
+      goToStep(3);
+      setShowContactErrors(true);
       focusFirstInvalid();
       return;
     }
@@ -716,14 +733,47 @@ export default function IntervilleFormPage() {
                 <ContactSummary title="Expéditeur" data={expediteur} onEdit={() => setExpediteurOpen(true)} />
               )}
 
-              <ContactFields
-                title="Destinataire"
-                data={destinataire}
-                onChange={setDestinataire}
-                villeFixed={communeNom}
-                showErrors={showContactErrors}
-                emailHint="Pour que le destinataire reçoive les notifications de suivi de son colis (prise en charge, en route, livré), renseignez son adresse e-mail."
-              />
+              {destinataireOpen ? (
+                <div className="space-y-2">
+                  <ContactFields
+                    title="Destinataire"
+                    data={destinataire}
+                    onChange={setDestinataire}
+                    villeFixed={communeNom}
+                    showErrors={showContactErrors}
+                    emailHint="Pour recevoir les notifications de suivi du colis, veuillez renseigner l’e-mail du destinataire."
+                  />
+                  {contactIsComplete(destinataire) && (
+                    <button type="button" className="btn-ghost w-full" onClick={() => setDestinataireOpen(false)}>
+                      <Check size={16} /> Valider le destinataire
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <ContactSummary title="Destinataire" data={destinataire} onEdit={() => setDestinataireOpen(true)} />
+              )}
+
+              {!contactsOk && (
+                <p className="text-caption text-surface-500">
+                  Nom, téléphone et adresse sont requis pour l'expéditeur et le destinataire.
+                </p>
+              )}
+            </div>
+
+            <ActionDock>
+              <DockTotal label="Total" amount={totalLabel} status={simStatus} />
+              <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinue}>
+                Continuer
+              </button>
+            </ActionDock>
+          </>
+        )}
+
+        {/* ---------- Étape 4 : Remise du colis ---------- */}
+        {step === 4 && (
+          <>
+            <div className="space-y-3">
+              <h2 className="font-heading text-lg font-semibold text-surface-900">Comment remettre votre colis ?</h2>
 
               <PickupOption
                 value={pickup}
@@ -735,11 +785,6 @@ export default function IntervilleFormPage() {
               />
 
               {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
-              {!contactsOk && (
-                <p className="text-caption text-surface-500">
-                  Nom, téléphone et adresse sont requis pour l'expéditeur et le destinataire.
-                </p>
-              )}
             </div>
 
             <ActionDock>
@@ -752,7 +797,7 @@ export default function IntervilleFormPage() {
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
-                disabled={contactsOk && (!sim || simStatus === 'loading')}
+                disabled={!sim || simStatus === 'loading'}
                 onClick={handleVerify}
               >
                 Vérifier ma demande

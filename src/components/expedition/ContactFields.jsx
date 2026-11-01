@@ -33,7 +33,7 @@ export default function ContactFields({
   const missing = showErrors ? contactMissing(data) : [];
   const bad = (field) => missing.includes(field);
   const fieldProps = (field) => (bad(field) ? { 'data-invalid': 'true', 'aria-invalid': true } : {});
-  const cls = (field) => `input-field mt-1.5 ${bad(field) ? 'border-red-400 ring-2 ring-red-100' : ''}`;
+  const cls = (field) => `input-field mt-1 py-2.5 ${bad(field) ? 'border-red-400 ring-2 ring-red-100' : ''}`;
   const Err = ({ children: msg }) => <span className="mt-1 block text-xs font-normal text-red-600">{msg}</span>;
 
   const emailField = (
@@ -67,7 +67,7 @@ export default function ContactFields({
   };
 
   return (
-    <div className="card space-y-3 p-4">
+    <div className="card space-y-2.5 p-3.5">
       <div className="flex items-center gap-2">
         <User size={18} className="text-primary-600" />
         <p className="font-semibold text-surface-900">{title}</p>
@@ -75,7 +75,7 @@ export default function ContactFields({
       {favoriteList.length > 0 && (
         <label className="block text-sm font-medium text-surface-700">
           <span className="flex items-center gap-1.5"><BookMarked size={14} className="text-primary-600" /> Adresse favorite</span>
-          <select className="input-field mt-1.5" value="" onChange={pickFavorite}>
+          <select className="input-field mt-1 py-2.5" value="" onChange={pickFavorite}>
             <option value="">Préremplir depuis mes adresses…</option>
             {favoriteList.map((f, i) => (
               <option key={`${f.nom}-${i}`} value={i}>
@@ -90,41 +90,44 @@ export default function ContactFields({
         <input className={cls('nom_prenom')} {...fieldProps('nom_prenom')} placeholder="Ex: Jean Kouassi" value={data.nom_prenom} onChange={set('nom_prenom')} />
         {bad('nom_prenom') && <Err>Indiquez le nom et le prénom.</Err>}
       </label>
-      <label className="block text-sm font-medium text-surface-700">
-        Téléphone
-        <input
-          className={cls('telephone')}
-          {...fieldProps('telephone')}
-          {...digitsInputProps}
-          placeholder="Ex: 0102030405"
-          value={digitsOnly(data.telephone)}
-          onChange={(e) => onChange({ ...data, telephone: digitsOnly(e.target.value) })}
-        />
-        {bad('telephone') && <Err>Indiquez un numéro de téléphone.</Err>}
-      </label>
+      {/* Téléphone et ville côte à côte : une ligne de moins à faire défiler. */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <label className="block min-w-0 text-sm font-medium text-surface-700">
+          Téléphone
+          <input
+            className={cls('telephone')}
+            {...fieldProps('telephone')}
+            {...digitsInputProps}
+            placeholder="0102030405"
+            value={digitsOnly(data.telephone)}
+            onChange={(e) => onChange({ ...data, telephone: digitsOnly(e.target.value) })}
+          />
+          {bad('telephone') && <Err>Indiquez un numéro.</Err>}
+        </label>
+        <div className="block min-w-0 text-sm font-medium text-surface-700">
+          Ville
+          {villeFixed ? (
+            <div className="input-field mt-1 truncate bg-surface-50 py-2.5 text-surface-500">{villeFixed}</div>
+          ) : communes ? (
+            <select className={cls('ville')} {...fieldProps('ville')} value={data.ville} onChange={set('ville')}>
+              <option value="">Choisir</option>
+              {communes.map((c) => (
+                <option key={c.id} value={c.nom}>
+                  {c.nom}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className={cls('ville')} {...fieldProps('ville')} placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
+          )}
+          {bad('ville') && !villeFixed && <Err>Indiquez la ville.</Err>}
+        </div>
+      </div>
       <label className="block text-sm font-medium text-surface-700">
         Adresse
         <input className={cls('adresse')} {...fieldProps('adresse')} placeholder="Ex: Rue 12" value={data.adresse} onChange={set('adresse')} />
         {bad('adresse') && <Err>Indiquez l’adresse.</Err>}
       </label>
-      <div className="block text-sm font-medium text-surface-700">
-        Ville
-        {villeFixed ? (
-          <div className="input-field mt-1.5 bg-surface-50 text-surface-500">{villeFixed}</div>
-        ) : communes ? (
-          <select className={cls('ville')} {...fieldProps('ville')} value={data.ville} onChange={set('ville')}>
-            <option value="">Choisir une commune</option>
-            {communes.map((c) => (
-              <option key={c.id} value={c.nom}>
-                {c.nom}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input className={cls('ville')} {...fieldProps('ville')} placeholder="Ex: Bouake" value={data.ville} onChange={set('ville')} />
-        )}
-        {bad('ville') && !villeFixed && <Err>Indiquez la ville.</Err>}
-      </div>
       {emailHint && emailField}
       {children}
 
@@ -175,7 +178,7 @@ export default function ContactFields({
         {showMore ? 'Masquer les champs optionnels' : `+ WhatsApp, ${emailHint ? '' : 'e-mail, '}société, code postal…`}
       </button>
       {(showMore || (!emailHint && bad('email')) || bad('whatsapp')) && (
-        <div className="space-y-3 border-t border-surface-100 pt-3">
+        <div className="space-y-2.5 border-t border-surface-100 pt-2.5">
           <label className="block text-sm font-medium text-surface-700">
             WhatsApp (optionnel)
             {/* Chiffres uniquement : le « + » est ajouté automatiquement à l'envoi. */}

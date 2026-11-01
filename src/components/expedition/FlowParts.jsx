@@ -77,7 +77,7 @@ export function ContactSummary({ title, data, onEdit }) {
         <span className="block text-caption text-surface-500">{title}</span>
         <span className="block truncate text-sm font-semibold text-surface-900">{data.nom_prenom}</span>
         <span className="block truncate text-caption text-surface-500">
-          {[data.telephone, data.adresse, data.ville].filter(Boolean).join(' · ')}
+          {[data.telephone, data.email, data.adresse, data.ville].filter(Boolean).join(' · ')}
         </span>
       </span>
       <span className="shrink-0 text-caption font-semibold text-primary-700">Modifier</span>

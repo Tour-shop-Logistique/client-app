@@ -53,7 +53,7 @@ import ContactFields from '../../components/expedition/ContactFields';
 // L'agence est choisie dès le Trajet : le devis (POST /devis) peut donc tourner
 // pendant la saisie des colis, et l'estimation reste visible dans la barre du bas.
 
-const DRAFT_VERSION = 2;
+const DRAFT_VERSION = 3;
 const EMPTY_LD_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', articles: [], photo: null };
 
 const MODES = [
@@ -306,6 +306,7 @@ export default function ExtrapaysFormPage() {
   const [recapOpen, setRecapOpen] = useState(false);
   const [openColis, setOpenColis] = useState(0);
   const [expediteurOpen, setExpediteurOpen] = useState(true);
+  const [destinataireOpen, setDestinataireOpen] = useState(true);
 
   const [countrySheetOpen, setCountrySheetOpen] = useState(!country.code);
   const [destSheetOpen, setDestSheetOpen] = useState(false);
@@ -356,7 +357,8 @@ export default function ExtrapaysFormPage() {
     draftData,
     (d) => {
       if (d.code_pays !== country.code) return false;
-      const current = d.v === DRAFT_VERSION;
+      // v2 (3 étapes) et v3 (4 étapes) ont la même numérotation pour les étapes 1 à 3.
+      const current = d.v >= 2;
       setStep(current ? d.step ?? 1 : migrateStep(d.step ?? 1));
       setMaxStepReached(current ? d.maxStepReached ?? 1 : migrateStep(d.maxStepReached ?? 1));
       setMode(d.mode ?? '');
@@ -390,7 +392,10 @@ export default function ExtrapaysFormPage() {
 
   const goToStep = (n) => {
     // À l'arrivée sur les coordonnées, un expéditeur déjà complet reste replié.
-    if (n === 3) setExpediteurOpen(!expediteurOk);
+    if (n === 3) {
+      setExpediteurOpen(!expediteurOk);
+      setDestinataireOpen(!contactIsComplete(destinataire));
+    }
     setStep(n);
     setMaxStepReached((m) => Math.max(m, n));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -640,7 +645,7 @@ export default function ExtrapaysFormPage() {
     ? products.filter((p) => !(colisList[productTargetColisIndex]?.articles ?? []).some((a) => a.produit_id === p.id))
     : products.filter((p) => !articles.some((a) => a.produit_id === p.id));
 
-  const stepLabels = ['Trajet', isLD ? 'Colis' : 'Articles', 'Coordonnées'];
+  const stepLabels = ['Trajet', isLD ? 'Colis' : 'Articles', 'Coordonnées', 'Remise'];
 
   const groupes = !isLD && Array.isArray(devis) ? devis : [];
   const groupageHasShippableGroup = isLD || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
@@ -651,13 +656,26 @@ export default function ExtrapaysFormPage() {
 
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
 
-  // « Vérifier ma demande » reste cliquable : si un champ obligatoire manque, on
-  // affiche les erreurs et on renvoie sur le premier champ à compléter.
+  // « Continuer » reste cliquable : si un champ obligatoire manque, on affiche
+  // les erreurs et on renvoie sur le premier champ à compléter.
   const [showContactErrors, setShowContactErrors] = useState(false);
-  const handleVerify = () => {
+  const handleContinue = () => {
     if (!contactsOk) {
       setShowContactErrors(true);
       if (!expediteurOk) setExpediteurOpen(true);
+      if (!contactIsComplete(destinataire)) setDestinataireOpen(true);
+      focusFirstInvalid();
+      return;
+    }
+    goToStep(4);
+  };
+
+  // Étape 4 (« Remise ») -> récapitulatif. Si un contact a été invalidé entre-temps,
+  // retour à l'étape 3 avec les erreurs.
+  const handleVerify = () => {
+    if (!contactsOk) {
+      goToStep(3);
+      setShowContactErrors(true);
       focusFirstInvalid();
       return;
     }
@@ -1209,15 +1227,48 @@ export default function ExtrapaysFormPage() {
                 <ContactSummary title="Expéditeur" data={expediteur} onEdit={() => setExpediteurOpen(true)} />
               )}
 
-              <ContactFields
-                title="Destinataire"
-                data={destinataire}
-                onChange={setDestinataire}
-                withLocation={isLD}
-                locationLabel="Point de livraison"
-                showErrors={showContactErrors}
-                emailHint="Pour que le destinataire reçoive les notifications de suivi de son colis (prise en charge, en route, livré), renseignez son adresse e-mail."
-              />
+              {destinataireOpen ? (
+                <div className="space-y-2">
+                  <ContactFields
+                    title="Destinataire"
+                    data={destinataire}
+                    onChange={setDestinataire}
+                    withLocation={isLD}
+                    locationLabel="Point de livraison"
+                    showErrors={showContactErrors}
+                    emailHint="Pour recevoir les notifications de suivi du colis, veuillez renseigner l’e-mail du destinataire."
+                  />
+                  {contactIsComplete(destinataire) && (
+                    <button type="button" className="btn-ghost w-full" onClick={() => setDestinataireOpen(false)}>
+                      <Check size={16} /> Valider le destinataire
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <ContactSummary title="Destinataire" data={destinataire} onEdit={() => setDestinataireOpen(true)} />
+              )}
+
+              {!contactsOk && (
+                <p className="text-caption text-surface-500">
+                  Nom, téléphone, adresse et ville sont requis pour l'expéditeur et le destinataire.
+                </p>
+              )}
+            </div>
+
+            <ActionDock>
+              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinue}>
+                Continuer
+              </button>
+            </ActionDock>
+          </>
+        )}
+
+        {/* ---------- Étape 4 : Remise du colis ---------- */}
+        {step === 4 && (
+          <>
+            <div className="space-y-3">
+              <h2 className="font-heading text-lg font-semibold text-surface-900">Comment remettre votre colis ?</h2>
 
               <PickupOption
                 value={pickup}
@@ -1227,12 +1278,6 @@ export default function ExtrapaysFormPage() {
                 currency={currency}
                 address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
               />
-
-              {!contactsOk && (
-                <p className="text-caption text-surface-500">
-                  Nom, téléphone, adresse et ville sont requis pour l'expéditeur et le destinataire.
-                </p>
-              )}
             </div>
 
             <ActionDock>
@@ -1245,7 +1290,7 @@ export default function ExtrapaysFormPage() {
               <button
                 type="button"
                 className="btn-primary h-12 flex-1"
-                disabled={contactsOk && !canContinueContenu}
+                disabled={!canContinueContenu}
                 onClick={handleVerify}
               >
                 Vérifier ma demande

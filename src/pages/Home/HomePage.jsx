@@ -6,7 +6,10 @@ import {
 } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
-import { ROUTES, expeditionDetailPath } from '../../routes';
+import { ROUTES, expeditionDetailPath, receivedDetailPath } from '../../routes';
+import destinataireService from '../../services/destinataireService';
+import { rememberReceived } from '../../utils/received';
+import { apiErrorMessage } from '../../utils/marketplace';
 import { fetchExpeditions } from '../../store/slices/expeditionSlice';
 import { selectCartCount } from '../../store/slices/cartSlice';
 import { selectUnreadCount } from '../../store/slices/notificationsSlice';
@@ -119,18 +122,30 @@ export default function HomePage() {
 
     setSearching(true);
     try {
+      // Meme recherche que la page « Colis recus » : POST /destinataire/rechercher.
+      let found = null;
+      let failure = null;
+      try {
+        found = await destinataireService.search(code);
+      } catch (err) {
+        if (err.response?.status !== 404) failure = err;
+      }
+      if (found?.id) {
+        rememberReceived(found);
+        navigate(receivedDetailPath(found.id));
+        return;
+      }
+
+      // Pas un colis qui m'est destine : c'est peut-etre un de mes envois.
       const result = await dispatch(fetchExpeditions());
       if (fetchExpeditions.fulfilled.match(result)) {
         const match = (result.payload || []).find(
           (exp) => (exp.reference || '').toLowerCase() === code.toLowerCase()
         );
-        if (match) {
-          navigate(expeditionDetailPath(match.id));
-        } else {
-          toast.error('Aucune expédition trouvée pour ce numéro.');
-        }
+        if (match) navigate(expeditionDetailPath(match.id));
+        else toast.error('Aucune expédition trouvée pour ce numéro.');
       } else {
-        toast.error('Recherche impossible pour le moment.');
+        toast.error(failure ? apiErrorMessage(failure, 'Recherche impossible pour le moment.') : 'Recherche impossible pour le moment.');
       }
     } finally {
       setSearching(false);

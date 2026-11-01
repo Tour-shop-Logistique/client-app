@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Bike, Car, Check, Loader2, Receipt, Route as RouteIcon } from 'lucide-react';
+import { Bike, Car, Clock3, Loader2, Receipt, Route as RouteIcon, Zap } from 'lucide-react';
 import useRoute from '../../hooks/useRoute';
 import { isValidPoint, formatDistance, formatEta } from '../../services/routingService';
 import LocationPicker from './LocationPicker';
 import expeditionService from '../../services/expeditionService';
+import agencyService from '../../services/agencyService';
 import { estimateMissionFees, expressDisabledInGrid, missionFeeDetail } from '../../utils/pickup';
 import { formatPrice } from '../../utils/format';
 import FeeBreakdown from './FeeBreakdown';
+import { OptionChip, OptionTile } from './OptionCard';
 
 // Champs d'une course du dernier kilomètre (api-enlevement-livraison-client.md) :
 //  - `kind = 'enlevement'` : chez l'expéditeur, depuis l'agence de départ ;
@@ -20,18 +22,18 @@ import FeeBreakdown from './FeeBreakdown';
 
 const MODES = {
   enlevement: [
-    { value: 'express', label: 'Récupération express', hint: 'Prix fixe. Le premier livreur disponible vient chercher le colis.' },
-    { value: 'groupage', label: 'Retrait classique', hint: 'Tarif standard. TourShop affecte un livreur de l’agence.' },
+    { value: 'express', label: 'Express', icon: Zap, tag: 'Rapide', tagTone: 'accent', hint: 'Le premier livreur disponible vient chercher le colis.' },
+    { value: 'groupage', label: 'Classique', icon: Clock3, tag: 'Économique', tagTone: 'success', hint: 'TourShop affecte un livreur de l’agence.' },
   ],
   livraison: [
-    { value: 'express', label: 'Livraison express', hint: 'Prix fixe. Le premier livreur disponible apporte le colis.' },
-    { value: 'groupage', label: 'Livraison classique', hint: 'Tarif standard. TourShop affecte un livreur de l’agence d’arrivée.' },
+    { value: 'express', label: 'Express', icon: Zap, tag: 'Rapide', tagTone: 'accent', hint: 'Le premier livreur disponible apporte le colis.' },
+    { value: 'groupage', label: 'Classique', icon: Clock3, tag: 'Économique', tagTone: 'success', hint: 'TourShop affecte un livreur de l’agence d’arrivée.' },
   ],
 };
 
 const VEHICLES = [
-  { value: 'moto', label: 'Moto', icon: Bike },
-  { value: 'voiture', label: 'Voiture', icon: Car },
+  { value: 'moto', label: 'Moto', icon: Bike, hint: 'Petits colis' },
+  { value: 'voiture', label: 'Voiture', icon: Car, hint: 'Colis volumineux' },
 ];
 
 const LABELS = {
@@ -44,36 +46,30 @@ const agencePoint = (agence) => {
   return isValidPoint(p) ? { ...p, lat: Number(p.lat), lng: Number(p.lng) } : null;
 };
 
-export function Choice({ selected, onClick, icon: Icon, title, hint, aside, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={selected}
-      className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition disabled:opacity-60 ${
-        selected ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
-      }`}
-    >
-      {Icon && (
-        <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selected ? 'bg-white text-primary-600' : 'bg-surface-100 text-surface-500'}`}>
-          <Icon size={16} />
-        </span>
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-surface-900">{title}</span>
-        {hint && <span className="block text-xs text-surface-500">{hint}</span>}
-      </span>
-      {aside && <span className="mt-0.5 shrink-0 text-right text-sm font-bold text-surface-900">{aside}</span>}
-      {selected && <Check size={16} className="mt-1 shrink-0 text-primary-600" />}
-    </button>
-  );
-}
-
 // `currency` : devise des tarifs de la grille (commune de l'agence).
-export default function HomeMissionFields({ value, onChange, agence, communeId, kind = 'enlevement', currency }) {
+export default function HomeMissionFields({
+  value, onChange, agence: agenceProp, communeId: communeIdProp, kind = 'enlevement', currency,
+}) {
   const set = (patch) => onChange({ ...value, ...patch });
   const labels = LABELS[kind];
+
+  // L'agence peut venir d'un brouillon ancien (enregistre avant que la liste des
+  // agences ne renvoie `commune_id` et la position GPS) : on la recharge alors
+  // (GET /agences/{id}) pour retrouver la commune de la grille et le point de depart.
+  const [freshAgence, setFreshAgence] = useState(null);
+  const [agenceStatus, setAgenceStatus] = useState('idle'); // idle | loading | error
+  const incomplete = Boolean(agenceProp?.id) && (!(communeIdProp || agenceProp?.commune_id) || !agencePoint(agenceProp));
+  useEffect(() => {
+    if (!incomplete) return undefined;
+    let alive = true;
+    setAgenceStatus('loading');
+    agencyService.getById(agenceProp.id)
+      .then((r) => { if (alive) { setFreshAgence(r?.agence ?? r?.data ?? null); setAgenceStatus('idle'); } })
+      .catch(() => { if (alive) setAgenceStatus('error'); });
+    return () => { alive = false; };
+  }, [incomplete, agenceProp?.id]);
+  const agence = freshAgence && freshAgence.id === agenceProp?.id ? { ...agenceProp, ...freshAgence } : agenceProp;
+  const communeId = communeIdProp || agence?.commune_id || null;
 
   const origin = agencePoint(agence);
   const point = isValidPoint({ lat: value.latitude, lng: value.longitude })
@@ -139,8 +135,10 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
   let live;
   if (fee != null) {
     live = { tone: 'ready' };
+  } else if (!wantGrid && agenceStatus === 'loading') {
+    live = { loading: true, text: 'Recherche de la commune de l’agence…' };
   } else if (!wantGrid) {
-    live = { text: 'Le montant sera confirmé par l’agence.' };
+    live = { text: 'Aucune commune n’est configurée pour cette agence : le montant sera confirmé par l’agence.' };
   } else if (gridStatus === 'loading' || gridStatus === 'idle') {
     live = { loading: true, text: 'Chargement de la grille tarifaire…' };
   } else if (gridStatus === 'error') {
@@ -154,80 +152,68 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
   } else if (routeLoading) {
     live = { loading: true, text: 'Calcul de la distance par la route…' };
   } else if (routeKm == null) {
-    live = { error: true, text: 'Distance par la route indisponible pour le moment.', retry: reloadRoute };
+    live = {
+      error: true,
+      text: route?.approx
+        ? `Itinéraire routier indisponible pour le moment (environ ${formatDistance(route.distanceKm)} à vol d’oiseau). Nouvel essai automatique ; sinon l’agence confirmera le montant.`
+        : 'Distance par la route indisponible pour le moment.',
+      retry: reloadRoute,
+    };
   } else if (fees && !fee) {
     live = { text: 'Ce mode n’est pas disponible pour cette distance : choisissez l’autre mode.' };
   } else {
     live = { text: `Aucune tranche tarifaire pour ${formatDistance(routeKm)} avec ce véhicule : le montant sera confirmé par l’agence.` };
   }
 
-  return (
-    <div className="space-y-3">
-      {live.tone === 'ready' ? (
-        <div className="flex items-center gap-3 rounded-xl bg-primary-600 px-3.5 py-3 text-white" role="status" aria-live="polite">
-          <Receipt size={20} className="shrink-0" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-primary-100">
-              {kind === 'livraison' ? 'Frais de livraison' : 'Frais d’enlèvement'}
-              {routeKm != null ? ` · ${formatDistance(routeKm)} par la route` : ''}
-            </p>
-            <p className="font-heading text-lg font-bold leading-tight">{formatPrice(fee, currency)}</p>
-          </div>
-          <span className="shrink-0 text-xs text-primary-100">{value.mode === 'express' ? 'express' : 'classique'}</span>
-        </div>
-      ) : (
-        <div
-          className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs ${live.error ? 'bg-amber-50 text-amber-800' : 'bg-surface-50 text-surface-600'}`}
-          role="status"
-          aria-live="polite"
-        >
-          {live.loading && <Loader2 size={14} className="mt-px shrink-0 animate-spin text-primary-600" aria-hidden="true" />}
-          <span className="min-w-0 flex-1">{live.text}</span>
-          {live.retry && (
-            <button type="button" onClick={live.retry} className="shrink-0 font-semibold text-primary-700 underline">
-              Réessayer
-            </button>
-          )}
-        </div>
-      )}
+  const eta = route && !route.approx ? formatEta(route.durationMin) : null;
+  const sectionTitle = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-surface-500';
 
-      <div className="space-y-2">
-        {MODES[kind].map((m) => {
-          const off = m.value === 'express' && expressOff;
-          const price = feeOf(m.value);
-          return (
-            <Choice
-              key={m.value}
-              selected={value.mode === m.value}
-              onClick={() => set({ mode: m.value })}
-              title={m.label}
-              hint={off ? 'Indisponible pour cette distance : choisissez le mode classique.' : m.hint}
-              aside={!off && price != null ? formatPrice(price, currency) : null}
-              disabled={off}
-            />
-          );
-        })}
+  return (
+    <div className="space-y-4">
+      {/* 1. Mode : express ou classique, prix côte à côte pour comparer. */}
+      <div>
+        <p className={sectionTitle}>Mode</p>
+        <div className="grid grid-cols-2 gap-2">
+          {MODES[kind].map((m) => {
+            const off = m.value === 'express' && expressOff;
+            const price = feeOf(m.value);
+            return (
+              <OptionTile
+                key={m.value}
+                selected={value.mode === m.value}
+                onClick={() => set({ mode: m.value })}
+                icon={m.icon}
+                title={m.label}
+                tag={m.tag}
+                tagTone={m.tagTone}
+                hint={off ? 'Indisponible pour cette distance.' : m.hint}
+                price={!off && price != null ? formatPrice(price, currency) : null}
+                priceNote={!off && price == null ? 'Selon la distance' : null}
+                disabled={off}
+              />
+            );
+          })}
+        </div>
       </div>
 
+      {/* 2. Véhicule. */}
       <div>
-        <p className="mb-1.5 text-sm font-medium text-surface-700">Véhicule adapté au colis</p>
+        <p className={sectionTitle}>Véhicule</p>
         <div className="grid grid-cols-2 gap-2">
           {VEHICLES.map((v) => (
-            <button
+            <OptionChip
               key={v.value}
-              type="button"
+              selected={value.vehicule === v.value}
               onClick={() => set({ vehicule: v.value })}
-              aria-pressed={value.vehicule === v.value}
-              className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold transition ${
-                value.vehicule === v.value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-surface-200 text-surface-600'
-              }`}
-            >
-              <v.icon size={16} /> {v.label}
-            </button>
+              icon={v.icon}
+              title={v.label}
+              hint={v.hint}
+            />
           ))}
         </div>
       </div>
 
+      {/* 3. Point sur la carte. */}
       <LocationPicker
         value={value}
         onChange={(lat, lng) => set({ latitude: lat, longitude: lng })}
@@ -238,28 +224,51 @@ export default function HomeMissionFields({ value, onChange, agence, communeId, 
         autoLocate={kind === 'enlevement'}
       />
 
-      <div className="flex items-start gap-2 rounded-xl bg-surface-50 px-3 py-2.5 text-xs text-surface-600">
-        <RouteIcon size={15} className="mt-px shrink-0 text-primary-600" />
-        {!point ? (
-          <span>Recherchez un lieu, touchez la carte à l’endroit où le livreur doit se rendre, ou utilisez votre position.</span>
-        ) : !origin ? (
-          <span>{labels.agence.charAt(0).toUpperCase() + labels.agence.slice(1)} n’a pas de position enregistrée : la distance sera confirmée par l’agence.</span>
-        ) : status === 'loading' && !route ? (
-          <span>Calcul de la distance par la route…</span>
-        ) : route && !route.approx ? (
-          <span>
-            Distance par la route depuis {labels.agence} : <strong className="text-surface-900">{formatDistance(route.distanceKm)}</strong>
-            {formatEta(route.durationMin) && <> · environ {formatEta(route.durationMin)}</>}
-          </span>
-        ) : route?.approx ? (
-          <span>
-            Itinéraire routier indisponible pour le moment (environ {formatDistance(route.distanceKm)} à vol d’oiseau). Nouvel essai automatique ; sinon l’agence confirmera la distance.
-          </span>
-        ) : (
-          <span>Distance indisponible : l’agence la confirmera.</span>
-        )}
-      </div>
-      {fee != null && <FeeBreakdown detail={feeDetail} currency={currency} />}
+      {/* 4. Résultat : montant + distance dès qu'ils sont connus, sinon l'étape en cours. */}
+      {live.tone === 'ready' ? (
+        <div className="space-y-2" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 rounded-2xl bg-primary-600 px-4 py-3 text-white">
+            <Receipt size={22} className="shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-primary-100">
+                {kind === 'livraison' ? 'Frais de livraison' : 'Frais d’enlèvement'} · {value.mode === 'express' ? 'express' : 'classique'}
+              </p>
+              <p className="font-heading text-xl font-bold leading-tight">{formatPrice(fee, currency)}</p>
+            </div>
+            {routeKm != null && (
+              <div className="shrink-0 text-right text-xs text-primary-100">
+                <p className="flex items-center justify-end gap-1 font-semibold text-white"><RouteIcon size={13} aria-hidden="true" />{formatDistance(routeKm)}</p>
+                {eta && <p>≈ {eta}</p>}
+              </div>
+            )}
+          </div>
+          <details className="group rounded-xl bg-surface-50 text-xs">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 font-semibold text-primary-700">
+              Voir le détail du tarif
+              <span className="text-surface-400 transition group-open:rotate-180" aria-hidden="true">⌄</span>
+            </summary>
+            <div className="px-1 pb-1"><FeeBreakdown detail={feeDetail} currency={currency} /></div>
+          </details>
+        </div>
+      ) : (
+        <div
+          className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs ${live.error ? 'bg-amber-50 text-amber-800' : 'bg-surface-50 text-surface-600'}`}
+          role="status"
+          aria-live="polite"
+        >
+          {live.loading ? (
+            <Loader2 size={14} className="mt-px shrink-0 animate-spin text-primary-600" aria-hidden="true" />
+          ) : (
+            <RouteIcon size={14} className="mt-px shrink-0 text-primary-600" aria-hidden="true" />
+          )}
+          <span className="min-w-0 flex-1">{live.text}</span>
+          {live.retry && (
+            <button type="button" onClick={live.retry} className="shrink-0 font-semibold text-primary-700 underline">
+              Réessayer
+            </button>
+          )}
+        </div>
+      )}
 
       <label className="block text-sm font-medium text-surface-700">
         Instructions au livreur (optionnel)
