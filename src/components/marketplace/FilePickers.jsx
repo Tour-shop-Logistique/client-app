@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Camera, ImagePlus, X, Star, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
+import { compressImage } from '../../utils/image';
 
 export const ACCEPTED_IMAGES = 'image/jpeg,image/png,image/jpg,image/webp';
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -142,10 +143,19 @@ export function ProofPicker({
   const cameraRef = useRef(null);
   const [url] = useObjectUrls(useMemo(() => (file ? [file] : []), [file]));
 
-  const pick = (e) => {
-    const [f] = validImages([...(e.target.files ?? [])]);
+  // Photo reduite avant envoi (limite 5 Mo de l'API) : une photo de telephone
+  // de 8 Mo passe ainsi sans erreur.
+  const pick = async (e) => {
+    const input = e.target;
+    const [picked] = [...(input.files ?? [])];
+    input.value = '';
+    if (!picked) return;
+    if (!/^image\/(jpeg|png|jpg|webp)$/.test(picked.type)) {
+      toast.error(`${picked.name} : format non accepté (jpeg, png, webp).`);
+      return;
+    }
+    const [f] = validImages([await compressImage(picked)]);
     if (f) onChange(f);
-    e.target.value = '';
   };
 
   return (

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
 import { orderPath, salePath, expeditionDetailPath } from '../routes';
 import { pushActivity } from '../store/slices/notificationsSlice';
+import { objectLabel } from '../services/paymentService';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
 import { playNotificationSound } from '../utils/notificationSound';
@@ -66,6 +67,9 @@ export function useRealtimeUpdates(onUpdate, options = {}) {
       : undefined,
     onExpeditionFraisUpdated: shouldListen('expeditions')
       ? (d, m) => emit(d, m, 'expedition.frais_annexes_updated')
+      : undefined,
+    onPaymentProofDecision: shouldListen('expeditions')
+      ? (action, d, m) => emit(d, m, `payment_proof.${action}`)
       : undefined,
     onColisStatusChanged: shouldListen('colis')
       ? (d, m) => emit(d, m, 'colis.status_changed')
@@ -180,6 +184,8 @@ function activityOf(eventType, item, role, expId, commandeId, step) {
     case 'expedition.payment_confirmed': return { kind: 'parcel_payment', link: exp, targetId: expId };
     case 'expedition.tarif_recalculated': return { kind: 'parcel_price', link: exp, targetId: expId };
     case 'expedition.frais_annexes_updated': return { kind: 'parcel_fees', link: exp, targetId: expId };
+    case 'payment_proof.confirmee': return { kind: 'parcel_payment', link: exp, targetId: expId };
+    case 'payment_proof.rejetee': return { kind: 'parcel_refused', link: exp, targetId: expId };
     case 'expedition.delivered': return { kind: 'parcel_delivered', link: exp, targetId: expId };
     case 'mission.step': return { kind: step === 'colis_livre' ? 'parcel_delivered' : 'parcel_step', link: exp, targetId: expId };
     case 'colis.status_changed':
@@ -211,6 +217,9 @@ function soundFor(eventType, item, role) {
     case 'marketplace.LivraisonMarketplace.refusee':
     case 'marketplace.LivraisonMarketplace.expiree':
       return 'alert';
+    case 'payment_proof.rejetee':
+      return 'alert';
+    case 'payment_proof.confirmee':
     case 'expedition.payment_confirmed':
     case 'expedition.tarif_recalculated':
     case 'expedition.frais_annexes_updated':
@@ -298,15 +307,38 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           break;
         }
         // Frais annexes (douane, assurance...) fixes ou modifies par le backoffice.
+        // Frais annexes (douane, assurance...) fixes ou modifies par le backoffice
+        // (PARCOURS_FRAIS_ANNEXES_CLIENT_API.md §1) : `frais_annexes` = montant a regler,
+        // 0 = plus rien a payer ; un nouveau montant remet le statut a `en_attente`.
         case 'expedition.frais_annexes_updated': {
-          const montant = num(item?.frais_annexes);
-          say.warning(montant > 0 ? 'Des frais annexes ont été ajoutés à votre expédition' : 'Les frais annexes de votre expédition ont été mis à jour', {
-            description: [ref && `Expédition ${ref}`, montant > 0 && `Montant : ${formatPrice(montant, item?.devise_origine || undefined)}`].filter(Boolean).join(' · ') || undefined,
-            action: openExp,
-            duration: 10000,
-          });
+          const montant = num(item?.frais_annexes ?? meta?.changes?.frais_annexes?.to ?? meta?.changes?.frais_annexes);
+          const money = montant > 0 ? formatPrice(montant, item?.devise_origine || undefined) : null;
+          const detail = [ref && `Expédition ${ref}`, money && `Montant : ${money}`].filter(Boolean).join(' · ');
+          if (montant === 0) {
+            say.info('Plus de frais annexes à régler', { description: detail || undefined, action: openExp });
+          } else {
+            say.warning('Des frais annexes sont à régler', {
+              description: [detail, 'Payez l’agence, puis déposez la preuve.'].filter(Boolean).join(' · '),
+              action: openExp,
+              duration: 12000,
+            });
+          }
           break;
         }
+        // Decision de l'agence sur une preuve de paiement (§6).
+        case 'payment_proof.confirmee':
+          say.success('Paiement confirmé', {
+            description: [ref && `Expédition ${ref}`, item?.objet_paiement && objectLabel(item.objet_paiement)].filter(Boolean).join(' · ') || undefined,
+            action: openExp,
+          });
+          break;
+        case 'payment_proof.rejetee':
+          say.warning('Preuve de paiement rejetée', {
+            description: [item?.motif_rejet && `Motif : ${item.motif_rejet}`, 'Vous pouvez déposer une nouvelle preuve.'].filter(Boolean).join(' · '),
+            action: openExp,
+            duration: 15000,
+          });
+          break;
         case 'expedition.delivered':
           say.success('Votre colis a ete livre 🎉');
           break;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Wallet, Copy, Check, Loader2, Receipt, RefreshCw, Smartphone, Landmark, Banknote, CreditCard, CircleDollarSign,
-  AlertCircle, Bike,
+  AlertCircle, Bike, Clock3, MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomSheet from '../common/BottomSheet';
@@ -69,7 +69,7 @@ function AgencyMethods({ methods, selected, onSelect }) {
   return (
     <ul className="space-y-2">
       {methods.map((m) => {
-        const Icon = METHOD_ICON[m.methode] || CircleDollarSign;
+        const Icon = METHOD_ICON[m.methode === 'card' ? 'other' : m.methode] || CircleDollarSign;
         const active = selected === m.id;
         return (
           <li key={m.id}>
@@ -85,7 +85,7 @@ function AgencyMethods({ methods, selected, onSelect }) {
                 <Icon size={16} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-surface-900">{m.libelle || methodLabel(m.methode)}</span>
+                <span className="block truncate text-sm font-semibold text-surface-900">{m.libelle || methodLabel(m.methode === 'card' ? 'other' : m.methode)}</span>
                 {m.numero_destinataire && (
                   <span className="block font-heading text-[15px] font-bold tracking-wide text-surface-800">{m.numero_destinataire}</span>
                 )}
@@ -102,11 +102,11 @@ function AgencyMethods({ methods, selected, onSelect }) {
 // Formulaire de dépôt de preuve. `mode` : 'frais' (route générique) ou
 // 'livreur' (payer-livreur du destinataire, sans objet de paiement).
 function ProofForm({
-  expedition, viewer, mode, mission, defaultAmount, currency, onDone, onCancel,
+  expedition, viewer, mode, mission, defaultAmount, currency, onDone, onCancel, lockedObject = null,
 }) {
   const [methods, setMethods] = useState(null);
   const [methodId, setMethodId] = useState(null);
-  const [objet, setObjet] = useState('tout_compris');
+  const [objet, setObjet] = useState(lockedObject || 'tout_compris');
   const [montant, setMontant] = useState(defaultAmount != null ? String(defaultAmount) : '');
   const [methode, setMethode] = useState('mobile_money');
   const [reference, setReference] = useState('');
@@ -129,7 +129,8 @@ function ProofForm({
 
   const pickMethod = (m) => {
     setMethodId(m.id);
-    if (PAYMENT_METHODS.some((p) => p.value === m.methode)) setMethode(m.methode);
+    const methodeValue = m.methode === 'card' ? 'other' : m.methode;
+    if (PAYMENT_METHODS.some((p) => p.value === methodeValue)) setMethode(methodeValue);
   };
 
   const amount = num(montant);
@@ -183,7 +184,13 @@ function ProofForm({
       <div className="space-y-3">
         {!forDriver && <p className="text-sm font-medium text-surface-700">2. Déposez la preuve</p>}
 
-        {!forDriver && (
+        {!forDriver && lockedObject && (
+          <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-800">
+            <Receipt size={14} aria-hidden="true" /> Vous réglez : {objectLabel(lockedObject)}
+          </p>
+        )}
+
+        {!forDriver && !lockedObject && (
           <label className="block text-sm font-medium text-surface-700">
             Ce que vous réglez
             <select className="input-field mt-1.5" value={objet} onChange={(e) => setObjet(e.target.value)}>
@@ -337,7 +344,8 @@ const totalLines = (expedition, total) => {
 const annexesNote = (expedition) => {
   const statut = String(expedition?.statut_paiement_frais ?? '').toLowerCase();
   if (!statut) return null;
-  return statut === 'paye' || statut === 'paid' ? 'Payés' : 'À régler';
+  if (statut === 'paye' || statut === 'paid') return 'Payés';
+  return statut === 'refuse' ? 'Refusés' : 'À régler';
 };
 
 export default function PaymentSection({
@@ -366,6 +374,16 @@ export default function PaymentSection({
   useEffect(() => { load(); }, [load, refreshKey]);
 
   const pending = useMemo(() => (proofs ?? []).filter((p) => p.statut === 'en_attente'), [proofs]);
+  // Frais annexes a regler (PARCOURS_FRAIS_ANNEXES_CLIENT_API.md) : bloc affiche
+  // tant que `frais_annexes > 0` et `statut_paiement_frais = en_attente` (le statut
+  // vient du serveur, jamais calcule ici). Etat deduit de la liste des preuves.
+  const frais = num(expedition.frais_annexes);
+  const fraisStatut = String(expedition.statut_paiement_frais || 'en_attente').toLowerCase();
+  const fraisDue = viewer === 'client' && frais > 0 && fraisStatut === 'en_attente';
+  const fraisProofs = (proofs ?? []).filter((p) => p.objet_paiement === 'frais_annexes');
+  const fraisPending = fraisProofs.some((p) => p.statut === 'en_attente');
+  const fraisRejected = !fraisPending && fraisProofs[0]?.statut === 'rejetee' ? fraisProofs[0] : null;
+  const agenceContact = String(expedition.agence?.whatsapp || expedition.agence?.telephone || '').replace(/\D/g, '');
   const canPayDriver = viewer === 'destinataire' && driverMission && expedition.livraison_payee_par_destinataire;
   const driverPrice = num(driverMission?.montant_fixe ?? driverMission?.montant_final ?? driverMission?.montant);
 
@@ -386,6 +404,51 @@ export default function PaymentSection({
         </span>
       </div>
 
+      {fraisDue && (
+        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5" role="region" aria-label="Frais annexes à régler">
+          <div className="flex items-start gap-3">
+            <span className="icon-tile h-10 w-10 shrink-0 rounded-xl bg-amber-100 text-amber-700"><Receipt size={19} aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-surface-900">Frais annexes à régler</p>
+              <p className="font-heading text-xl font-bold text-amber-800">{formatPrice(frais, currency)}</p>
+              <p className="mt-1 text-xs leading-snug text-surface-600">
+                Douane, assurance… fixés après le contrôle de votre colis. Payez-les directement à l’agence de départ (hors application), puis déposez la preuve de paiement.
+              </p>
+            </div>
+          </div>
+
+          {fraisPending ? (
+            <p className="mt-3 flex items-start gap-2 rounded-xl bg-white px-3 py-2.5 text-xs text-surface-700" role="status">
+              <Clock3 size={14} className="mt-px shrink-0 text-amber-600" aria-hidden="true" />
+              Preuve envoyée, en attente de confirmation de l’agence. Vous serez prévenu de sa décision.
+            </p>
+          ) : (
+            <>
+              {fraisRejected && (
+                <p className="mt-3 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-xs text-red-700" role="alert">
+                  <AlertCircle size={14} className="mt-px shrink-0" aria-hidden="true" />
+                  <span>Preuve rejetée{fraisRejected.motif_rejet ? ` : ${fraisRejected.motif_rejet}` : ''}. Corrigez puis déposez une nouvelle preuve.</span>
+                </p>
+              )}
+              <button type="button" className="btn-primary mt-3 w-full" disabled={proofs === null} onClick={() => setSheet('annexes')}>
+                <Receipt size={16} /> {fraisRejected ? 'Déposer une nouvelle preuve' : 'Payer les frais annexes'}
+              </button>
+            </>
+          )}
+
+          {agenceContact && (
+            <a
+              href={`https://wa.me/${agenceContact}?text=${encodeURIComponent(`Bonjour, je vous contacte au sujet des frais annexes de l'expédition ${expedition.reference || ''}.`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700"
+            >
+              <MessageCircle size={14} aria-hidden="true" /> Contacter l’agence
+            </a>
+          )}
+        </div>
+      )}
+
       {viewer === 'client' && total != null && (
         <dl className="divide-y divide-surface-100 rounded-xl bg-surface-50 px-3 text-sm">
           {/* Ventilation du total (enlèvement compris), quand l'API la détaille. */}
@@ -395,7 +458,7 @@ export default function PaymentSection({
               <dd className="text-right font-medium text-surface-800">
                 {formatPrice(l.value, currency)}
                 {l.key === 'annexes' && annexesNote(expedition) && (
-                  <span className={`ml-1.5 rounded-full px-1.5 py-px text-[11px] font-semibold ${annexesNote(expedition) === 'Payés' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <span className={`ml-1.5 rounded-full px-1.5 py-px text-[11px] font-semibold ${annexesNote(expedition) === 'Payés' ? 'bg-emerald-50 text-emerald-700' : annexesNote(expedition) === 'Refusés' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
                     {annexesNote(expedition)}
                   </span>
                 )}
@@ -456,17 +519,18 @@ export default function PaymentSection({
       <BottomSheet
         open={Boolean(sheet)}
         onClose={() => setSheet(null)}
-        title={sheet === 'livreur' ? 'Payer le livreur' : 'Payer l’expédition'}
+        title={sheet === 'livreur' ? 'Payer le livreur' : sheet === 'annexes' ? 'Payer les frais annexes' : 'Payer l’expédition'}
       >
         {sheet && (
           <ProofForm
             key={sheet}
             expedition={expedition}
             viewer={viewer}
-            mode={sheet}
+            mode={sheet === 'annexes' ? 'frais' : sheet}
+            lockedObject={sheet === 'annexes' ? 'frais_annexes' : null}
             mission={driverMission}
             currency={sheet === 'livreur' ? driverMission?.devise : currency}
-            defaultAmount={sheet === 'livreur' ? driverPrice : (viewer === 'client' ? remaining : null)}
+            defaultAmount={sheet === 'livreur' ? driverPrice : sheet === 'annexes' ? frais : (viewer === 'client' ? remaining : null)}
             onDone={done}
             onCancel={() => setSheet(null)}
           />

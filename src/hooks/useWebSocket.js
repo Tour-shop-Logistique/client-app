@@ -23,6 +23,7 @@ const channelRefs = new Map(); // channelName -> instance Echo channel
  * @param {Function} handlers.onExpeditionDelivered - Colis livre.
  * @param {Function} handlers.onExpeditionTariffRecalculated - Tarif recalcule apres controle des colis.
  * @param {Function} handlers.onExpeditionFraisUpdated - Frais annexes fixes / modifies par le backoffice.
+ * @param {Function} handlers.onPaymentProofDecision - (action, data, meta) decision de l'agence sur une preuve de paiement (`confirmee` | `rejetee`).
  * @param {Function} handlers.onDeliveryOfferReceived - Nouvelle offre de livreur recue.
  * @param {Function} handlers.onColisStatusChanged - Changement de statut d'un colis.
  * @param {Function} handlers.onMissionPublished - Mission express de ma demande ouverte aux livreurs.
@@ -54,7 +55,8 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
     const { action, ids, references, changes, count, at } = payload;
     // `model` peut arriver en FQCN ("App\\Models\\Mission") ; `data` toujours en tableau.
     const model = String(payload.model || '').split('\\').pop();
-    const data = Array.isArray(payload.data) ? payload.data : payload.data ? [payload.data] : [];
+    const raw = payload.data ?? payload.items;
+    const data = Array.isArray(raw) ? raw : raw ? [raw] : [];
     const meta = { ids: ids || [], references: references || [], changes, count, at, model, action };
     const h = handlersRef.current;
 
@@ -93,6 +95,15 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
           h.onExpeditionFraisUpdated(data, meta);
         } else {
           console.warn(`⚠️ [WebSocket] Action '${action}' non geree pour Expedition ou handler manquant`);
+        }
+        break;
+
+      // Decision de l'agence sur une preuve de paiement (frais annexes, etc.).
+      case 'PreuvePaiement':
+        if ((action === 'confirmee' || action === 'rejetee') && h.onPaymentProofDecision) {
+          h.onPaymentProofDecision(action, data, meta);
+        } else {
+          console.warn(`⚠️ [WebSocket] Action '${action}' non geree pour PreuvePaiement ou handler manquant`);
         }
         break;
 
