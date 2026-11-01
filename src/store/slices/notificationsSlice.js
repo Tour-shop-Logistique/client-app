@@ -1,16 +1,17 @@
 import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
 import notificationService from '../../services/notificationService';
 import { logout, sessionExpired } from './authSlice';
+import { fetchExpeditions, fetchExpeditionStats } from './expeditionSlice';
 import { loadJson, saveJson } from '../persist';
 import {
   ROUTES, expeditionDetailPath, orderPath, salePath,
 } from '../../routes';
 
 // Deux sources reunies dans l'ecran Notifications :
-//  - server : historique persiste (GET /client/notifications), partage entre
+//  - server : historique persiste (GET /expedition/client/notifications), partage entre
 //             appareils et marquable lu cote API. Route demandee au backend
-//             (DEMANDE_BACKEND_APP_CLIENT_COMPLETE.md F1) : tant qu'elle n'existe
-//             pas (404/405), `server.available` passe a false et rien n'est affiche.
+//             (/expedition/client/notifications, user-parcour/api-client-livreur.md) ;
+//             si la route est absente (404/405), `server.available` passe a false.
 //  - items  : fil local alimente par le WebSocket et les push recus app ouverte,
 //             conserve sur l'appareil (50 derniers) et vide a la deconnexion.
 
@@ -20,7 +21,19 @@ const DUPLICATE_MS = 30 * 1000; // meme evenement relaye par le WebSocket ET le 
 
 // --- Types de notification -> forme commune { kind, titre, message, link } ----
 
+// `data.type` documente (api-client-livreur.md, « Types de notification client »).
+const TYPE_KIND = {
+  demande_acceptee: 'parcel_accepted',
+  demande_refusee: 'parcel_refused',
+  expedition_controlled: 'parcel_price',
+  frais_annexes_updated: 'parcel_fees',
+  colis_receptionne_depart: 'parcel_received',
+  colis_livre: 'parcel_delivered',
+};
+
 const KIND_RULES = [
+  [/colis_receptionne|receptionn|re[cç]u.*agence/, 'parcel_received'],
+  [/controlled|contr[ôo]l[ée]|montant r[ée]vis/, 'parcel_price'],
   [/livr[ée]e?(?![a-z])|colis_livre|delivered/, 'parcel_delivered'],
   [/frais.?annexe/, 'parcel_fees'],
   [/refus|rejet|demande_refusee/, 'parcel_refused'],
@@ -53,7 +66,7 @@ const linkOf = (cible, kind) => {
 export const mapServerNotification = (n) => {
   const data = n?.data || {};
   const signature = `${data.type || ''} ${n?.type || ''} ${data.titre || data.title || ''}`.replace(/[\\]/g, ' ');
-  let kind = kindFromText(signature);
+  let kind = TYPE_KIND[data.type] || kindFromText(signature);
   // Repli sur le type de cible quand le texte ne suffit pas.
   if (kind === 'info') {
     const type = String(data.cible?.type || '').toLowerCase();
@@ -81,13 +94,28 @@ const message = (err, fallback) => err.response?.data?.message || fallback;
 // Routes pas encore deployees cote backend : pas une erreur a montrer.
 const isMissingRoute = (err) => [404, 405, 501].includes(err.response?.status);
 
+// Nouvelle notification serveur non lue sur une expedition (acceptee, refusee,
+// montant revise, frais annexes, recue a l'agence, livree) : on recharge les
+// envois et les compteurs pour que listes et details soient a jour.
+const EXPEDITION_KINDS = new Set(['parcel_accepted', 'parcel_refused', 'parcel_price', 'parcel_fees', 'parcel_received', 'parcel_delivered']);
+
 export const fetchServerNotifications = createAsyncThunk(
   'notifications/fetchServer',
-  async ({ page = 1 } = {}, { rejectWithValue }) => {
+  async ({ page = 1 } = {}, { getState, dispatch, rejectWithValue }) => {
     try {
       const p = await notificationService.fetchPage(page);
       const list = Array.isArray(p) ? p : p?.data ?? [];
       const items = list.map(mapServerNotification);
+      if (page === 1) {
+        const { server } = getState().notifications;
+        if (server.loaded) {
+          const known = new Set(server.items.map((n) => n.id));
+          if (items.some((n) => !n.lue && !known.has(n.id) && EXPEDITION_KINDS.has(n.kind))) {
+            dispatch(fetchExpeditions());
+            dispatch(fetchExpeditionStats());
+          }
+        }
+      }
       return {
         items, page: p?.current_page ?? page, lastPage: p?.last_page ?? 1, available: true,
       };
@@ -107,6 +135,19 @@ export const markServerNotificationRead = createAsyncThunk(
     } catch (err) {
       if (isMissingRoute(err)) return serverId;
       return rejectWithValue(message(err, 'Action impossible.'));
+    }
+  }
+);
+
+export const deleteServerNotification = createAsyncThunk(
+  'notifications/deleteServer',
+  async (serverId, { rejectWithValue }) => {
+    try {
+      await notificationService.remove(serverId);
+      return serverId;
+    } catch (err) {
+      if (err.response?.status === 404) return serverId;
+      return rejectWithValue(message(err, 'Suppression impossible.'));
     }
   }
 );
@@ -167,6 +208,10 @@ const notificationsSlice = createSlice({
       if (item) item.lue = true;
       saveJson(ACTIVITY_KEY, state.items);
     },
+    removeActivity(state, action) {
+      state.items = state.items.filter((n) => n.id !== action.payload);
+      saveJson(ACTIVITY_KEY, state.items);
+    },
     clearActivity(state) {
       state.items = [];
       saveJson(ACTIVITY_KEY, state.items);
@@ -201,6 +246,10 @@ const notificationsSlice = createSlice({
         const item = state.server.items.find((n) => n.serverId === action.meta.arg);
         if (item) item.lue = true;
       })
+      // Suppression optimiste ; en cas d'echec, la liste est rechargee par l'ecran.
+      .addCase(deleteServerNotification.pending, (state, action) => {
+        state.server.items = state.server.items.filter((n) => n.serverId !== action.meta.arg);
+      })
       .addCase(markAllServerNotificationsRead.pending, (state) => {
         state.server.items = state.server.items.map((n) => ({ ...n, lue: true }));
       });
@@ -208,7 +257,7 @@ const notificationsSlice = createSlice({
 });
 
 export const {
-  pushActivity, markAllRead, markRead, clearActivity,
+  pushActivity, markAllRead, markRead, clearActivity, removeActivity,
 } = notificationsSlice.actions;
 
 // Fil unifie, sans doublon : un evenement local qui a aussi produit une

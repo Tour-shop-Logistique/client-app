@@ -8,12 +8,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import { ROUTES, expeditionDetailPath, receivedDetailPath } from '../../routes';
 import destinataireService from '../../services/destinataireService';
+import expeditionService from '../../services/expeditionService';
+import PublicTrackingSheet from '../../components/expedition/PublicTrackingSheet';
 import { rememberReceived } from '../../utils/received';
 import { apiErrorMessage } from '../../utils/marketplace';
 import { fetchExpeditions } from '../../store/slices/expeditionSlice';
 import { selectCartCount } from '../../store/slices/cartSlice';
 import { selectUnreadCount } from '../../store/slices/notificationsSlice';
-import { openAuthSheet } from '../../store/slices/uiSlice';
 import { CLOSED_STATUSES, getProgress, villeDepart, villeDestination } from '../../utils/expeditionStatus';
 import { firstName, userInitials } from '../../utils/user';
 import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
@@ -102,6 +103,7 @@ export default function HomePage() {
 
   const [trackingCode, setTrackingCode] = useState('');
   const [searching, setSearching] = useState(false);
+  const [publicResult, setPublicResult] = useState(null); // suivi public (sans compte)
 
   useEffect(() => {
     if (isAuthenticated && expStatus === 'idle' && expeditions.length === 0) dispatch(fetchExpeditions());
@@ -110,19 +112,34 @@ export default function HomePage() {
   const liveParcel = expeditions.find((e) => !CLOSED_STATUSES.includes(e.statut_expedition));
   const name = firstName(user);
 
+  // Suivi public (POST /expedition/suivi, sans compte) : vue reduite dans une feuille.
+  const trackPublicly = async (code) => {
+    try {
+      const exp = await expeditionService.trackPublic(code);
+      if (exp?.reference) setPublicResult(exp);
+      else toast.error('Aucune expédition trouvée pour ce numéro.');
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 404) toast.error('Aucune expédition trouvée pour ce numéro.');
+      else if (status === 429) toast.error('Trop de recherches. Réessayez dans une minute.');
+      else toast.error('Recherche impossible pour le moment.');
+    }
+  };
+
   const handleTrackingSubmit = async (e) => {
     e.preventDefault();
     const code = trackingCode.trim();
     if (!code) return;
 
-    if (!isAuthenticated) {
-      dispatch(openAuthSheet({ mode: 'login', reason: 'default' }));
-      return;
-    }
-
     setSearching(true);
     try {
-      // Meme recherche que la page « Colis recus » : POST /destinataire/rechercher.
+      // Visiteur : suivi public, sans compte.
+      if (!isAuthenticated) {
+        await trackPublicly(code);
+        return;
+      }
+
+      // Connecte : meme recherche que la page « Colis recus » (POST /destinataire/rechercher).
       let found = null;
       let failure = null;
       try {
@@ -142,8 +159,12 @@ export default function HomePage() {
         const match = (result.payload || []).find(
           (exp) => (exp.reference || '').toLowerCase() === code.toLowerCase()
         );
-        if (match) navigate(expeditionDetailPath(match.id));
-        else toast.error('Aucune expédition trouvée pour ce numéro.');
+        if (match) {
+          navigate(expeditionDetailPath(match.id));
+          return;
+        }
+        // Dernier recours : suivi public (colis d'un tiers, vue reduite).
+        await trackPublicly(code);
       } else {
         toast.error(failure ? apiErrorMessage(failure, 'Recherche impossible pour le moment.') : 'Recherche impossible pour le moment.');
       }
@@ -228,7 +249,9 @@ export default function HomePage() {
                 type="text"
                 value={trackingCode}
                 onChange={(e) => setTrackingCode(e.target.value)}
-                placeholder="N° de suivi"
+                placeholder="N° de suivi (ex : CBL001LD)"
+                autoCapitalize="characters"
+                autoComplete="off"
                 className="min-w-0 flex-1 bg-transparent text-surface-900 placeholder:text-surface-500 focus:outline-none"
               />
             </div>
@@ -332,6 +355,13 @@ export default function HomePage() {
           </Link>
         </section>
       </div>
+
+      <PublicTrackingSheet
+        expedition={publicResult}
+        open={Boolean(publicResult)}
+        onClose={() => setPublicResult(null)}
+        isAuthenticated={isAuthenticated}
+      />
     </div>
   );
 }

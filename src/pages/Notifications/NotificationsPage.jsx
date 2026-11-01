@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, Package, PackageCheck, Truck, CircleCheckBig, CircleX, CheckCheck, Trash2, Wallet, Receipt,
-  ShoppingBag, TriangleAlert, Gift, CalendarClock, Lock, RefreshCw,
+  ShoppingBag, TriangleAlert, Gift, CalendarClock, Lock, RefreshCw, Building2, X,
 } from 'lucide-react';
 import TopBar from '../../components/common/TopBar';
 import EmptyState from '../../components/common/EmptyState';
@@ -11,7 +11,7 @@ import { EmptyParcelArt } from '../../components/illustrations';
 import usePushSubscription from '../../hooks/usePushSubscription';
 import {
   markAllRead, markRead, clearActivity, fetchServerNotifications, markServerNotificationRead,
-  markAllServerNotificationsRead, selectActivityFeed,
+  markAllServerNotificationsRead, deleteServerNotification, removeActivity, selectActivityFeed,
 } from '../../store/slices/notificationsSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { formatDateTime, formatRelativeShort } from '../../utils/format';
@@ -27,6 +27,7 @@ const KIND = {
   parcel_refused: { icon: CircleX, className: 'bg-red-100 text-red-600' },
   parcel_payment: { icon: Wallet, className: 'bg-teal-100 text-teal-600' },
   parcel_price: { icon: Receipt, className: 'bg-amber-100 text-amber-700' },
+  parcel_received: { icon: Building2, className: 'bg-teal-100 text-teal-600' },
   parcel_fees: { icon: Receipt, className: 'bg-amber-100 text-amber-700' },
   order: { icon: ShoppingBag, className: 'bg-shop-100 text-shop-700' },
   order_alert: { icon: TriangleAlert, className: 'bg-amber-100 text-amber-700' },
@@ -60,14 +61,14 @@ const dayLabel = (iso) => {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 };
 
-function NotificationRow({ item, onOpen }) {
+function NotificationRow({ item, onOpen, onRemove }) {
   const kind = KIND[item.kind] || KIND.info;
   return (
-    <li>
+    <li className={`flex items-start ${item.lue ? '' : 'bg-primary-50/50'}`}>
       <button
         type="button"
         onClick={() => onOpen(item)}
-        className={`flex w-full items-start gap-3 p-4 text-left transition active:bg-surface-50 ${item.lue ? '' : 'bg-primary-50/50'}`}
+        className="flex min-w-0 flex-1 items-start gap-3 p-4 pr-2 text-left transition active:bg-surface-50"
       >
         <span className={`icon-tile h-10 w-10 shrink-0 rounded-[13px] ${kind.className}`}><kind.icon size={18} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
@@ -83,6 +84,14 @@ function NotificationRow({ item, onOpen }) {
           {item.message && <span className="mt-0.5 block text-xs leading-snug text-surface-500">{item.message}</span>}
           {!item.lue && <span className="sr-only">Non lue</span>}
         </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(item)}
+        aria-label="Supprimer cette notification"
+        className="m-1.5 mt-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-surface-300 transition hover:bg-surface-100 hover:text-surface-500 active:scale-90"
+      >
+        <X size={16} />
       </button>
     </li>
   );
@@ -136,6 +145,11 @@ export default function NotificationsPage() {
       dispatch(markRead(n.id));
     }
     if (n.link) navigate(n.link);
+  };
+
+  const remove = (n) => {
+    if (n.server) dispatch(deleteServerNotification(n.serverId));
+    else dispatch(removeActivity(n.id));
   };
 
   const loadingFirst = isAuthenticated && !server.loaded && server.status === 'loading';
@@ -240,7 +254,7 @@ export default function NotificationsPage() {
                     <section key={g.key} className="space-y-2">
                       <h2 className="px-1 text-caption font-semibold uppercase tracking-wide text-surface-500">{g.label}</h2>
                       <ul className="card divide-y divide-surface-100 overflow-hidden">
-                        {g.items.map((n) => <NotificationRow key={n.id} item={n} onOpen={open} />)}
+                        {g.items.map((n) => <NotificationRow key={n.id} item={n} onOpen={open} onRemove={remove} />)}
                       </ul>
                     </section>
                   ))

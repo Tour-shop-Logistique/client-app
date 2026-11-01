@@ -102,9 +102,35 @@ const storeExpedition = async (payload) => {
 // GET /api/expedition/client/list — liste complète (pas de pagination) des
 // expéditions du client connecté. `{ success, message, data: [...] }`.
 // Filtres query optionnels : statut, type_expedition, date_debut, date_fin.
+// La doc la decrit paginee (api-client-livreur.md) : toutes les pages sont lues
+// (20 au plus) pour que recherche, filtres et compteurs voient tous les envois.
+// Lecture defensive : tableau direct, ou sous data / expeditions, avec ou sans
+// pagination Laravel (`last_page` a la racine, dans `meta`, `data` ou `expeditions`).
+const listRows = (b) => {
+  const c = [b?.data, b?.data?.data, b?.expeditions, b?.expeditions?.data];
+  return c.find(Array.isArray) ?? null;
+};
+const listLastPage = (b) => Number(b?.meta?.last_page ?? b?.data?.last_page ?? b?.expeditions?.last_page ?? b?.last_page ?? 1) || 1;
+
 const clientList = async (params = {}) => {
   const { data } = await api.get('/expedition/client/list', { params });
-  return data;
+  const rows = listRows(data);
+  if (!rows) return data;
+  const last = Math.min(listLastPage(data), 20);
+  const all = [...rows];
+  for (let page = 2; page <= last; page += 1) {
+    const { data: next } = await api.get('/expedition/client/list', { params: { ...params, page } });
+    all.push(...(listRows(next) ?? []));
+  }
+  return { ...data, data: all };
+};
+
+// POST /api/expedition/suivi [public, sans compte] { code } — vue reduite (pas de
+// montants), `id` toujours null. 404 si le code est inconnu, 429 au-dela de
+// 20 requetes/min par IP (10/min par code).
+const trackPublic = async (code) => {
+  const { data } = await api.post('/expedition/suivi', { code: String(code).trim() });
+  return data?.expedition ?? null;
 };
 
 // GET /api/expedition/client/show/{id} — détail d'une expédition du client, avec
@@ -208,6 +234,7 @@ const expeditionService = {
   getDevis,
   storeExpedition,
   clientList,
+  trackPublic,
   clientShow,
   clientCancel,
   clientStatistics,

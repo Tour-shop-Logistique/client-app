@@ -83,14 +83,14 @@ function SearchByCode() {
   return (
     <form onSubmit={submit} className="card space-y-2 p-4">
       <label htmlFor="code-colis" className="text-sm font-semibold text-surface-900">Suivre un colis avec sa référence</label>
-      <p className="text-xs text-surface-500">La référence vous a été envoyée par e-mail ou SMS (ex : TS-ABJ-00123).</p>
+      <p className="text-xs text-surface-500">La référence vous a été envoyée par e-mail ou SMS (ex : CBL001LD).</p>
       <div className="flex gap-2">
         <input
           id="code-colis"
           className="input-field flex-1 uppercase"
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="TS-ABJ-00123"
+          placeholder="CBL001LD"
           autoComplete="off"
           autoCapitalize="characters"
         />
