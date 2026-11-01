@@ -4,9 +4,10 @@ import { searchPlaces } from '../../services/geocodingService';
 
 // Champ de recherche d'un lieu (quartier, rue, repère…). Les résultats
 // s'affichent sous le champ ; en choisir un appelle `onSelect({ lat, lng, label })`.
-// Saisie temporisée : le serveur Nominatim public tolère ~1 requête/s.
+// Moteurs : Photon + Nominatim (services/geocodingService.js). Saisie temporisée
+// pour ne pas interroger à chaque lettre.
 
-const DEBOUNCE_MS = 700;
+const DEBOUNCE_MS = 450;
 
 export default function PlaceSearch({ onSelect, countryCode, near }) {
   const [query, setQuery] = useState('');
@@ -45,7 +46,7 @@ export default function PlaceSearch({ onSelect, countryCode, near }) {
       <input
         type="search"
         className="input-field pl-9 pr-9"
-        placeholder="Rechercher un lieu (quartier, rue, repère…)"
+        placeholder="Rechercher un lieu (quartier, commerce, repère…)"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
@@ -72,12 +73,12 @@ export default function PlaceSearch({ onSelect, countryCode, near }) {
       )}
 
       {open && query.trim().length >= 3 && status !== 'idle' && status !== 'loading' && (
-        <ul className="absolute inset-x-0 top-full z-[1000] mt-1 max-h-64 overflow-auto rounded-xl border border-surface-200 bg-white py-1 shadow-lg">
+        <ul className="absolute inset-x-0 top-full z-[1000] mt-1 max-h-72 overflow-auto rounded-xl border border-surface-200 bg-white py-1 shadow-lg">
           {status === 'error' && (
-            <li className="px-3 py-2 text-xs text-amber-700">Recherche indisponible pour le moment. Touchez la carte pour placer le point.</li>
+            <li className="px-3 py-2 text-xs text-amber-700">Recherche indisponible pour le moment.</li>
           )}
           {status === 'done' && results.length === 0 && (
-            <li className="px-3 py-2 text-xs text-surface-500">Aucun lieu trouvé. Essayez un autre nom ou touchez la carte.</li>
+            <li className="px-3 py-2 text-xs text-surface-500">Aucun lieu trouvé.</li>
           )}
           {results.map((p) => (
             <li key={p.id}>

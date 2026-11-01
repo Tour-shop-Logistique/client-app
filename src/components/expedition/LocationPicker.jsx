@@ -77,9 +77,6 @@ export default function LocationPicker({
       />
       {loading && !point && <p className="text-xs text-surface-500">Recherche de votre position…</p>}
       {error && !point && <p className="text-xs text-amber-700">Position indisponible : {error}. Recherchez un lieu ou touchez la carte.</p>}
-      {point && (
-        <p className="text-xs text-surface-500">Pas le bon endroit ? Déplacez le marqueur vert, touchez la carte ou recherchez un lieu.</p>
-      )}
     </div>
   );
 }
