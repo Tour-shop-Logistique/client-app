@@ -13,13 +13,20 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'TourShop';
+  // Web Push ne permet pas d'imposer un son : celui-ci est choisi par le systeme.
+  // Pour une meilleure audibilite on force donc la vibration et on re-alerte meme
+  // si une notification du meme `tag` existe deja (renotify).
   const options = {
     body: payload.body || '',
     icon: payload.icon || '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: payload.tag,
     data: { url: payload.data?.url || payload.url || '/', ...(payload.data || {}) },
     actions: payload.actions || [],
+    silent: false,
+    vibrate: [150, 80, 150, 80, 300],
+    timestamp: Date.now(),
+    // `renotify` n'est valide qu'avec un `tag` (sinon le navigateur leve une erreur).
+    ...(payload.tag ? { tag: payload.tag, renotify: true } : {}),
   };
 
   // Relaye aussi le push aux onglets ouverts (toast in-app).

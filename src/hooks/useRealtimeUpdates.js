@@ -6,6 +6,7 @@ import { useWebSocket } from './useWebSocket';
 import { orderPath, salePath, expeditionDetailPath } from '../routes';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
+import { playNotificationSound } from '../utils/notificationSound';
 
 // Couche pratique au-dessus de useWebSocket (meme idee que dans
 // l'app agence-partenaire) : branche l'ID du client connecte depuis le
@@ -160,6 +161,39 @@ const roleIn = (item, userId) => {
   return null;
 };
 
+// Sonnerie associee a un evenement : null = silencieux (pas de toast).
+function soundFor(eventType, item, role) {
+  switch (eventType) {
+    case 'delivery_offer.received':
+    case 'marketplace.LivraisonMarketplaceOffre.proposee':
+      return null;
+    case 'expedition.status_changed':
+      return item?.statut_expedition === 'refused' ? 'alert' : 'default';
+    case 'marketplace.CommandeMarketplace.paiement_declare':
+      return role === 'acheteur' ? null : 'default';
+    case 'marketplace.CommandeMarketplace.payee':
+      return role === 'vendeur' ? null : 'default';
+    case 'marketplace.CommandeMarketplace.paiement_infirme':
+      return role === 'vendeur' ? null : 'alert';
+    case 'marketplace.CommandeMarketplace.annulee':
+    case 'marketplace.LivraisonMarketplace.refusee':
+    case 'marketplace.LivraisonMarketplace.expiree':
+      return 'alert';
+    case 'expedition.payment_confirmed':
+    case 'expedition.tarif_recalculated':
+    case 'expedition.delivered':
+    case 'colis.status_changed':
+    case 'mission.published':
+    case 'mission.step':
+    case 'marketplace.CommandeMarketplace.livree':
+    case 'marketplace.LivraisonMarketplace.assignee':
+    case 'marketplace.LivraisonMarketplace.demarree':
+      return 'default';
+    default:
+      return null;
+  }
+}
+
 /**
  * Version avec notifications toast automatiques (sonner).
  */
@@ -177,6 +211,11 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
       const expId = expeditionIdsOf(data, meta)[0];
       const openExp = expId ? { label: 'Voir', onClick: () => navigate(expeditionDetailPath(expId)) } : undefined;
       const ref = item?.reference || meta?.references?.[0];
+
+      // Sonnerie en phase avec le toast affiche (aucune pour les evenements muets
+      // ou destines a l'autre partie de la commande).
+      const sound = soundFor(eventType, item, role);
+      if (sound) playNotificationSound(sound);
 
       switch (eventType) {
         case 'expedition.status_changed': {

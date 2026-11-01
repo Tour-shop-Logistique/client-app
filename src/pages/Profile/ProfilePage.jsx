@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { isSoundEnabled, setSoundEnabled, previewNotificationSound } from '../../utils/notificationSound';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import {
   FileText, LogOut, MessageCircle, ChevronRight, ArrowRight, Camera, MapPin, Package,
-  UserCog, KeyRound, MapPinned, Trash2, ShoppingBag, Store, Bell, Loader2, User,
+  UserCog, KeyRound, MapPinned, Trash2, ShoppingBag, Store, Bell, Volume2, Loader2, User,
   Download, Smartphone, Check, Share, MoreVertical, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -166,6 +167,32 @@ function PushToggle() {
   );
 }
 
+// Sonnerie des notifications quand l'application est ouverte.
+function SoundToggle() {
+  const [on, setOn] = useState(isSoundEnabled);
+  const onToggle = () => {
+    const next = !on;
+    setSoundEnabled(next);
+    setOn(next);
+    if (next) previewNotificationSound('default'); // apercu de la sonnerie
+  };
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+      <RowContent
+        icon={Volume2}
+        color="bg-amber-100 text-amber-700"
+        label="Sonnerie"
+        hint="Son à chaque notification (app ouverte)"
+        trailing={
+          <span className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${on ? 'bg-primary-600' : 'bg-surface-300'}`}>
+            <span className={`inline-block h-[22px] w-[22px] rounded-full bg-white shadow transition ${on ? 'translate-x-[23px]' : 'translate-x-[3px]'}`} />
+          </span>
+        }
+      />
+    </button>
+  );
+}
+
 export default function ProfilePage() {
   const dispatch = useDispatch();
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
@@ -299,6 +326,7 @@ export default function ProfilePage() {
               <MenuRow key={link.to} link={link} />
             ))}
             <PushToggle />
+            <SoundToggle />
           </MenuSection>
         )}
 

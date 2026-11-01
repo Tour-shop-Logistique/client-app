@@ -13,6 +13,7 @@ import { useRealtimeWithNotifications } from './hooks/useRealtimeUpdates';
 import { isFeatureReady } from './config/features';
 import WelcomeOnboarding from './pages/Onboarding/WelcomeOnboarding';
 import { hasSeenOnboarding } from './utils/onboarding';
+import { playNotificationSound } from './utils/notificationSound';
 
 import HomePage from './pages/Home/HomePage';
 import NewExpeditionPage from './pages/Expedition/NewExpeditionPage';
@@ -94,6 +95,7 @@ export default function App() {
       if (event.data?.type !== 'push') return;
       const p = event.data.payload || {};
       const url = p.data?.url || p.url;
+      playNotificationSound(/(refus|rejet|bloqu|annul)/i.test(`${p.title || ''} ${p.body || ''}`) ? 'alert' : 'default');
       toast.info(p.title || 'TourShop', {
         description: p.body,
         action: url ? { label: 'Voir', onClick: () => (/^https?:/i.test(url) ? window.location.assign(url) : navigate(url)) } : undefined,
