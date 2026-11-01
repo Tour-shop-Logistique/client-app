@@ -1,3 +1,5 @@
+import { matchPath } from 'react-router-dom';
+
 export const ROUTES = {
   HOME: '/',
   EXPEDITION_NEW: '/expeditions/nouvelle',
@@ -46,3 +48,18 @@ export const orderPath = (id) => `/marketplace/achats/${id}`;
 export const salePath = (id) => `/marketplace/ventes/${id}`;
 export const listingEditPath = (id) => `/marketplace/mes-annonces/${id}`;
 export const agencyPath = (id) => `/agences/${id}`;
+
+// Parcours « plein ecran » : formulaires et saisies en plusieurs etapes, avec
+// feuilles de choix et barre d'action collee en bas. La navigation du bas y est
+// masquee (elle gene la saisie et se superpose a la barre d'action) ; on en sort
+// avec le bouton retour de la page.
+export const IMMERSIVE_ROUTES = [
+  ROUTES.EXPEDITION_NEW,
+  ROUTES.EXPEDITION_INTERVILLE,
+  ROUTES.EXPEDITION_EXTRAPAYS,
+  ROUTES.MARKETPLACE_SELL,
+  ROUTES.MARKETPLACE_LISTING_EDIT,
+];
+
+export const hidesBottomNav = (pathname) =>
+  IMMERSIVE_ROUTES.some((path) => matchPath({ path, end: true }, pathname));

@@ -182,7 +182,7 @@ export default function SellPage() {
         }
       />
 
-      <form onSubmit={(e) => e.preventDefault()} className="page-container space-y-5 py-4 pb-40">
+      <form onSubmit={(e) => e.preventDefault()} className="page-container space-y-5 py-4 pb-32">
         {restored && <DraftRestoredBanner onReset={resetDraft} />}
 
         {/* Progression */}
@@ -295,7 +295,7 @@ export default function SellPage() {
         )}
       </form>
 
-      <div className="fixed inset-x-0 bottom-[calc(theme(spacing.bottom-nav)+env(safe-area-inset-bottom)+2.75rem)] z-20">
+      <div className="fixed inset-x-0 bottom-0 z-20 pb-[env(safe-area-inset-bottom)] bg-white/95">
         <div className="mx-auto flex max-w-md gap-2 border-t border-surface-100 bg-white/95 px-4 py-3 backdrop-blur">
           <button type="button" className="btn-secondary flex-1" disabled={Boolean(submitting)} onClick={() => save(false)}>
             {submitting === 'draft' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Brouillon

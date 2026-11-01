@@ -1,4 +1,5 @@
 import useTyping from '../../hooks/useTyping';
+import useBottomNavHidden from '../../hooks/useBottomNavHidden';
 
 // Barre d'action collée en bas de l'écran, juste au-dessus de la navigation
 // principale : l'action de l'étape reste sous le pouce quel que soit le défilement.
@@ -7,10 +8,13 @@ import useTyping from '../../hooks/useTyping';
 // juste au-dessus du clavier.
 export default function ActionDock({ children }) {
   const typing = useTyping();
+  // Sans navigation du bas (parcours plein ecran) ou clavier ouvert : barre en bas d'ecran.
+  const navHidden = useBottomNavHidden();
+  const low = typing || navHidden;
   return (
     <div
       className={`sticky z-20 mt-5 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.35)] ring-1 ring-surface-100 transition-[bottom] duration-200 ${
-        typing
+        low
           ? 'bottom-[max(0.75rem,env(safe-area-inset-bottom))]'
           : 'bottom-[calc(theme(spacing.bottom-nav)+max(0.75rem,env(safe-area-inset-bottom))+0.75rem)]'
       }`}
