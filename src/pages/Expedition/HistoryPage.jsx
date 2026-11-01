@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Link } from 'react-router-dom';
-import { Package, Plus, RefreshCw, ChevronRight, ArrowRight, Clock, Truck, CheckCircle2, Inbox } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Package, Plus, RefreshCw, ChevronRight, ArrowRight, Clock, Truck, CheckCircle2, Inbox, Search, X } from 'lucide-react';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import ExpeditionStatusBadge from '../../components/expedition/ExpeditionStatusBadge';
@@ -85,12 +86,18 @@ function ExpeditionCard({ exp }) {
   );
 }
 
+// Recherche texte insensible à la casse et aux accents.
+const norm = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
 export default function HistoryPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { items, stats, status, error } = useSelector((state) => state.expeditions);
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
   const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -107,8 +114,35 @@ export default function HistoryPage() {
 
   const filtered = useMemo(() => {
     const f = STATUS_FILTERS.find((x) => x.key === filter) || STATUS_FILTERS[0];
-    return items.filter((e) => f.match(e.statut_expedition));
-  }, [items, filter]);
+    const q = norm(query);
+    return items.filter((e) => f.match(e.statut_expedition) && (!q || [
+      e.reference, e.destinataire_nom_prenom, villeDepart(e), villeDestination(e),
+    ].some((field) => norm(field).includes(q))));
+  }, [items, filter, query]);
+
+  // Même recherche que sur l'accueil : GET /expedition/client/list (fetchExpeditions),
+  // puis correspondance exacte sur la référence -> ouverture du détail. Pendant la
+  // saisie, la liste déjà chargée est simplement filtrée.
+  const handleSearchSubmit = async (e) => {
+    e.preventDefault();
+    const code = query.trim();
+    if (!code) return;
+    setSearching(true);
+    try {
+      const result = await dispatch(fetchExpeditions());
+      if (!fetchExpeditions.fulfilled.match(result)) {
+        toast.error('Recherche impossible pour le moment.');
+        return;
+      }
+      const match = (result.payload || []).find((exp) => (exp.reference || '').toLowerCase() === code.toLowerCase());
+      if (match) navigate(expeditionDetailPath(match.id));
+      else if (!(result.payload || []).some((exp) => norm(exp.reference).includes(norm(code)))) {
+        toast.error('Aucune expédition trouvée pour ce numéro.');
+      }
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const refresh = () => {
     dispatch(fetchExpeditions());
@@ -189,6 +223,32 @@ export default function HistoryPage() {
               <ChevronRight size={18} className="shrink-0 text-surface-300" />
             </Link>
 
+            <form onSubmit={handleSearchSubmit} role="search" className="relative">
+              <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-surface-400" aria-hidden="true" />
+              <input
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                aria-label="Rechercher un colis"
+                placeholder="Rechercher par numéro, nom ou ville"
+                className="input-field h-12 pl-11 pr-11"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {(query || searching) && (
+                <button
+                  type="button"
+                  aria-label="Effacer la recherche"
+                  onClick={() => setQuery('')}
+                  disabled={searching}
+                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-surface-400"
+                >
+                  {searching ? <RefreshCw size={16} className="animate-spin" /> : <X size={16} />}
+                </button>
+              )}
+            </form>
+
             <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
               {STATUS_FILTERS.map((f) => (
                 <button
@@ -238,12 +298,14 @@ export default function HistoryPage() {
                 title={
                   items.length === 0
                     ? 'Aucune expédition pour le moment'
-                    : 'Rien dans ce filtre'
+                    : query.trim() ? 'Aucun colis trouvé' : 'Rien dans ce filtre'
                 }
                 description={
                   items.length === 0
                     ? "Vos demandes d'expédition s'afficheront ici."
-                    : 'Changez de filtre pour voir vos autres demandes.'
+                    : query.trim()
+                      ? 'Vérifiez le numéro ou changez de filtre.'
+                      : 'Changez de filtre pour voir vos autres demandes.'
                 }
                 action={
                   items.length === 0 ? (

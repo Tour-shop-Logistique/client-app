@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { ROUTES, expeditionDetailPath } from '../../routes';
 import { fetchExpeditions } from '../../store/slices/expeditionSlice';
 import { selectCartCount } from '../../store/slices/cartSlice';
+import { selectUnreadCount } from '../../store/slices/notificationsSlice';
 import { openAuthSheet } from '../../store/slices/uiSlice';
 import { CLOSED_STATUSES, getProgress, villeDepart, villeDestination } from '../../utils/expeditionStatus';
 import { firstName, userInitials } from '../../utils/user';
@@ -93,6 +94,7 @@ export default function HomePage() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const countryName = useSelector((state) => state.country.name);
   const cartCount = useSelector(selectCartCount);
+  const unreadCount = useSelector(selectUnreadCount);
   const { items: expeditions, status: expStatus } = useSelector((state) => state.expeditions);
 
   const [trackingCode, setTrackingCode] = useState('');
@@ -161,8 +163,17 @@ export default function HomePage() {
             <img src={logo} alt="TourShop" className="h-10 w-auto object-contain" />
           )}
           <div className="flex items-center gap-2">
-            <Link to={ROUTES.PROFILE} className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white/15" aria-label="Notifications">
+            <Link
+              to={ROUTES.NOTIFICATIONS}
+              className="relative flex h-11 w-11 items-center justify-center rounded-[14px] bg-white/15"
+              aria-label={unreadCount ? `Notifications, ${unreadCount} non lue${unreadCount > 1 ? 's' : ''}` : 'Notifications'}
+            >
               <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-shop-400 px-1 text-[11px] font-bold text-shop-950 ring-2 ring-primary-700">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Link>
             <Link
               to={ROUTES.MARKETPLACE_CART}

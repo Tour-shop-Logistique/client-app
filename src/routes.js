@@ -27,6 +27,7 @@ export const ROUTES = {
   MARKETPLACE_SUBSCRIPTION: '/marketplace/abonnement',
   AGENCIES: '/agences',
   AGENCY_DETAIL: '/agences/:id',
+  NOTIFICATIONS: '/notifications',
   PROFILE: '/profil',
   PROFILE_EDIT: '/profil/modifier',
   PROFILE_PASSWORD: '/profil/mot-de-passe',

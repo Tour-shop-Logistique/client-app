@@ -6,6 +6,7 @@ import expeditionReducer from './slices/expeditionSlice';
 import marketplaceReducer, { FAVORITES_KEY, RECENT_KEY } from './slices/marketplaceSlice';
 import agencyReducer from './slices/agencySlice';
 import countryReducer from './slices/countrySlice';
+import notificationsReducer from './slices/notificationsSlice';
 import { saveJson } from './persist';
 import { setDefaultCurrency } from '../utils/format';
 
@@ -18,6 +19,7 @@ export const store = configureStore({
     marketplace: marketplaceReducer,
     agencies: agencyReducer,
     country: countryReducer,
+    notifications: notificationsReducer,
   },
 });
 

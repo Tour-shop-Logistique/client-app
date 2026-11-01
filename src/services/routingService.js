@@ -132,6 +132,68 @@ const PROVIDERS = [
 // Dernier moteur ayant repondu : essaye en premier aux appels suivants.
 let preferred = 0;
 
+// Moteurs lancés en "course" : le premier est appelé seul ; s'il n'a pas répondu
+// au bout de HEDGE_MS (ou s'il échoue), le suivant démarre sans attendre la fin
+// du précédent. Le premier résultat valide gagne, les autres sont annulés. Évite
+// d'enchaîner 3 délais de 7 s quand un serveur public est lent ou bloqué.
+// -> route (+ index du moteur) | null si tous ont échoué.
+const HEDGE_MS = 2500;
+
+function raceProviders(order, pts, { signal, vehicle }) {
+  return new Promise((resolve, reject) => {
+    const started = new Set();
+    const controllers = [];
+    const timers = [];
+    let failed = 0;
+    let settled = false;
+
+    const cleanup = () => {
+      settled = true;
+      timers.forEach(clearTimeout);
+      signal?.removeEventListener('abort', onAbort);
+      controllers.forEach((c) => c.abort());
+    };
+    function onAbort() {
+      if (settled) return;
+      cleanup();
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+    }
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort);
+
+    const run = (n) => {
+      if (settled || n >= order.length || started.has(n)) return;
+      started.add(n);
+      const i = order[n];
+      const controller = new AbortController();
+      controllers.push(controller);
+      timers.push(setTimeout(() => run(n + 1), HEDGE_MS));
+      PROVIDERS[i](pts, { signal: controller.signal, vehicle })
+        .then((r) => {
+          if (!(r.distanceKm >= 0) || r.coords.length < 2) throw new Error('Invalid');
+          if (settled) return;
+          cleanup();
+          resolve({ ...r, approx: false, index: i });
+        })
+        .catch((err) => {
+          if (settled) return;
+          if (env.DEV) console.warn(`[routing] moteur ${i} indisponible :`, err.message);
+          failed += 1;
+          if (failed >= order.length) {
+            cleanup();
+            resolve(null);
+          } else {
+            run(n + 1);
+          }
+        });
+    };
+    run(0);
+  });
+}
+
 // points : [{ lat, lng }, ...] (au moins 2 valides)
 // options : { signal, vehicle: 'moto' | 'voiture' }
 // -> { distanceKm, durationMin|null, coords: [[lat, lng], ...], approx, provider } | null
@@ -143,18 +205,12 @@ export async function getRoute(points, { signal, vehicle } = {}) {
   if (cache.has(key)) return cache.get(key);
 
   const order = [...PROVIDERS.keys()].sort((a, b) => (a === preferred ? -1 : b === preferred ? 1 : a - b));
-  for (const i of order) {
-    try {
-      const r = await PROVIDERS[i](pts, { signal, vehicle });
-      if (!(r.distanceKm >= 0) || r.coords.length < 2) throw new Error('Invalid');
-      const route = { ...r, approx: false };
-      preferred = i;
-      cache.set(key, route);
-      return route;
-    } catch (err) {
-      if (signal?.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
-      if (env.DEV) console.warn(`[routing] moteur ${i} indisponible :`, err.message);
-    }
+  const best = await raceProviders(order, pts, { signal, vehicle });
+  if (best) {
+    const { index, ...route } = best;
+    preferred = index;
+    cache.set(key, route);
+    return route;
   }
 
   let distanceKm = 0;

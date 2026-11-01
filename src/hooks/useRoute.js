@@ -47,5 +47,8 @@ export default function useRoute(points, {
     };
   }, [key, enabled, debounceMs, vehicle, attempt]);
 
-  return state;
+  // Relance manuelle (bouton « Réessayer »).
+  const reload = () => setRetry({ key, count: attempt + 1 });
+
+  return { ...state, reload };
 }

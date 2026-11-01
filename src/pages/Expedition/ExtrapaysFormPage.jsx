@@ -44,7 +44,7 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, identityExpired, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityPayload,
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
@@ -382,7 +382,8 @@ export default function ExtrapaysFormPage() {
 
   useEffect(() => {
     if (!user) return;
-    setExpediteur((e) => (e.nom_prenom || e.telephone ? e : { ...e, nom_prenom: [user.nom, user.prenoms].filter(Boolean).join(' '), telephone: user.telephone || '' }));
+    // Profil du client : nom, telephone, e-mail, WhatsApp, adresse favorite (champs vides seulement).
+    setExpediteur((e) => fillEmptyFields(e, expediteurFromProfile(user)));
   }, [user]);
 
   const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);

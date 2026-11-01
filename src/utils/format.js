@@ -66,5 +66,20 @@ export const formatDate = (value, options = { day: '2-digit', month: 'short', ye
   return new Intl.DateTimeFormat('fr-FR', options).format(new Date(value));
 };
 
+// "a l'instant", "5 min", "3 h", "2 j", puis la date courte.
+export const formatRelativeShort = (value) => {
+  const t = Date.parse(value);
+  if (!Number.isFinite(t)) return '';
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 60) return 'à l’instant';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h`;
+  const d = Math.round(h / 24);
+  if (d < 7) return `${d} j`;
+  return formatDate(value, { day: '2-digit', month: 'short' });
+};
+
 export const formatDateTime = (value) =>
   formatDate(value, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });

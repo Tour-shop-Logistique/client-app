@@ -28,7 +28,7 @@ import PickupOption from '../../components/expedition/PickupOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, identityExpired, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityPayload,
 } from '../../utils/contact';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
@@ -207,18 +207,11 @@ export default function IntervilleFormPage() {
     setColisList((cl) => syncColisFormats(cl, formats));
   }, [formats, colisList]);
 
-  // Prefill the sender from the connected account (editable).
+  // Prefill the sender from the connected account's profile (editable): nom,
+  // telephone, e-mail, WhatsApp et adresse favorite. Only fills empty fields.
   useEffect(() => {
     if (!user) return;
-    setExpediteur((e) =>
-      e.nom_prenom || e.telephone
-        ? e
-        : {
-            ...e,
-            nom_prenom: [user.nom, user.prenoms].filter(Boolean).join(' '),
-            telephone: user.telephone || '',
-          }
-    );
+    setExpediteur((e) => fillEmptyFields(e, expediteurFromProfile(user)));
   }, [user]);
 
   const formatOf = (c) => formats.find((f) => f.id === c.format_colis_id) || null;

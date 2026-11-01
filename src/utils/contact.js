@@ -101,6 +101,45 @@ export function contactPayload(prefix, data) {
   return out;
 }
 
+// Adresse du profil a proposer par defaut : « Domicile » / « Maison » si elle
+// existe, sinon la premiere adresse favorite renseignee.
+const defaultFavorite = (user) => {
+  const list = Array.isArray(user?.adresses_favoris) ? user.adresses_favoris.filter((f) => f?.adresse) : [];
+  return list.find((f) => /domicile|maison|home/i.test(f.nom || '')) || list[0] || null;
+};
+
+// Coordonnees de l'expediteur deduites du profil du client connecte : nom,
+// telephone, e-mail, WhatsApp et adresse (favorite par defaut). Champs vides si
+// le profil ne les a pas.
+export function expediteurFromProfile(user) {
+  if (!user) return {};
+  const fav = defaultFavorite(user);
+  return {
+    nom_prenom: [user.nom, user.prenoms].filter(Boolean).join(' '),
+    telephone: digitsOnly(user.telephone),
+    email: user.email || '',
+    whatsapp: digitsOnly(user.whatsapp_number || user.whatsapp),
+    adresse: fav?.adresse || '',
+    ville: fav?.ville || '',
+    code_postal: fav?.code_postal || '',
+  };
+}
+
+// Complete uniquement les champs encore vides : ce que le client a deja saisi
+// (ou restaure depuis un brouillon) n'est jamais ecrase.
+export function fillEmptyFields(contact, values) {
+  const next = { ...contact };
+  let changed = false;
+  Object.entries(values).forEach(([key, value]) => {
+    const current = next[key];
+    if (value && (current == null || String(current).trim() === '')) {
+      next[key] = value;
+      changed = true;
+    }
+  });
+  return changed ? next : contact;
+}
+
 // Adresse favorite du profil (PUT /profile/favorite-addresses :
 // { nom, adresse, ville?, code_postal?, pays? }) -> champs du bloc contact.
 // `nom` est le libellé ("Domicile"), pas le nom de la personne : non recopié.

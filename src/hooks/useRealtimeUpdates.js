@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
 import { orderPath, salePath, expeditionDetailPath } from '../routes';
+import { pushActivity } from '../store/slices/notificationsSlice';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
 import { playNotificationSound } from '../utils/notificationSound';
@@ -62,6 +63,9 @@ export function useRealtimeUpdates(onUpdate, options = {}) {
       : undefined,
     onExpeditionTariffRecalculated: shouldListen('expeditions')
       ? (d, m) => emit(d, m, 'expedition.tarif_recalculated')
+      : undefined,
+    onExpeditionFraisUpdated: shouldListen('expeditions')
+      ? (d, m) => emit(d, m, 'expedition.frais_annexes_updated')
       : undefined,
     onColisStatusChanged: shouldListen('colis')
       ? (d, m) => emit(d, m, 'colis.status_changed')
@@ -161,6 +165,34 @@ const roleIn = (item, userId) => {
   return null;
 };
 
+const num = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+
+// Ligne de l'ecran Notifications pour un evenement : type (icone/filtre) et lien.
+function activityOf(eventType, item, role, expId, commandeId, step) {
+  const exp = expId ? expeditionDetailPath(expId) : null;
+  const seller = role === 'vendeur' || eventType.endsWith('paiement_declare');
+  const order = commandeId ? (seller ? salePath(commandeId) : orderPath(commandeId)) : null;
+  switch (eventType) {
+    case 'expedition.status_changed': {
+      const statut = item?.statut_expedition;
+      return { kind: statut === 'refused' ? 'parcel_refused' : statut === 'accepted' ? 'parcel_accepted' : 'parcel_step', link: exp, targetId: expId };
+    }
+    case 'expedition.payment_confirmed': return { kind: 'parcel_payment', link: exp, targetId: expId };
+    case 'expedition.tarif_recalculated': return { kind: 'parcel_price', link: exp, targetId: expId };
+    case 'expedition.frais_annexes_updated': return { kind: 'parcel_fees', link: exp, targetId: expId };
+    case 'expedition.delivered': return { kind: 'parcel_delivered', link: exp, targetId: expId };
+    case 'mission.step': return { kind: step === 'colis_livre' ? 'parcel_delivered' : 'parcel_step', link: exp, targetId: expId };
+    case 'colis.status_changed':
+    case 'mission.published': return { kind: 'parcel_step', link: exp, targetId: expId };
+    case 'marketplace.CommandeMarketplace.paiement_infirme':
+    case 'marketplace.CommandeMarketplace.annulee':
+    case 'marketplace.LivraisonMarketplace.refusee':
+    case 'marketplace.LivraisonMarketplace.expiree':
+      return { kind: 'order_alert', link: order, targetId: commandeId };
+    default: return { kind: 'order', link: order, targetId: commandeId };
+  }
+}
+
 // Sonnerie associee a un evenement : null = silencieux (pas de toast).
 function soundFor(eventType, item, role) {
   switch (eventType) {
@@ -181,6 +213,7 @@ function soundFor(eventType, item, role) {
       return 'alert';
     case 'expedition.payment_confirmed':
     case 'expedition.tarif_recalculated':
+    case 'expedition.frais_annexes_updated':
     case 'expedition.delivered':
     case 'colis.status_changed':
     case 'mission.published':
@@ -199,6 +232,7 @@ function soundFor(eventType, item, role) {
  */
 export function useRealtimeWithNotifications(onUpdate, options = {}) {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const userId = useSelector((state) => state.auth.user?.id);
 
   const handle = useCallback(
@@ -212,6 +246,17 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
       const openExp = expId ? { label: 'Voir', onClick: () => navigate(expeditionDetailPath(expId)) } : undefined;
       const ref = item?.reference || meta?.references?.[0];
 
+      // Chaque toast est aussi conserve dans l'ecran Notifications.
+      const logged = (tone) => (title, opts = {}) => {
+        dispatch(pushActivity({
+          ...activityOf(eventType, item, role, expId, commandeId, item?.etape),
+          titre: title,
+          message: typeof opts.description === 'string' ? opts.description : '',
+        }));
+        return toast[tone](title, opts);
+      };
+      const say = { info: logged('info'), success: logged('success'), warning: logged('warning') };
+
       // Sonnerie en phase avec le toast affiche (aucune pour les evenements muets
       // ou destines a l'autre partie de la commande).
       const sound = soundFor(eventType, item, role);
@@ -220,10 +265,10 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
       switch (eventType) {
         case 'expedition.status_changed': {
           const statut = item?.statut_expedition;
-          if (statut === 'refused') toast.warning(ref ? `Demande ${ref} refusée par l’agence` : 'Demande refusée par l’agence', { action: openExp, duration: 10000 });
-          else if (statut === 'accepted') toast.success(ref ? `Demande ${ref} acceptée par l’agence` : 'Demande acceptée par l’agence', { action: openExp });
+          if (statut === 'refused') say.warning(ref ? `Demande ${ref} refusée par l’agence` : 'Demande refusée par l’agence', { action: openExp, duration: 10000 });
+          else if (statut === 'accepted') say.success(ref ? `Demande ${ref} acceptée par l’agence` : 'Demande acceptée par l’agence', { action: openExp });
           else {
-            toast.info(statut ? getStatutMeta(statut).label : 'Le statut de votre colis a été mis à jour', {
+            say.info(statut ? getStatutMeta(statut).label : 'Le statut de votre colis a été mis à jour', {
               description: ref ? `Expédition ${ref}` : undefined,
               action: openExp,
             });
@@ -231,54 +276,64 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           break;
         }
         case 'expedition.payment_confirmed':
-          toast.success(item?.statut_paiement === 'paye' ? 'Paiement de votre expédition enregistré' : 'Paiement mis à jour', {
+          say.success(item?.statut_paiement === 'paye' ? 'Paiement de votre expédition enregistré' : 'Paiement mis à jour', {
             description: ref ? `Expédition ${ref}` : undefined,
             action: openExp,
           });
           break;
         case 'mission.step': {
           const step = MISSION_STEP_TOASTS[item?.etape];
-          if (step) toast[step.tone](step.title, { action: openExp, duration: item?.etape === 'colis_livre' ? 10000 : undefined });
+          if (step) say[step.tone](step.title, { action: openExp, duration: item?.etape === 'colis_livre' ? 10000 : undefined });
           break;
         }
         case 'expedition.tarif_recalculated': {
           // changes.montant_expedition = { from, to } (WEBSOCKETS.md).
           const montant = meta?.changes?.montant_expedition;
           const to = montant?.to ?? item?.montant_expedition;
-          toast.info('Le tarif de votre expédition a été ajusté après contrôle des colis', {
+          say.info('Le tarif de votre expédition a été ajusté après contrôle des colis', {
             description: [ref && `Expédition ${ref}`, to != null && `Nouveau montant : ${formatPrice(to, item?.devise_origine || undefined)}`].filter(Boolean).join(' · ') || undefined,
             action: openExp,
             duration: 10000,
           });
           break;
         }
-        case 'expedition.delivered':
-          toast.success('Votre colis a ete livre 🎉');
+        // Frais annexes (douane, assurance...) fixes ou modifies par le backoffice.
+        case 'expedition.frais_annexes_updated': {
+          const montant = num(item?.frais_annexes);
+          say.warning(montant > 0 ? 'Des frais annexes ont été ajoutés à votre expédition' : 'Les frais annexes de votre expédition ont été mis à jour', {
+            description: [ref && `Expédition ${ref}`, montant > 0 && `Montant : ${formatPrice(montant, item?.devise_origine || undefined)}`].filter(Boolean).join(' · ') || undefined,
+            action: openExp,
+            duration: 10000,
+          });
           break;
-        // Offres livreurs dépréciées (express à prix imposé) : plus de toast.
+        }
+        case 'expedition.delivered':
+          say.success('Votre colis a ete livre 🎉');
+          break;
+        // Offres livreurs dépréciées (express à prix imposé) : plus de say.
         case 'delivery_offer.received':
           break;
         case 'colis.status_changed':
-          toast.info('Mise a jour du suivi de votre colis');
+          say.info('Mise a jour du suivi de votre colis');
           break;
         case 'mission.published':
-          toast.info('Votre demande est diffusée aux livreurs', { description: 'Le premier livreur disponible prendra la course.' });
+          say.info('Votre demande est diffusée aux livreurs', { description: 'Le premier livreur disponible prendra la course.' });
           break;
 
         // --- Marketplace : commandes ---------------------------------------
         case 'marketplace.CommandeMarketplace.paiement_declare':
           if (role !== 'acheteur') {
-            toast.info('Paiement déclaré par un acheteur', { description: 'Vérifiez la réception puis confirmez.', action: open(salePath) });
+            say.info('Paiement déclaré par un acheteur', { description: 'Vérifiez la réception puis confirmez.', action: open(salePath) });
           }
           break;
         case 'marketplace.CommandeMarketplace.payee':
           if (role !== 'vendeur') {
-            toast.success('Paiement confirmé par le vendeur', { description: 'Choisissez maintenant votre mode de livraison.', duration: 10000, action: open(orderPath) });
+            say.success('Paiement confirmé par le vendeur', { description: 'Choisissez maintenant votre mode de livraison.', duration: 10000, action: open(orderPath) });
           }
           break;
         case 'marketplace.CommandeMarketplace.paiement_infirme':
           if (role !== 'vendeur') {
-            toast.warning('Paiement non reçu par le vendeur', {
+            say.warning('Paiement non reçu par le vendeur', {
               description: 'Vous devez re-déclarer un paiement.',
               duration: 10000,
               action: open(orderPath),
@@ -286,13 +341,13 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
           }
           break;
         case 'marketplace.CommandeMarketplace.annulee':
-          toast.warning(role === 'vendeur' ? 'Une commande a été annulée' : 'Votre commande a été annulée', {
+          say.warning(role === 'vendeur' ? 'Une commande a été annulée' : 'Votre commande a été annulée', {
             description: item?.motif_annulation || undefined,
             action: open(role === 'vendeur' ? salePath : orderPath),
           });
           break;
         case 'marketplace.CommandeMarketplace.livree':
-          toast.success(role === 'vendeur' ? 'Vente livrée 🎉' : 'Commande livrée 🎉', {
+          say.success(role === 'vendeur' ? 'Vente livrée 🎉' : 'Commande livrée 🎉', {
             action: open(role === 'vendeur' ? salePath : orderPath),
           });
           break;
@@ -300,22 +355,22 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
         // --- Marketplace : livraisons ---------------------------------------
         case 'marketplace.LivraisonMarketplace.assignee':
           if (role === 'acheteur') {
-            toast.success('Un livreur prend en charge votre commande', { description: 'Gardez votre code de remise.', action: open(orderPath) });
+            say.success('Un livreur prend en charge votre commande', { description: 'Gardez votre code de remise.', action: open(orderPath) });
           } else {
-            toast.success('Un livreur a accepté la livraison', { action: open(salePath) });
+            say.success('Un livreur a accepté la livraison', { action: open(salePath) });
           }
           break;
         case 'marketplace.LivraisonMarketplace.refusee':
         case 'marketplace.LivraisonMarketplace.expiree':
-          toast.warning(meta.action === 'expiree' ? 'Le livreur n’a pas répondu à temps' : 'Le livreur a refusé la livraison', {
+          say.warning(meta.action === 'expiree' ? 'Le livreur n’a pas répondu à temps' : 'Le livreur a refusé la livraison', {
             description: 'Désignez un autre livreur pour cette vente.',
             duration: 10000,
             action: open(salePath),
           });
           break;
         case 'marketplace.LivraisonMarketplace.demarree':
-          if (role === 'vendeur') toast.info('Le livreur a récupéré l’article', { action: open(salePath) });
-          else toast.info('Votre commande est en route 🚚', { action: open(orderPath) });
+          if (role === 'vendeur') say.info('Le livreur a récupéré l’article', { action: open(salePath) });
+          else say.info('Votre commande est en route 🚚', { action: open(orderPath) });
           break;
         // Offres livreurs supprimées (livraison en 3 modes à prix fixé) : rien à afficher.
         case 'marketplace.LivraisonMarketplaceOffre.proposee':
@@ -325,7 +380,7 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
       }
       onUpdate?.(data, meta, eventType);
     },
-    [onUpdate, navigate, userId]
+    [onUpdate, navigate, userId, dispatch]
   );
 
   return useRealtimeUpdates(handle, options);

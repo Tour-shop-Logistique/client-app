@@ -34,7 +34,10 @@ const getColisFormats = async (codePays) => {
 // `montant_standard` (changement cassant). `data: []` possible si aucune grille
 // n'est configurée (pas une erreur). Lecture : utils/pickup.js.
 const getPickupTariffGrid = async (communeId) => {
-  const { data } = await api.get('/expedition/client/grille-tarifs-enlevement', { params: { commune_id: communeId } });
+  const { data } = await api.get('/expedition/client/grille-tarifs-enlevement', {
+    params: { commune_id: communeId },
+    timeout: 12000, // jamais de chargement infini : l'ecran propose de reessayer
+  });
   return data;
 };
 

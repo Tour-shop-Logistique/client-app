@@ -49,7 +49,7 @@ const MILESTONES = [
   { key: 'enleve', label: "Récupéré chez l'expéditeur", date: 'date_enlevement_client', optional: true },
   { key: 'depot', label: "Déposé à l'agence de départ", date: 'date_livraison_agence' },
   { key: 'entrepot', label: "Transféré à l'entrepôt", date: 'date_deplacement_entrepot', international: true },
-  { key: 'depart', label: 'Parti du pays de départ', date: 'date_expedition_depart', international: true },
+  { key: 'depart', label: 'Quitté le pays de départ', date: 'date_expedition_depart', international: true },
   { key: 'arrivee', label: 'Arrivé dans le pays de destination', date: 'date_expedition_arrivee', international: true },
   { key: 'agence', label: "Reçu à l'agence d'arrivée", date: 'date_reception_agence' },
   { key: 'remis', label: 'Remis au destinataire', date: 'date_reception_client' },

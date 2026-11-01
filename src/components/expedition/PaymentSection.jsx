@@ -287,12 +287,11 @@ function ProofItem({ preuve, currency }) {
   );
 }
 
-// Composantes de `accounting_details.total_client_due` (montant de base,
-// prestation, emballage, enlèvement, livraison, retard, frais annexes). Noms
-// de champs non figés par la doc : lecture défensive, lignes nulles omises.
-const TOTAL_PARTS = [
-  { key: 'base', label: 'Prix de l’envoi', fields: ['montant_base', 'montant_expedition'] },
-  { key: 'prestation', label: 'Prestation', fields: ['montant_prestation', 'frais_prestation'] },
+// Frais qui s'ajoutent au prix de l'envoi dans `accounting_details.total_client_due`.
+// La prestation fait partie du prix de l'envoi : elle n'est jamais affichee
+// separement. Noms de champs non figes par la doc : lecture defensive (d'abord
+// `accounting_details`, puis l'expedition), lignes nulles omises.
+const EXTRA_PARTS = [
   { key: 'emballage', label: 'Emballage', fields: ['frais_emballage', 'montant_emballage', 'prix_emballage'] },
   { key: 'enlevement', label: 'Enlèvement à domicile', fields: ['frais_enlevement', 'montant_enlevement'] },
   { key: 'livraison', label: 'Livraison à domicile', fields: ['frais_livraison', 'montant_livraison'] },
@@ -300,14 +299,45 @@ const TOTAL_PARTS = [
   { key: 'annexes', label: 'Frais annexes', fields: ['frais_annexes', 'montant_frais_annexes'] },
 ];
 
-const totalLines = (expedition) => {
-  const details = expedition?.accounting_details ?? {};
-  const lines = TOTAL_PARTS.map((p) => {
-    const value = p.fields.map((f) => num(details[f])).find((v) => v != null);
-    return value ? { key: p.key, label: p.label, value } : null;
+const partValue = (expedition, fields) => {
+  const sources = [expedition?.accounting_details, expedition];
+  for (const source of sources) {
+    const v = fields.map((f) => num(source?.[f])).find((x) => x != null);
+    if (v != null) return v;
+  }
+  return null;
+};
+
+// Frais presents sur l'expedition (> 0) et leur somme.
+const extraParts = (expedition) => {
+  const parts = EXTRA_PARTS.map((p) => {
+    let value = partValue(expedition, p.fields);
+    // Emballage : repli sur la somme des emballages par colis.
+    if (p.key === 'emballage' && !value) {
+      value = (expedition?.colis ?? []).reduce((sum, c) => sum + (num(c.prix_emballage) || 0), 0) || null;
+    }
+    return value > 0 ? { key: p.key, label: p.label, value } : null;
   }).filter(Boolean);
-  // Une seule ligne = le total lui-même : pas de ventilation utile.
-  return lines.length > 1 ? lines : [];
+  return { parts, sum: parts.reduce((t, p) => t + p.value, 0) };
+};
+
+// Ventilation du total : prix de l'envoi (le reste, prestation comprise) puis
+// chaque frais present. Vide s'il n'y a aucun frais a detailler.
+const totalLines = (expedition, total) => {
+  const { parts, sum } = extraParts(expedition);
+  if (!parts.length) return [];
+  const base = total != null ? total - sum : null;
+  return [
+    ...(base > 0 ? [{ key: 'base', label: 'Prix de l’envoi', value: base }] : []),
+    ...parts,
+  ];
+};
+
+// Etat du reglement des frais annexes, quand le backend le precise.
+const annexesNote = (expedition) => {
+  const statut = String(expedition?.statut_paiement_frais ?? '').toLowerCase();
+  if (!statut) return null;
+  return statut === 'paye' || statut === 'paid' ? 'Payés' : 'À régler';
 };
 
 export default function PaymentSection({
@@ -318,7 +348,10 @@ export default function PaymentSection({
   const [sheet, setSheet] = useState(null); // 'frais' | 'livreur'
 
   const currency = expeditionCurrency(expedition);
-  const total = num(expedition.accounting_details?.total_client_due) ?? num(expedition.montant_expedition);
+  // Total declare par le serveur ; sinon prix de l'expedition + frais (meme formule
+  // que la facture).
+  const total = num(expedition.accounting_details?.total_client_due)
+    ?? (num(expedition.montant_expedition) != null ? num(expedition.montant_expedition) + extraParts(expedition).sum : null);
   const paid = num(expedition.montant_paye) ?? 0;
   const remaining = total != null ? Math.max(0, total - paid) : null;
   const isPaid = expedition.statut_paiement === 'paye' || (remaining === 0 && total != null && total > 0);
@@ -356,10 +389,17 @@ export default function PaymentSection({
       {viewer === 'client' && total != null && (
         <dl className="divide-y divide-surface-100 rounded-xl bg-surface-50 px-3 text-sm">
           {/* Ventilation du total (enlèvement compris), quand l'API la détaille. */}
-          {totalLines(expedition).map((l) => (
-            <div key={l.key} className="flex justify-between py-2">
+          {totalLines(expedition, total).map((l) => (
+            <div key={l.key} className="flex justify-between gap-3 py-2">
               <dt className="text-surface-500">{l.label}</dt>
-              <dd className="font-medium text-surface-800">{formatPrice(l.value, currency)}</dd>
+              <dd className="text-right font-medium text-surface-800">
+                {formatPrice(l.value, currency)}
+                {l.key === 'annexes' && annexesNote(expedition) && (
+                  <span className={`ml-1.5 rounded-full px-1.5 py-px text-[11px] font-semibold ${annexesNote(expedition) === 'Payés' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {annexesNote(expedition)}
+                  </span>
+                )}
+              </dd>
             </div>
           ))}
           <div className="flex justify-between py-2">
@@ -382,7 +422,7 @@ export default function PaymentSection({
       )}
       {viewer === 'client' && total != null && (
         <p className="mt-2 text-xs text-surface-500">
-          Inclut le prix de base, la prestation, l’emballage, l’enlèvement / la livraison à domicile et les éventuels frais annexes.
+          Inclut le prix de l’envoi, l’emballage, l’enlèvement / la livraison à domicile et les éventuels frais annexes.
         </p>
       )}
 
