@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   MessageCircle,
   Route,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
@@ -313,6 +314,27 @@ export default function ExpeditionDetailPage() {
 
         {!closedWithoutDelivery && (
           <Section icon={<Route size={17} />} title="Suivi" right={<ExpeditionStatusBadge statut={rawStatut} />}>
+            {/* Code de suivi (livraison directe) : renseigné au départ de l'expédition. */}
+            {val(exp.code_suivi_expedition) && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-surface-50 px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-caption text-surface-500">Code de suivi</p>
+                  <p className="truncate font-mono text-sm font-semibold text-surface-900">{exp.code_suivi_expedition}</p>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-surface-600 ring-1 ring-surface-200"
+                  aria-label="Copier le code de suivi"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(String(exp.code_suivi_expedition))
+                      .then(() => toast.success('Code de suivi copié'))
+                      .catch(() => toast.error('Copie impossible'));
+                  }}
+                >
+                  <Copy size={16} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             <TrackingTimeline expedition={exp} />
           </Section>
         )}
@@ -377,6 +399,7 @@ export default function ExpeditionDetailPage() {
               label="Paiement"
               value={exp.statut_paiement === 'paye' ? 'Payé' : val(exp.statut_paiement) ? (Number(exp.montant_paye) > 0 ? 'Partiellement payé' : 'Non payé') : null}
             />
+            <Row label="Mode de paiement" value={exp.is_paiement_credit ? 'À crédit (paiement différé)' : null} />
             <Row label="Créée le" value={formatDateTime(exp.created_at)} />
           </div>
           {!closedWithoutDelivery && (

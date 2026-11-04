@@ -363,6 +363,8 @@ export default function PaymentSection({
   const paid = num(expedition.montant_paye) ?? 0;
   const remaining = total != null ? Math.max(0, total - paid) : null;
   const isPaid = expedition.statut_paiement === 'paye' || (remaining === 0 && total != null && total > 0);
+  // Paiement à crédit choisi à l'enregistrement : rien à régler maintenant.
+  const isCredit = Boolean(expedition.is_paiement_credit) && !isPaid && viewer === 'client';
 
   const load = useCallback(() => {
     setProofsError(false);
@@ -400,7 +402,7 @@ export default function PaymentSection({
           <h2 className="font-heading text-[15px] font-semibold text-surface-900">Paiement</h2>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${isPaid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-          {isPaid ? 'Payé' : pending.length ? 'Preuve en vérification' : 'À régler'}
+          {isPaid ? 'Payé' : isCredit ? 'À crédit' : pending.length ? 'Preuve en vérification' : 'À régler'}
         </span>
       </div>
 
@@ -483,6 +485,12 @@ export default function PaymentSection({
           )}
         </dl>
       )}
+      {isCredit && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl bg-primary-50 px-3 py-2.5 text-xs leading-snug text-primary-800" role="status">
+          <Clock3 size={14} className="mt-px shrink-0" aria-hidden="true" />
+          Paiement à crédit : vous réglerez plus tard, à l’arrivée ou selon l’accord de l’agence. Aucun paiement n’est demandé pour le moment.
+        </p>
+      )}
       {viewer === 'client' && total != null && (
         <p className="mt-2 text-xs text-surface-500">
           Inclut le prix de l’envoi, l’emballage, l’enlèvement / la livraison à domicile et les éventuels frais annexes.
@@ -509,7 +517,7 @@ export default function PaymentSection({
             <Bike size={16} /> Payer le livreur{driverPrice != null ? ` · ${formatPrice(driverPrice, driverMission?.devise)}` : ''}
           </button>
         )}
-        {!isPaid && (
+        {!isPaid && !isCredit && (
           <button type="button" className={canPayDriver ? 'btn-secondary w-full' : 'btn-primary w-full'} onClick={() => setSheet('frais')}>
             <Receipt size={16} /> {proofs?.some((p) => p.statut === 'rejetee') ? 'Déposer une nouvelle preuve' : 'Payer et déposer une preuve'}
           </button>

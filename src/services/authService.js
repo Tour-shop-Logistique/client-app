@@ -19,6 +19,9 @@ const persistSession = ({ user, token }) => {
   persistUser(user);
 };
 
+// Le backend normalise l'email en minuscules : on fait pareil avant envoi.
+const normEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : e);
+
 const clearSession = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
@@ -56,7 +59,7 @@ const register = async ({
     indicatif_telephone: indicatifTelephone || undefined,
     telephone,
     whatsapp_number: whatsappNumber,
-    email,
+    email: normEmail(email),
     password,
     password_confirmation: passwordConfirmation,
     type: 'client',
@@ -69,14 +72,14 @@ const register = async ({
 // POST /api/verify-email — validates the 6-char code, sets email_verified_at.
 // This is the step that unlocks `login`. No token returned.
 const verifyEmail = async ({ email, code }) => {
-  const { data } = await api.post('/verify-email', { email, code });
+  const { data } = await api.post('/verify-email', { email: normEmail(email), code });
   return data;
 };
 
 // POST /api/resend-email-verification — always `success: true` on the happy path
 // (generic message to avoid account enumeration).
 const resendEmailVerification = async (email) => {
-  const { data } = await api.post('/resend-email-verification', { email });
+  const { data } = await api.post('/resend-email-verification', { email: normEmail(email) });
   return data;
 };
 
@@ -87,7 +90,7 @@ const resendEmailVerification = async (email) => {
 // that address, verify-email, then replay this login. Test `code`, never `message`.
 const login = async ({ email, telephone, password }) => {
   const payload = { password, type: 'client' };
-  if (email) payload.email = email;
+  if (email) payload.email = normEmail(email);
   if (telephone) payload.telephone = telephone;
   const { data } = await api.post('/login', payload);
   if (data?.token) persistSession({ user: data.user, token: data.token });
@@ -114,13 +117,13 @@ const fetchProfile = async () => {
 // WARNING: an unknown email answers HTTP 200 with `success: false` (not 404),
 // so callers must read the `success` flag, not just the HTTP status.
 const forgotPassword = async (email) => {
-  const { data } = await api.post('/forgot-password', { email });
+  const { data } = await api.post('/forgot-password', { email: normEmail(email) });
   return data;
 };
 
 // POST /api/verify-reset-code — checks the code without consuming it.
 const verifyResetCode = async ({ email, code }) => {
-  const { data } = await api.post('/verify-reset-code', { email, code });
+  const { data } = await api.post('/verify-reset-code', { email: normEmail(email), code });
   return data;
 };
 
@@ -128,7 +131,7 @@ const verifyResetCode = async ({ email, code }) => {
 // token for the account. Any stored token is dead afterwards -> full re-login.
 const resetPassword = async ({ email, code, password, passwordConfirmation }) => {
   const { data } = await api.post('/reset-password', {
-    email,
+    email: normEmail(email),
     code,
     password,
     password_confirmation: passwordConfirmation,

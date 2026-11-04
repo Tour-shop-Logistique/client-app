@@ -27,6 +27,7 @@ import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ProductSelectSheet from '../../components/expedition/ProductSelectSheet';
 import DestinationCountrySheet from '../../components/expedition/DestinationCountrySheet';
 import PickupOption from '../../components/expedition/PickupOption';
+import CreditOption from '../../components/expedition/CreditOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
@@ -327,6 +328,8 @@ export default function ExtrapaysFormPage() {
   // Enlèvement à domicile : disponible dans les deux modes (livraison_domicile
   // et recuperation_agence), mêmes champs `enlevement_*` dans `store`.
   const [pickup, setPickup] = useState(EMPTY_PICKUP);
+  // Paiement différé : groupage (recuperation_agence) seulement, ignoré en LD.
+  const [paiementCredit, setPaiementCredit] = useState(false);
 
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState('idle');
@@ -347,10 +350,10 @@ export default function ExtrapaysFormPage() {
   const draftData = useMemo(
     () => ({
       v: DRAFT_VERSION, code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
-      colisList, agence, typesChoisis, expediteur, destinataire, pickup,
+      colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit,
     }),
     [country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
-      colisList, agence, typesChoisis, expediteur, destinataire, pickup]
+      colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit]
   );
   const draft = useFormDraft(
     'tourshop:expedition-extrapays',
@@ -371,6 +374,7 @@ export default function ExtrapaysFormPage() {
       if (d.expediteur) setExpediteur(d.expediteur);
       if (d.destinataire) setDestinataire(d.destinataire);
       if (d.pickup) setPickup(d.pickup);
+      setPaiementCredit(Boolean(d.paiementCredit));
       return true;
     },
     !mode && !paysDestination
@@ -732,6 +736,7 @@ export default function ExtrapaysFormPage() {
       }
       Object.assign(payload, pickupPayload(pickup));
       if (villeRequise) payload.ville_destination = villeDestination;
+      if (!isLD && paiementCredit) payload.is_paiement_credit = true;
 
       const result = await expeditionService.storeExpedition(payload);
       // Demande envoyee (meme partiellement) : ne pas la re-proposer.
@@ -1278,6 +1283,8 @@ export default function ExtrapaysFormPage() {
                 currency={currency}
                 address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
               />
+
+              {!isLD && <CreditOption value={paiementCredit} onChange={setPaiementCredit} />}
             </div>
 
             <ActionDock>

@@ -25,6 +25,7 @@ import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ContactFields from '../../components/expedition/ContactFields';
 import PickupOption from '../../components/expedition/PickupOption';
+import CreditOption from '../../components/expedition/CreditOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import {
@@ -140,6 +141,7 @@ export default function IntervilleFormPage() {
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
   const [pickup, setPickup] = useState(EMPTY_PICKUP);
+  const [paiementCredit, setPaiementCredit] = useState(false);
 
   const [communes, setCommunes] = useState([]);
   const [communesStatus, setCommunesStatus] = useState('idle');
@@ -157,8 +159,8 @@ export default function IntervilleFormPage() {
   // Saisie conservee si l'onglet est recharge (photos des colis comprises).
   // Un brouillon d'un autre pays est ignore.
   const draftData = useMemo(
-    () => ({ code_pays: country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup }),
-    [country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup]
+    () => ({ code_pays: country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup, paiementCredit }),
+    [country.code, step, maxStepReached, agence, destinataireCommuneId, colisList, expediteur, destinataire, pickup, paiementCredit]
   );
   const draftEmpty = !agence && !destinataireCommuneId && !colisList.some((c) => c.poids || c.photo) && !destinataire.nom_prenom;
   const draft = useFormDraft(
@@ -175,6 +177,7 @@ export default function IntervilleFormPage() {
       if (d.expediteur) setExpediteur(d.expediteur);
       if (d.destinataire) setDestinataire(d.destinataire);
       if (d.pickup) setPickup(d.pickup);
+      setPaiementCredit(Boolean(d.paiementCredit));
       return true;
     },
     draftEmpty
@@ -415,6 +418,7 @@ export default function IntervilleFormPage() {
         ...contactPayload('destinataire', { ...destinataire, latitude: null, longitude: null, instructions: '' }),
         colis: buildColis(colisList, { withPhoto: true }),
         ...pickupPayload(pickup),
+        ...(paiementCredit ? { is_paiement_credit: true } : {}),
       };
       const res = await expeditionService.storeExpedition(payload);
       if (res?.success && res.expedition) {
@@ -783,6 +787,8 @@ export default function IntervilleFormPage() {
                 address={[expediteur.adresse, expediteur.quartier, expediteur.ville].filter((v) => v?.trim()).join(', ')}
                 currency={currency}
               />
+
+              <CreditOption value={paiementCredit} onChange={setPaiementCredit} />
 
               {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
             </div>
