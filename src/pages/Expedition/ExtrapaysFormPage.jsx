@@ -23,6 +23,7 @@ import ExitFlowSheet from '../../components/expedition/ExitFlowSheet';
 import EmptyParcelAnimation from '../../components/illustrations/EmptyParcelAnimation';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import CitySelectSheet from '../../components/common/CitySelectSheet';
+import CommuneSelectSheet from '../../components/expedition/CommuneSelectSheet';
 import AgencySelectSheet from '../../components/expedition/AgencySelectSheet';
 import ProductSelectSheet from '../../components/expedition/ProductSelectSheet';
 import DestinationCountrySheet from '../../components/expedition/DestinationCountrySheet';
@@ -55,6 +56,11 @@ import ContactFields from '../../components/expedition/ContactFields';
 // pendant la saisie des colis, et l'estimation reste visible dans la barre du bas.
 
 const DRAFT_VERSION = 3;
+
+// Le backend répond « Aucun backoffice actif pour ce pays. » quand un pays n'est
+// pas desservi : on affiche un message simple plutôt que le texte technique.
+const UNSUPPORTED_DESTINATION_MESSAGE = "Cette destination n'est pas prise en charge pour le moment.";
+const isUnsupportedCountry = (err) => /aucun backoffice actif/i.test(err?.response?.data?.message || '');
 const EMPTY_LD_COLIS = { poids: '', longueur: '', largeur: '', hauteur: '', articles: [], photo: null };
 
 const MODES = [
@@ -312,6 +318,7 @@ export default function ExtrapaysFormPage() {
   const [countrySheetOpen, setCountrySheetOpen] = useState(!country.code);
   const [destSheetOpen, setDestSheetOpen] = useState(false);
   const [citySheetOpen, setCitySheetOpen] = useState(false);
+  const [communeSheetOpen, setCommuneSheetOpen] = useState(false);
   const [agenceSheetOpen, setAgenceSheetOpen] = useState(false);
   const [productSheetOpen, setProductSheetOpen] = useState(false);
   const [productTargetColisIndex, setProductTargetColisIndex] = useState(null); // null = mode groupage, number = index colis LD
@@ -319,6 +326,12 @@ export default function ExtrapaysFormPage() {
   const [mode, setMode] = useState('');
   const [paysDestination, setPaysDestination] = useState('');
   const [villeDestination, setVilleDestination] = useState('');
+  // Commune d'arrivée (groupage CA, hors Afrique) : optionnelle, affine la
+  // résolution du tarif CA côté backend (sinon repli sur la ligne texte).
+  const [communeDestinationId, setCommuneDestinationId] = useState('');
+  const [communes, setCommunes] = useState([]);
+  const [communesStatus, setCommunesStatus] = useState('idle');
+  const [communesRetry, setCommunesRetry] = useState(0);
   const [articles, setArticles] = useState([]); // groupage: { produit_id, designation, reference, category, poids }
   const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, articles: [{produit_id, designation, reference}], photo }
   const [agence, setAgence] = useState(null);
@@ -349,10 +362,10 @@ export default function ExtrapaysFormPage() {
   // Un brouillon d'un autre pays de depart est ignore.
   const draftData = useMemo(
     () => ({
-      v: DRAFT_VERSION, code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
+      v: DRAFT_VERSION, code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, communeDestinationId, articles,
       colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit,
     }),
-    [country.code, step, maxStepReached, mode, paysDestination, villeDestination, articles,
+    [country.code, step, maxStepReached, mode, paysDestination, villeDestination, communeDestinationId, articles,
       colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit]
   );
   const draft = useFormDraft(
@@ -367,6 +380,7 @@ export default function ExtrapaysFormPage() {
       setMode(d.mode ?? '');
       setPaysDestination(d.paysDestination ?? '');
       setVilleDestination(d.villeDestination ?? '');
+      setCommuneDestinationId(d.communeDestinationId ?? '');
       setArticles(d.articles ?? []);
       setColisList(d.colisList ?? []);
       setAgence(d.agence ?? null);
@@ -385,6 +399,9 @@ export default function ExtrapaysFormPage() {
   // Ville de destination demandée dès que la destination n'est pas africaine
   // (les deux modes).
   const villeRequise = Boolean(paysDestination) && !destinationIsAfrican;
+  // Le sélecteur de commune ne concerne que le groupage hors Afrique (tarif CA).
+  const communeApplicable = villeRequise && mode === 'recuperation_agence';
+  const communeDestination = communes.find((c) => c.id === communeDestinationId) || null;
 
   useEffect(() => {
     if (!user) return;
@@ -415,6 +432,7 @@ export default function ExtrapaysFormPage() {
     setMode('');
     setPaysDestination('');
     setVilleDestination('');
+    setCommuneDestinationId('');
     setArticles([]);
     setColisList([]);
     setOpenColis(0);
@@ -438,6 +456,7 @@ export default function ExtrapaysFormPage() {
     dispatch(setCountry(code));
     setPaysDestination('');
     setVilleDestination('');
+    setCommuneDestinationId('');
     setAgence(null);
     setArticles([]);
     setColisList(isLD ? [{ ...EMPTY_LD_COLIS }] : []);
@@ -463,6 +482,7 @@ export default function ExtrapaysFormPage() {
     if (paysDestination && !isDestinationCompatible(dest, value)) {
       setPaysDestination('');
       setVilleDestination('');
+      setCommuneDestinationId('');
     }
     if (value === 'livraison_domicile') {
       setArticles([]);
@@ -485,11 +505,38 @@ export default function ExtrapaysFormPage() {
         setDestinations(data.pays ?? []);
         setDestinationsStatus('idle');
       })
-      .catch(() => !cancelled && setDestinationsStatus('error'));
+      .catch((err) => !cancelled && setDestinationsStatus(isUnsupportedCountry(err) ? 'unsupported' : 'error'));
     return () => {
       cancelled = true;
     };
   }, [country.code, destRetry]);
+
+  // Communes du pays de destination (route publique). Optionnel : si la liste est
+  // vide ou indisponible, le sélecteur est masqué et la ville texte reste le repli.
+  useEffect(() => {
+    if (!communeApplicable) {
+      setCommunes([]);
+      setCommunesStatus('idle');
+      return undefined;
+    }
+    let cancelled = false;
+    setCommunesStatus('loading');
+    expeditionService
+      .listCommunes(paysDestination)
+      .then((data) => {
+        if (cancelled) return;
+        setCommunes(data.communes ?? []);
+        setCommunesStatus('idle');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCommunes([]);
+        setCommunesStatus('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [communeApplicable, paysDestination, communesRetry]);
 
   useEffect(() => {
     if (!country.code || !mode) return;
@@ -553,16 +600,18 @@ export default function ExtrapaysFormPage() {
           };
         }
         if (villeRequise) payload.ville_destination = villeDestination;
+        if (communeApplicable && communeDestination) payload.destinataire_commune_id = communeDestination.id;
         const data = await expeditionService.getDevis(payload);
         if (cancelled) return;
         setDevis(mode === 'livraison_domicile' ? data.devis ?? null : data.groupes ?? []);
         setDevisStatus('idle');
       } catch (err) {
         if (cancelled) return;
-        const message =
-          err.response?.data?.message ||
-          Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
-          'Impossible de calculer le devis pour le moment.';
+        const message = isUnsupportedCountry(err)
+          ? UNSUPPORTED_DESTINATION_MESSAGE
+          : err.response?.data?.message ||
+            Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
+            'Impossible de calculer le devis pour le moment.';
         setDevis(null);
         setDevisError(message);
         setDevisStatus('error');
@@ -572,7 +621,7 @@ export default function ExtrapaysFormPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [canComputeDevis, mode, country.code, paysDestination, villeDestination, villeRequise, agence, articles, colisList, devisRetry]);
+  }, [canComputeDevis, mode, country.code, paysDestination, villeDestination, villeRequise, communeApplicable, communeDestination, agence, articles, colisList, devisRetry]);
 
   // Auto-pick the type_expedition for groupage categories that only have one
   // eligible type (per api-enregistrement-expedition-client.md), and keep an
@@ -736,6 +785,7 @@ export default function ExtrapaysFormPage() {
       }
       Object.assign(payload, pickupPayload(pickup));
       if (villeRequise) payload.ville_destination = villeDestination;
+      if (communeApplicable && communeDestination) payload.destinataire_commune_id = communeDestination.id;
       if (!isLD && paiementCredit) payload.is_paiement_credit = true;
 
       const result = await expeditionService.storeExpedition(payload);
@@ -751,10 +801,11 @@ export default function ExtrapaysFormPage() {
         setSubmitResult(err.response.data);
         return;
       }
-      const message =
-        err.response?.data?.message ||
-        Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
-        "Impossible d'enregistrer l'expédition pour le moment.";
+      const message = isUnsupportedCountry(err)
+        ? UNSUPPORTED_DESTINATION_MESSAGE
+        : err.response?.data?.message ||
+          Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
+          "Impossible d'enregistrer l'expédition pour le moment.";
       setSubmitError(message);
       toast.error(message);
     } finally {
@@ -897,7 +948,11 @@ export default function ExtrapaysFormPage() {
                   </div>
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-surface-700">Destination</p>
-                    {destinationsStatus === 'error' ? (
+                    {destinationsStatus === 'unsupported' ? (
+                      <div className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                        <AlertTriangle size={18} className="shrink-0" /> {UNSUPPORTED_DESTINATION_MESSAGE}
+                      </div>
+                    ) : destinationsStatus === 'error' ? (
                       <button
                         type="button"
                         onClick={() => setDestRetry((t) => t + 1)}
@@ -942,6 +997,19 @@ export default function ExtrapaysFormPage() {
                       onChange={(e) => setVilleDestination(e.target.value)}
                     />
                   )}
+                </div>
+              )}
+
+              {communeApplicable && (communes.length > 0 || communesStatus === 'loading') && (
+                <div>
+                  <p className="mb-1.5 text-sm font-medium text-surface-700">Commune de destination (optionnel)</p>
+                  <PickerButton
+                    icon={MapPinned}
+                    selected={Boolean(communeDestination)}
+                    title={communeDestination ? communeDestination.nom : communesStatus === 'loading' ? 'Chargement des communes…' : 'Choisir une commune'}
+                    subtitle={communeDestination ? getCountryName(paysDestination) : 'Affine le tarif Colis Accompagnés'}
+                    onClick={() => setCommuneSheetOpen(true)}
+                  />
                 </div>
               )}
 
@@ -1422,6 +1490,7 @@ export default function ExtrapaysFormPage() {
         onSelect={(code) => {
           setPaysDestination(code);
           setVilleDestination('');
+          setCommuneDestinationId('');
         }}
         onRetry={() => setDestRetry((t) => t + 1)}
       />
@@ -1431,6 +1500,15 @@ export default function ExtrapaysFormPage() {
         codePays={paysDestination}
         onSelect={setVilleDestination}
         title="Ville de destination"
+      />
+      <CommuneSelectSheet
+        open={communeSheetOpen}
+        onClose={() => setCommuneSheetOpen(false)}
+        communes={communes}
+        status={communesStatus}
+        onRetry={() => setCommunesRetry((t) => t + 1)}
+        currentId={communeDestinationId}
+        onSelect={(c) => setCommuneDestinationId(c.id)}
       />
       <AgencySelectSheet
         open={agenceSheetOpen}

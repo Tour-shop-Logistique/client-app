@@ -53,6 +53,14 @@ export default function DestinationCountrySheet({
 
       {status === 'loading' && <LoadingSpinner label="Chargement des destinations..." />}
 
+      {status === 'unsupported' && (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Destination non prise en charge"
+          description="Cette destination n'est pas prise en charge pour le moment."
+        />
+      )}
+
       {status === 'error' && (
         <EmptyState
           icon={AlertTriangle}
