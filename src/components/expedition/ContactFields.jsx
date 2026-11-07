@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { BookMarked, MapPin, User } from 'lucide-react';
 import LocationPicker from './LocationPicker';
+import PostalCodeField from './PostalCodeField';
 import { applyFavorite, whatsappInvalid, emailInvalid, contactMissing } from '../../utils/contact';
 import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
@@ -23,7 +24,7 @@ import { digitsOnly, digitsInputProps } from '../../utils/digits';
 // adresse, ville et code postal.
 export default function ContactFields({
   title, data, onChange, communes, villeFixed, withLocation = false, locationLabel = 'Position pour le livreur', children,
-  showErrors = false, emailHint,
+  showErrors = false, emailHint, showMap = true, postalVisible = false, postalCountry,
 }) {
   const [showMore, setShowMore] = useState(false);
   const [showLocation, setShowLocation] = useState(data.latitude != null || Boolean(data.instructions));
@@ -128,6 +129,21 @@ export default function ContactFields({
         <input className={cls('adresse')} {...fieldProps('adresse')} placeholder="Ex: Rue 12" value={data.adresse} onChange={set('adresse')} />
         {bad('adresse') && <Err>Indiquez l’adresse.</Err>}
       </label>
+      {/* Code postal visible, avec suggestions d'adresse postale au fil de la saisie. */}
+      {postalVisible && (
+        <PostalCodeField
+          value={data.code_postal}
+          countryCode={postalCountry}
+          onChange={(v) => onChange({ ...data, code_postal: v })}
+          onPick={(r) => onChange({
+            ...data,
+            code_postal: r.postcode,
+            ville: villeFixed || communes ? data.ville : r.city || data.ville,
+            adresse: data.adresse.trim() ? data.adresse : r.street || data.adresse,
+            etat: data.etat?.trim() ? data.etat : r.state || data.etat,
+          })}
+        />
+      )}
       {emailHint && emailField}
       {children}
 
@@ -139,17 +155,21 @@ export default function ContactFields({
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600"
           >
             <MapPin size={13} />
-            {showLocation ? 'Masquer la position pour le livreur' : '+ Position et instructions pour le livreur (recommandé)'}
+            {showLocation
+              ? (showMap ? 'Masquer la position pour le livreur' : 'Masquer les instructions pour le livreur')
+              : (showMap ? '+ Position et instructions pour le livreur (recommandé)' : '+ Instructions pour le livreur')}
           </button>
           {showLocation && (
             <div className="space-y-3 border-t border-surface-100 pt-3">
-              <LocationPicker
-                value={data}
-                onChange={(lat, lng) => onChange({ ...data, latitude: lat, longitude: lng })}
-                label={locationLabel}
-                pointLabel={title}
-              />
-              {data.latitude != null && (
+              {showMap && (
+                <LocationPicker
+                  value={data}
+                  onChange={(lat, lng) => onChange({ ...data, latitude: lat, longitude: lng })}
+                  label={locationLabel}
+                  pointLabel={title}
+                />
+              )}
+              {showMap && data.latitude != null && (
                 <button
                   type="button"
                   className="text-xs font-medium text-surface-500"
@@ -175,7 +195,7 @@ export default function ContactFields({
       )}
 
       <button type="button" onClick={() => setShowMore((v) => !v)} className="text-xs font-semibold text-primary-600">
-        {showMore ? 'Masquer les champs optionnels' : `+ WhatsApp, ${emailHint ? '' : 'e-mail, '}société, code postal…`}
+        {showMore ? 'Masquer les champs optionnels' : `+ WhatsApp, ${emailHint ? '' : 'e-mail, '}société${postalVisible ? '…' : ', code postal…'}`}
       </button>
       {(showMore || (!emailHint && bad('email')) || bad('whatsapp')) && (
         <div className="space-y-2.5 border-t border-surface-100 pt-2.5">
@@ -205,10 +225,12 @@ export default function ContactFields({
             <input className="input-field mt-1.5" value={data.societe} onChange={set('societe')} />
           </label>
           <div className="grid grid-cols-2 gap-2">
-            <label className="block text-xs font-medium text-surface-600">
-              Code postal
-              <input className="input-field mt-1.5" value={data.code_postal} onChange={set('code_postal')} />
-            </label>
+            {!postalVisible && (
+              <label className="block text-xs font-medium text-surface-600">
+                Code postal
+                <input className="input-field mt-1.5" value={data.code_postal} onChange={set('code_postal')} />
+              </label>
+            )}
             <label className="block text-xs font-medium text-surface-600">
               État / Région
               <input className="input-field mt-1.5" value={data.etat} onChange={set('etat')} />

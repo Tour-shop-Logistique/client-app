@@ -12,7 +12,7 @@ import StepBar from '../../components/expedition/StepBar';
 import ActionDock, { DockTotal } from '../../components/expedition/ActionDock';
 import WeightStepper from '../../components/expedition/WeightStepper';
 import {
-  ContactSummary, ErrorNote, PickerButton, RouteRail, SummaryRow as Row,
+  ErrorNote, PickerButton, RouteRail, SummaryRow as Row,
 } from '../../components/expedition/FlowParts';
 import SuccessHero, { CopyReference } from '../../components/expedition/SuccessHero';
 import EmptyState from '../../components/common/EmptyState';
@@ -55,7 +55,7 @@ import ContactFields from '../../components/expedition/ContactFields';
 // L'agence est choisie dès le Trajet : le devis (POST /devis) peut donc tourner
 // pendant la saisie des colis, et l'estimation reste visible dans la barre du bas.
 
-const DRAFT_VERSION = 3;
+const DRAFT_VERSION = 4;
 
 // Le backend répond « Aucun backoffice actif pour ce pays. » quand un pays n'est
 // pas desservi : on affiche un message simple plutôt que le texte technique.
@@ -312,8 +312,6 @@ export default function ExtrapaysFormPage() {
   const [submitResult, setSubmitResult] = useState(null);
   const [recapOpen, setRecapOpen] = useState(false);
   const [openColis, setOpenColis] = useState(0);
-  const [expediteurOpen, setExpediteurOpen] = useState(true);
-  const [destinataireOpen, setDestinataireOpen] = useState(true);
 
   const [countrySheetOpen, setCountrySheetOpen] = useState(!country.code);
   const [destSheetOpen, setDestSheetOpen] = useState(false);
@@ -373,10 +371,16 @@ export default function ExtrapaysFormPage() {
     draftData,
     (d) => {
       if (d.code_pays !== country.code) return false;
-      // v2 (3 étapes) et v3 (4 étapes) ont la même numérotation pour les étapes 1 à 3.
-      const current = d.v >= 2;
-      setStep(current ? d.step ?? 1 : migrateStep(d.step ?? 1));
-      setMaxStepReached(current ? d.maxStepReached ?? 1 : migrateStep(d.maxStepReached ?? 1));
+      // v2/v3 (Coordonnées en une seule étape 3, Remise en 4) : la Remise passe en 5.
+      const toStep = (s) => {
+        const n = s ?? 1;
+        if (d.v >= 4) return n;
+        if (d.v >= 2) return n >= 4 ? n + 1 : n;
+        const m = migrateStep(n);
+        return m >= 4 ? m + 1 : m;
+      };
+      setStep(toStep(d.step));
+      setMaxStepReached(toStep(d.maxStepReached));
       setMode(d.mode ?? '');
       setPaysDestination(d.paysDestination ?? '');
       setVilleDestination(d.villeDestination ?? '');
@@ -412,11 +416,6 @@ export default function ExtrapaysFormPage() {
   const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
 
   const goToStep = (n) => {
-    // À l'arrivée sur les coordonnées, un expéditeur déjà complet reste replié.
-    if (n === 3) {
-      setExpediteurOpen(!expediteurOk);
-      setDestinataireOpen(!contactIsComplete(destinataire));
-    }
     setStep(n);
     setMaxStepReached((m) => Math.max(m, n));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -698,7 +697,7 @@ export default function ExtrapaysFormPage() {
     ? products.filter((p) => !(colisList[productTargetColisIndex]?.articles ?? []).some((a) => a.produit_id === p.id))
     : products.filter((p) => !articles.some((a) => a.produit_id === p.id));
 
-  const stepLabels = ['Trajet', isLD ? 'Colis' : 'Articles', 'Coordonnées', 'Remise'];
+  const stepLabels = ['Trajet', isLD ? 'Colis' : 'Articles', 'Expéditeur', 'Destinataire', 'Remise'];
 
   const groupes = !isLD && Array.isArray(devis) ? devis : [];
   const groupageHasShippableGroup = isLD || !Array.isArray(devis) || devis.some((g) => g.types_eligibles.length > 0);
@@ -707,28 +706,41 @@ export default function ExtrapaysFormPage() {
   const devisReady = devisStatus === 'idle' && (isLD ? Boolean(devis) : Array.isArray(devis));
   const canContinueContenu = contenuOk && devisReady && groupageHasShippableGroup && groupageAllChoicesMade;
 
-  const contactsOk = expediteurOk && contactIsComplete(destinataire);
+  const destinataireOk = contactIsComplete(destinataire);
 
   // « Continuer » reste cliquable : si un champ obligatoire manque, on affiche
   // les erreurs et on renvoie sur le premier champ à compléter.
-  const [showContactErrors, setShowContactErrors] = useState(false);
-  const handleContinue = () => {
-    if (!contactsOk) {
-      setShowContactErrors(true);
-      if (!expediteurOk) setExpediteurOpen(true);
-      if (!contactIsComplete(destinataire)) setDestinataireOpen(true);
+  const [showExpediteurErrors, setShowExpediteurErrors] = useState(false);
+  const [showDestinataireErrors, setShowDestinataireErrors] = useState(false);
+  const handleContinueExpediteur = () => {
+    if (!expediteurOk) {
+      setShowExpediteurErrors(true);
       focusFirstInvalid();
       return;
     }
     goToStep(4);
   };
+  const handleContinueDestinataire = () => {
+    if (!destinataireOk) {
+      setShowDestinataireErrors(true);
+      focusFirstInvalid();
+      return;
+    }
+    goToStep(5);
+  };
 
-  // Étape 4 (« Remise ») -> récapitulatif. Si un contact a été invalidé entre-temps,
-  // retour à l'étape 3 avec les erreurs.
+  // Étape 5 (« Remise ») -> récapitulatif. Si un contact a été invalidé entre-temps,
+  // retour à son étape avec les erreurs.
   const handleVerify = () => {
-    if (!contactsOk) {
+    if (!expediteurOk) {
       goToStep(3);
-      setShowContactErrors(true);
+      setShowExpediteurErrors(true);
+      focusFirstInvalid();
+      return;
+    }
+    if (!destinataireOk) {
+      goToStep(4);
+      setShowDestinataireErrors(true);
       focusFirstInvalid();
       return;
     }
@@ -1279,66 +1291,60 @@ export default function ExtrapaysFormPage() {
           </>
         )}
 
-        {/* ---------- Étape 3 : Coordonnées ---------- */}
+        {/* ---------- Étape 3 : Expéditeur ---------- */}
         {step === 3 && (
           <>
             <div className="space-y-3">
-              <h2 className="font-heading text-lg font-semibold text-surface-900">Qui envoie, qui reçoit ?</h2>
-
-              {expediteurOpen ? (
-                <div className="space-y-2">
-                  <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} showErrors={showContactErrors}>
-                    <IdentityFields data={expediteur} onChange={setExpediteur} />
-                  </ContactFields>
-                  {expediteurOk && (
-                    <button type="button" className="btn-ghost w-full" onClick={() => setExpediteurOpen(false)}>
-                      <Check size={16} /> Valider l'expéditeur
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <ContactSummary title="Expéditeur" data={expediteur} onEdit={() => setExpediteurOpen(true)} />
-              )}
-
-              {destinataireOpen ? (
-                <div className="space-y-2">
-                  <ContactFields
-                    title="Destinataire"
-                    data={destinataire}
-                    onChange={setDestinataire}
-                    withLocation={isLD}
-                    locationLabel="Point de livraison"
-                    showErrors={showContactErrors}
-                    emailHint="Pour recevoir les notifications de suivi du colis, veuillez renseigner l’e-mail du destinataire."
-                  />
-                  {contactIsComplete(destinataire) && (
-                    <button type="button" className="btn-ghost w-full" onClick={() => setDestinataireOpen(false)}>
-                      <Check size={16} /> Valider le destinataire
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <ContactSummary title="Destinataire" data={destinataire} onEdit={() => setDestinataireOpen(true)} />
-              )}
-
-              {!contactsOk && (
-                <p className="text-caption text-surface-500">
-                  Nom, téléphone, adresse et ville sont requis pour l'expéditeur et le destinataire.
-                </p>
+              <h2 className="font-heading text-lg font-semibold text-surface-900">Qui envoie le colis ?</h2>
+              <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} showErrors={showExpediteurErrors}>
+                <IdentityFields data={expediteur} onChange={setExpediteur} />
+              </ContactFields>
+              {!expediteurOk && (
+                <p className="text-caption text-surface-500">Nom, téléphone, adresse et ville sont requis.</p>
               )}
             </div>
 
             <ActionDock>
               <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
-              <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinue}>
+              <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinueExpediteur}>
                 Continuer
               </button>
             </ActionDock>
           </>
         )}
 
-        {/* ---------- Étape 4 : Remise du colis ---------- */}
+        {/* ---------- Étape 4 : Destinataire ---------- */}
         {step === 4 && (
+          <>
+            <div className="space-y-3">
+              <h2 className="font-heading text-lg font-semibold text-surface-900">Qui reçoit le colis ?</h2>
+              <ContactFields
+                title="Destinataire"
+                data={destinataire}
+                onChange={setDestinataire}
+                withLocation={isLD}
+                showMap={false}
+                postalVisible={isLD}
+                postalCountry={paysDestination}
+                showErrors={showDestinataireErrors}
+                emailHint="Pour recevoir les notifications de suivi du colis, veuillez renseigner l’e-mail du destinataire."
+              />
+              {!destinataireOk && (
+                <p className="text-caption text-surface-500">Nom, téléphone, adresse et ville sont requis.</p>
+              )}
+            </div>
+
+            <ActionDock>
+              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinueDestinataire}>
+                Continuer
+              </button>
+            </ActionDock>
+          </>
+        )}
+
+        {/* ---------- Étape 5 : Remise du colis ---------- */}
+        {step === 5 && (
           <>
             <div className="space-y-3">
               <h2 className="font-heading text-lg font-semibold text-surface-900">Comment remettre votre colis ?</h2>
@@ -1435,7 +1441,7 @@ export default function ExtrapaysFormPage() {
               </p>
             )}
           </div>
-          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} />}
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} hideMajoration />}
           {!isLD && <p className="text-caption text-surface-500">
             La livraison à domicile se demande ensuite depuis le détail de l'expédition : son tarif est calculé selon la distance depuis l'agence d'arrivée et affiché avant confirmation.
           </p>}

@@ -156,3 +156,98 @@ export async function searchPlaces(query, { signal, countryCode, near } = {}) {
   cache.set(key, places);
   return places;
 }
+
+// ---------------------------------------------------------------------------
+// Suggestions d'adresse postale (code postal + ville + rue) au fil de la saisie.
+// Mêmes moteurs OSM que ci-dessus.
+// Résultat : [{ id, postcode, city, state, street, label, detail }]
+// `label` = « 75011 Paris », `detail` = rue / région.
+// ---------------------------------------------------------------------------
+
+const postalCache = new Map();
+const compact = (v) => norm(v).replace(/[\s-]/g, '');
+const looksLikePostal = (q) => /\d/.test(q) && /^[A-Za-z]{0,3}[\s-]?\d[\w\s-]*$/.test(q.trim());
+
+async function postalPhoton(q, { signal, countryCode }) {
+  const params = new URLSearchParams({ q, limit: '15', lang: 'fr' });
+  const json = await fetchJson(`${PHOTON}/api/?${params}`, signal);
+  const code = String(countryCode || '').toUpperCase();
+  return (json.features || [])
+    .filter((f) => !code || String(f.properties?.countrycode || '').toUpperCase() === code)
+    .map((f) => {
+      const pr = f.properties || {};
+      return {
+        postcode: pr.postcode || '',
+        city: pr.city || pr.locality || pr.district || (pr.type === 'city' ? pr.name : '') || '',
+        state: pr.state || '',
+        street: [pr.housenumber, pr.street || (pr.type === 'street' ? pr.name : '')].filter(Boolean).join(' '),
+      };
+    });
+}
+
+async function postalNominatim(q, { signal, countryCode }) {
+  const params = new URLSearchParams({
+    format: 'jsonv2', limit: '10', addressdetails: '1', 'accept-language': 'fr',
+  });
+  if (looksLikePostal(q)) params.set('postalcode', q);
+  else params.set('q', q);
+  if (countryCode) params.set('countrycodes', countryCode.toLowerCase());
+  const json = await fetchJson(`${NOMINATIM}/search?${params}`, signal);
+  return json.map((p) => {
+    const a = p.address || {};
+    return {
+      postcode: a.postcode || '',
+      city: a.city || a.town || a.village || a.municipality || a.suburb || '',
+      state: a.state || a.region || '',
+      street: [a.house_number, a.road].filter(Boolean).join(' '),
+    };
+  });
+}
+
+// query : début de code postal ou d'adresse (2 caractères minimum).
+// options : { signal, countryCode: 'FR' } — pays de destination.
+export async function searchPostalAddresses(query, { signal, countryCode } = {}) {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const key = `${q.toLowerCase()}|${countryCode || ''}`;
+  if (postalCache.has(key)) return postalCache.get(key);
+
+  const opts = { signal, countryCode };
+  const numeric = looksLikePostal(q);
+  let list = [];
+  let failed = false;
+  try {
+    list = await postalPhoton(q, opts);
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    failed = true;
+  }
+  if (list.filter((r) => r.postcode).length < 4) {
+    try {
+      list = list.concat(await postalNominatim(q, opts));
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (failed) throw err; // aucun moteur n'a répondu
+    }
+  }
+
+  const seen = new Set();
+  const out = [];
+  list.forEach((r) => {
+    if (!r.postcode) return;
+    // Saisie de type code postal : on ne garde que les codes qui la contiennent.
+    if (numeric && !compact(r.postcode).includes(compact(q))) return;
+    const id = `${r.postcode}|${norm(r.city)}|${norm(r.street)}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push({
+      id,
+      ...r,
+      label: [r.postcode, r.city].filter(Boolean).join(' '),
+      detail: [r.street, r.state].filter(Boolean).join(', '),
+    });
+  });
+  const result = out.slice(0, MAX_RESULTS);
+  postalCache.set(key, result);
+  return result;
+}

@@ -23,7 +23,8 @@ function Row({ label, value, strong = false }) {
   );
 }
 
-export default function FeeBreakdown({ detail, currency, className = '' }) {
+// `hideMajoration` : masque la ligne « Majoration express » (récapitulatif avant validation).
+export default function FeeBreakdown({ detail, currency, className = '', hideMajoration = false }) {
   if (!detail) return null;
   const express = detail.mode === 'express';
   const tranche = trancheLabel(detail.kmMin, detail.kmMax);
@@ -37,7 +38,7 @@ export default function FeeBreakdown({ detail, currency, className = '' }) {
       <Row label="Véhicule" value={VEHICULES[detail.vehicule] ?? detail.vehicule} />
       <Row label="Distance depuis l’agence" value={distance} />
       <Row label="Tarif standard" value={detail.standard != null ? formatPrice(detail.standard, currency) : null} />
-      {express && (
+      {express && !hideMajoration && (
         <Row
           label="Majoration express"
           value={detail.taux != null ? `× ${Number(detail.taux).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}` : 'Incluse'}

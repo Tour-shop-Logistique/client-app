@@ -845,7 +845,7 @@ export default function IntervilleFormPage() {
               </p>
             )}
           </div>
-          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} />}
+          {pickup.domicile && <FeeBreakdown detail={pickup.estimate} currency={currency} hideMajoration />}
           <p className="text-caption text-surface-500">
             La livraison à domicile se demande ensuite depuis le détail de l'expédition : son tarif est calculé selon la distance depuis l'agence d'arrivée et affiché avant confirmation.
           </p>
