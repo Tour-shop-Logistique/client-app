@@ -34,7 +34,7 @@ Le champ `mode` (obligatoire sur les deux endpoints de demande ci-dessous) déte
 | `commune_id` | uuid | Oui | Commune de l'agence concernée (départ pour un enlèvement, arrivée pour une livraison à domicile) — doit exister dans `communes` |
 
 ```
-GET /api/expedition/client/grille-tarifs-enlevement?commune_id=uuid-commune-bouake
+GET /api/grille-tarifs-enlevement?commune_id=uuid-commune-bouake
 ```
 
 ### Sortie — succès (200)

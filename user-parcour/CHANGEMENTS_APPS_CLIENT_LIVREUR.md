@@ -107,7 +107,7 @@ L'express est donc toujours plus cher que le standard.
 L'endpoint de la grille tarifaire renvoie désormais les deux prix :
 
 ```http
-GET /api/expedition/client/grille-tarifs-enlevement?commune_id={uuid}
+GET ={uuid}
 ```
 
 ```json

@@ -27,14 +27,14 @@ const getColisFormats = async (codePays) => {
   return data;
 };
 
-// GET /api/expedition/client/grille-tarifs-enlevement?commune_id= — tranches
+// GET /api/grille-tarifs-enlevement?commune_id= — tranches
 // actives { type_vehicule, km_min, km_max (null = illimitée), montant_standard,
 // taux_express (null = express indisponible), montant_express } dans `data`,
 // partagées enlèvement / livraison à domicile. `montant` a été renommé
 // `montant_standard` (changement cassant). `data: []` possible si aucune grille
 // n'est configurée (pas une erreur). Lecture : utils/pickup.js.
 const getPickupTariffGrid = async (communeId) => {
-  const { data } = await api.get('/expedition/client/grille-tarifs-enlevement', {
+  const { data } = await api.get('/grille-tarifs-enlevement', {
     params: { commune_id: communeId },
     timeout: 12000, // jamais de chargement infini : l'ecran propose de reessayer
   });
