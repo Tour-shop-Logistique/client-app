@@ -30,6 +30,7 @@ import DestinationCountrySheet from '../../components/expedition/DestinationCoun
 import PickupOption from '../../components/expedition/PickupOption';
 import CreditOption from '../../components/expedition/CreditOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
+import QuoteLoading from '../../components/expedition/QuoteLoading';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, missionRequestPayload, pickupPayload } from '../../utils/pickup';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import useRequireAuth from '../../hooks/useRequireAuth';
@@ -1375,6 +1376,7 @@ export default function ExtrapaysFormPage() {
                 <Plus size={18} /> Ajouter un colis
               </button>
 
+              {devisStatus === 'loading' && <QuoteLoading />}
               {devisStatus === 'error' && <ErrorNote message={devisError} onRetry={() => setDevisRetry((t) => t + 1)} />}
             </div>
 
@@ -1466,6 +1468,7 @@ export default function ExtrapaysFormPage() {
                 <p className="text-caption text-amber-700">Indiquez le poids de chaque article pour obtenir le devis.</p>
               )}
 
+              {devisStatus === 'loading' && <QuoteLoading />}
               {devisStatus === 'error' && <ErrorNote message={devisError} onRetry={() => setDevisRetry((t) => t + 1)} />}
 
               {withOffres && devisStatus !== 'error' && (

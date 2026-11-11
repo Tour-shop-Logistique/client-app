@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import TopBar from '../../components/common/TopBar';
 import BottomSheet from '../../components/common/BottomSheet';
 import StepBar from '../../components/expedition/StepBar';
+import QuoteLoading from '../../components/expedition/QuoteLoading';
 import ActionDock, { DockTotal } from '../../components/expedition/ActionDock';
 import WeightStepper from '../../components/expedition/WeightStepper';
 import CommuneSelectSheet from '../../components/expedition/CommuneSelectSheet';
@@ -695,6 +696,7 @@ export default function IntervilleFormPage() {
                 <Plus size={18} /> Ajouter un colis
               </button>
 
+              {simStatus === 'loading' && <QuoteLoading />}
               {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
             </div>
 
@@ -790,6 +792,7 @@ export default function IntervilleFormPage() {
 
               <CreditOption value={paiementCredit} onChange={setPaiementCredit} />
 
+              {simStatus === 'loading' && <QuoteLoading />}
               {simStatus === 'error' && <ErrorNote message={simError} onRetry={() => setRetryTick((t) => t + 1)} />}
             </div>
 

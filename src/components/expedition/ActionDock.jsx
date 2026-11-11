@@ -1,3 +1,4 @@
+import { LoadingDots } from './QuoteLoading';
 import useTyping from '../../hooks/useTyping';
 import useBottomNavHidden from '../../hooks/useBottomNavHidden';
 
@@ -30,7 +31,7 @@ export function DockTotal({ label, amount, status = 'idle', detail }) {
     <div className="min-w-0 shrink-0" aria-live="polite">
       <p className="text-caption text-surface-500">{label}</p>
       {status === 'loading' ? (
-        <span className="skeleton mt-1 block h-5 w-24" aria-label="Calcul du tarif en cours" />
+        <span className="mt-2 flex h-5 items-center" role="status" aria-label="Calcul du tarif en cours"><LoadingDots /></span>
       ) : (
         <p className={`whitespace-nowrap font-heading text-base font-bold ${amount ? 'text-primary-700' : 'text-surface-400'}`}>
           {amount || '—'}
