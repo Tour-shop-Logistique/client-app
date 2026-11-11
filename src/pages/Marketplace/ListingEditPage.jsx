@@ -7,6 +7,7 @@ import TopBar from '../../components/common/TopBar';
 import StatusBadge from '../../components/marketplace/StatusBadge';
 import AddressFields from '../../components/marketplace/AddressFields';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
+import useConfirm from '../../hooks/useConfirm';
 import marketplaceService from '../../services/marketplaceService';
 import {
   ANNONCE_STATUTS, annoncePhotos, handleMediaError, fromRetrait, toRetraitPayload, hasRetraitAddress,
@@ -18,6 +19,7 @@ import { currencyLabel } from '../../utils/format';
 export default function ListingEditPage() {
   const { id } = useParams();
   const handleError = useMarketplaceError();
+  const [confirm, confirmDialog] = useConfirm();
   const [annonce, setAnnonce] = useState(undefined);
   const [form, setForm] = useState({ titre: '', prix: '', description: '' });
   const [retrait, setRetrait] = useState(() => fromRetrait(null));
@@ -141,7 +143,7 @@ export default function ListingEditPage() {
   };
 
   const deletePhoto = async (photo) => {
-    if (!window.confirm('Supprimer cette photo ? Elle ne pourra pas être rajoutée.')) return;
+    if (!(await confirm({ title: 'Supprimer cette photo ?', message: 'Elle ne pourra pas être rajoutée.', confirmLabel: 'Supprimer', danger: true }))) return;
     setDeletingPhoto(photo.id);
     try {
       await marketplaceService.supprimerPhoto(annonce.id, photo.id);
@@ -156,6 +158,7 @@ export default function ListingEditPage() {
 
   return (
     <div>
+      {confirmDialog}
       <TopBar
         title="Modifier l’annonce"
         back

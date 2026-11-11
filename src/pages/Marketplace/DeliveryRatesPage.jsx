@@ -8,6 +8,7 @@ import TopBar from '../../components/common/TopBar';
 import BottomSheet from '../../components/common/BottomSheet';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
+import useConfirm from '../../hooks/useConfirm';
 import useCommunes from '../../hooks/useCommunes';
 import marketplaceService from '../../services/marketplaceService';
 import { formatMoney } from '../../utils/marketplace';
@@ -44,6 +45,7 @@ const communeName = (tarif, communes) => tarif.commune_destination?.nom
 
 export default function DeliveryRatesPage() {
   const handleError = useMarketplaceError();
+  const [confirm, confirmDialog] = useConfirm();
   const { communes, status: communesStatus } = useCommunes();
   const [tarifs, setTarifs] = useState(null);
   const [sheet, setSheet] = useState(null); // null | { id?, communeId, montant }
@@ -107,7 +109,7 @@ export default function DeliveryRatesPage() {
   };
 
   const remove = async (t) => {
-    if (!window.confirm(`Supprimer le tarif vers ${communeName(t, communes)} ?`)) return;
+    if (!(await confirm({ title: 'Supprimer ce tarif ?', message: `Tarif vers ${communeName(t, communes)}.`, confirmLabel: 'Supprimer', danger: true }))) return;
     setBusyId(t.id);
     try {
       await marketplaceService.supprimerTarifLivraison(t.id);
@@ -122,6 +124,7 @@ export default function DeliveryRatesPage() {
 
   return (
     <div>
+      {confirmDialog}
       <TopBar title="Tarifs de livraison" subtitle="Votre livreur, par commune" back />
       <div className="page-container space-y-4 py-4">
         <AbonnementBanner />

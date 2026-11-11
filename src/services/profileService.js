@@ -1,5 +1,6 @@
 import api from './api';
 import authService from './authService';
+import { purgePrivateData } from '../utils/privacy';
 
 // Profile management — docs/api-profil-et-notifications-client.md.
 // Every route here needs `Authorization: Bearer <token>` (added by the api
@@ -75,6 +76,7 @@ const updateAvatar = async (avatar) => {
 const deleteAccount = async (password) => {
   const { data } = await api.delete('/profile/delete-account', { data: { password } });
   authService.clearSession();
+  purgePrivateData();
   return data;
 };
 

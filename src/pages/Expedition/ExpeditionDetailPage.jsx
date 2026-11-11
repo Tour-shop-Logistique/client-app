@@ -13,8 +13,10 @@ import {
   MessageCircle,
   Route,
   Copy,
+  LogIn,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { openAuthSheet } from '../../store/slices/uiSlice';
 import TopBar from '../../components/common/TopBar';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
@@ -138,6 +140,7 @@ export default function ExpeditionDetailPage() {
   const { id } = useParams();
   const dispatch = useDispatch();
   const { cancelStatus, cancelError } = useSelector((state) => state.expeditions);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
   const [exp, setExp] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -159,6 +162,10 @@ export default function ExpeditionDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return undefined;
+    }
     let alive = true;
     setLoading(true);
     setNotFound(false);
@@ -176,7 +183,7 @@ export default function ExpeditionDetailPage() {
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   const openSheet = () => {
     dispatch(resetCancelState());
@@ -200,6 +207,26 @@ export default function ExpeditionDetailPage() {
     toast.success('Expédition annulée.');
     closeSheet();
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div>
+        <TopBar title="Détail de l'expédition" back />
+        <div className="page-container py-10">
+          <EmptyState
+            icon={LogIn}
+            title="Connectez-vous pour voir cette expédition"
+            description="Le suivi et les détails d'un envoi sont réservés à votre compte."
+            action={(
+              <button type="button" className="btn-primary" onClick={() => dispatch(openAuthSheet({ mode: 'login', reason: 'default' }))}>
+                Se connecter
+              </button>
+            )}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

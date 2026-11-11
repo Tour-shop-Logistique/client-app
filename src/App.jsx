@@ -1,9 +1,10 @@
 import { useEffect, useState, Suspense, lazy } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import MobileLayout from './layouts/MobileLayout';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { ROUTES } from './routes';
 import authService from './services/authService';
 import { restoreSession } from './store/slices/authSlice';
@@ -15,25 +16,27 @@ import WelcomeOnboarding from './pages/Onboarding/WelcomeOnboarding';
 import { hasSeenOnboarding } from './utils/onboarding';
 import { playNotificationSound } from './utils/notificationSound';
 import { pushActivity, kindFromText } from './store/slices/notificationsSlice';
-import NotificationsPage from './pages/Notifications/NotificationsPage';
 
 import HomePage from './pages/Home/HomePage';
-import NewExpeditionPage from './pages/Expedition/NewExpeditionPage';
-import IntervilleFormPage from './pages/Expedition/IntervilleFormPage';
-import ExtrapaysFormPage from './pages/Expedition/ExtrapaysFormPage';
-import HistoryPage from './pages/Expedition/HistoryPage';
-import ExpeditionDetailPage from './pages/Expedition/ExpeditionDetailPage';
-import ProductListPage from './pages/Marketplace/ProductListPage';
-import ProductDetailPage from './pages/Marketplace/ProductDetailPage';
-import CartPage from './pages/Marketplace/CartPage';
 import SellerOnly from './components/marketplace/SellerOnly';
-import AgencyListPage from './pages/Agencies/AgencyListPage';
-import AgencyDetailPage from './pages/Agencies/AgencyDetailPage';
-import ProfilePage from './pages/Profile/ProfilePage';
-import ReferralPage from './pages/Profile/ReferralPage';
-import InvoicesPage from './pages/Profile/InvoicesPage';
 import PageUnavailable from './pages/PageUnavailable';
 import NotFoundPage from './pages/NotFoundPage';
+
+// Pages chargées à la demande (l'accueil reste dans le bundle initial).
+const NewExpeditionPage = lazy(() => import('./pages/Expedition/NewExpeditionPage'));
+const IntervilleFormPage = lazy(() => import('./pages/Expedition/IntervilleFormPage'));
+const ExtrapaysFormPage = lazy(() => import('./pages/Expedition/ExtrapaysFormPage'));
+const HistoryPage = lazy(() => import('./pages/Expedition/HistoryPage'));
+const ExpeditionDetailPage = lazy(() => import('./pages/Expedition/ExpeditionDetailPage'));
+const ProductListPage = lazy(() => import('./pages/Marketplace/ProductListPage'));
+const ProductDetailPage = lazy(() => import('./pages/Marketplace/ProductDetailPage'));
+const CartPage = lazy(() => import('./pages/Marketplace/CartPage'));
+const AgencyListPage = lazy(() => import('./pages/Agencies/AgencyListPage'));
+const AgencyDetailPage = lazy(() => import('./pages/Agencies/AgencyDetailPage'));
+const ProfilePage = lazy(() => import('./pages/Profile/ProfilePage'));
+const ReferralPage = lazy(() => import('./pages/Profile/ReferralPage'));
+const InvoicesPage = lazy(() => import('./pages/Profile/InvoicesPage'));
+const NotificationsPage = lazy(() => import('./pages/Notifications/NotificationsPage'));
 
 // Secondary account screens — lazy so their deps (react-phone-number-input +
 // bundled country flags, shared with AuthSheet) stay out of the initial bundle.
@@ -68,6 +71,7 @@ const gated = (featureKey, element) => (isFeatureReady(featureKey) ? element : <
 export default function App() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
 
@@ -125,6 +129,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary resetKey={pathname}>
     <Suspense fallback={<div className="page-container py-10"><LoadingSpinner /></div>}>
       <Routes>
       <Route element={<MobileLayout />}>
@@ -179,5 +184,6 @@ export default function App() {
       </Route>
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }

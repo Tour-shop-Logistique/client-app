@@ -12,6 +12,7 @@ import OrderTimeline from '../../components/marketplace/OrderTimeline';
 import StatusBadge from '../../components/marketplace/StatusBadge';
 import { OrderItemsCard, PaymentInfoCard, DeliveryInfoCard, PersonRow } from '../../components/marketplace/OrderParts';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
+import useConfirm from '../../hooks/useConfirm';
 import { useRealtimeMarketplace } from '../../hooks/useRealtimeUpdates';
 import marketplaceService from '../../services/marketplaceService';
 import {
@@ -318,8 +319,9 @@ function CourierPendingPanel({ mode }) {
 
 function MarkDeliveredPanel({ commande, onDone, handleError }) {
   const [busy, setBusy] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const run = async () => {
-    if (!window.confirm('Confirmez-vous que l’acheteur a bien reçu sa commande ?')) return;
+    if (!(await confirm({ title: 'Commande livrée ?', message: 'Confirmez-vous que l’acheteur a bien reçu sa commande ?', confirmLabel: 'Oui, livrée' }))) return;
     setBusy(true);
     try {
       await marketplaceService.marquerLivree(commande.id);
@@ -332,9 +334,12 @@ function MarkDeliveredPanel({ commande, onDone, handleError }) {
     }
   };
   return (
-    <button type="button" onClick={run} disabled={busy} className="btn w-full bg-emerald-600 text-white hover:bg-emerald-700">
-      {busy ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />} Marquer comme livrée
-    </button>
+    <>
+      {confirmDialog}
+      <button type="button" onClick={run} disabled={busy} className="btn w-full bg-emerald-600 text-white hover:bg-emerald-700">
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />} Marquer comme livrée
+      </button>
+    </>
   );
 }
 

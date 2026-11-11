@@ -7,6 +7,7 @@ import { store } from './store';
 import { sessionExpired } from './store/slices/authSlice';
 import { abonnementBloqueDetected } from './store/slices/marketplaceSlice';
 import { ROUTES } from './routes';
+import { clearApiCache } from './utils/privacy';
 import App from './App.jsx';
 import './index.css';
 // Side-effect import: registers the `beforeinstallprompt` listener before React mounts.
@@ -27,6 +28,7 @@ window.addEventListener('auth:unauthorized', () => {
   const wasLoggedIn = store.getState().auth.isAuthenticated;
   const blocked = wasLoggedIn && abonnementOverdue();
   store.dispatch(sessionExpired());
+  clearApiCache();
   if (blocked) {
     toast.warning('Session fermée : abonnement marketplace en retard', {
       description: 'Reconnectez-vous pour régulariser. Vos expéditions et achats restent accessibles.',

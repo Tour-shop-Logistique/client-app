@@ -2,6 +2,9 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import api from './api';
 
+// Journal de debug : silencieux en production.
+const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
+
 // Meme approche que l'app agence-partenaire : une seule instance Echo
 // partagee (singleton), connexion Reverb, autorisation des canaux prives
 // deleguee a l'API Laravel existante via POST /broadcasting/auth (token Sanctum).
@@ -25,7 +28,7 @@ export function getEcho() {
     return null;
   }
 
-  console.log('[Echo] Initialisation de la connexion WebSocket...');
+  devLog('[Echo] Initialisation de la connexion WebSocket...');
 
   echoInstance = new Echo({
     broadcaster: 'reverb',
@@ -47,7 +50,7 @@ export function getEcho() {
             channel_name: channel.name,
           })
           .then((res) => {
-            console.log('[Echo] Canal autorise :', channel.name);
+            devLog('[Echo] Canal autorise :', channel.name);
             callback(false, res.data);
           })
           .catch((err) => {
@@ -62,8 +65,8 @@ export function getEcho() {
   const connection = echoInstance.connector.pusher.connection;
 
   connection.bind('connected', () => {
-    console.log('✅ [Echo] WebSocket connecte');
-    console.log('📊 [Echo] Socket ID :', echoInstance.socketId());
+    devLog('✅ [Echo] WebSocket connecte');
+    devLog('📊 [Echo] Socket ID :', echoInstance.socketId());
   });
 
   connection.bind('disconnected', () => {
@@ -75,7 +78,7 @@ export function getEcho() {
   });
 
   connection.bind('state_change', (states) => {
-    console.log('🔄 [Echo] Changement d\'etat :', states.previous, '→', states.current);
+    devLog('🔄 [Echo] Changement d\'etat :', states.previous, '→', states.current);
   });
 
   return echoInstance;
@@ -86,7 +89,7 @@ export function getEcho() {
  */
 export function disconnectEcho() {
   if (echoInstance) {
-    console.log('[Echo] Deconnexion en cours...');
+    devLog('[Echo] Deconnexion en cours...');
     echoInstance.disconnect();
     echoInstance = null;
   }

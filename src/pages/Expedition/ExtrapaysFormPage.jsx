@@ -50,10 +50,9 @@ import {
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
-// Parcours mobile en 3 étapes : Trajet (mode, destination, agence) -> Colis ou
-// Articles -> Coordonnées, puis une feuille de vérification avant `store`.
-// L'agence est choisie dès le Trajet : le devis (POST /devis) peut donc tourner
-// pendant la saisie des colis, et l'estimation reste visible dans la barre du bas.
+// Parcours mobile en 5 étapes : Trajet -> Colis/Articles -> Expéditeur ->
+// Destinataire -> Remise, avec feuille de vérification avant `store`.
+// Le devis tourne dès la saisie des colis ; l'estimation reste dans la barre du bas.
 
 const DRAFT_VERSION = 4;
 
@@ -188,10 +187,8 @@ function GroupTypeChoice({ group, chosen, onSelect, currency }) {
   );
 }
 
-// Offre DHD / CA du devis (api-devis-client.md, « Offres DHD / CA ») : une offre
-// = une expédition (un type, une facture). Case à cocher, détail par catégorie
-// dépliable. Pas de recommandation ni de présélection : le client compare.
-function OfferCard({ offre, checked, onToggle, currency, categoryNames, single = false }) {
+// Offre DHD / CA du devis : une offre = une expédition (un type, une facture).
+function OfferCard({ offre, checked, onToggle, currency, categoryNames, articles = [], single = false }) {
   const [open, setOpen] = useState(false);
   const fmt = (v) => formatPrice(v, currency);
   const exp = offre.expedition || {};
@@ -200,9 +197,16 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames, single =
   // Promotion de tarif (api-promotions-tarifs.md) : `montant_expedition` est déjà réduit.
   const promoRemise = Number(exp.montant_remise_promotion) || 0;
   const promoNom = typeof exp.promotion === 'string' ? exp.promotion : exp.promotion?.nom || exp.promotion?.libelle || '';
-  const contenu = details.length
-    ? details.map((d) => d.category_nom).filter(Boolean)
-    : catIds.map((id) => categoryNames[id]).filter(Boolean);
+  // Produits du panier couverts par l'offre : CA = produits CA, DHD = hors CA, combiné = tous.
+  const produits = offre.code === 'CA' ? articles.filter((a) => a.is_ca)
+    : offre.code === 'CA_COMBINE' ? articles
+      : articles.filter((a) => !a.is_ca);
+  const produitNoms = [...new Set(produits.map((a) => a.designation).filter(Boolean))];
+  const contenu = offre.code === 'CA' && produitNoms.length
+    ? produitNoms
+    : details.length
+      ? details.map((d) => d.category_nom).filter(Boolean)
+      : catIds.map((id) => categoryNames[id]).filter(Boolean);
   return (
     <div className={`overflow-hidden rounded-xl border transition ${checked ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'}`}>
       <button
@@ -247,7 +251,7 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames, single =
           {exp.montant_calcule != null ? ` Vos articles ne totalisent que ${fmt(exp.montant_calcule)} : ce tarif de base s'applique.` : ''}
         </p>
       )}
-      {details.length > 0 && (
+      {(details.length > 0 || produits.length > 0) && (
         <>
           <button
             type="button"
@@ -255,11 +259,21 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames, single =
             aria-expanded={open}
             className="flex w-full items-center gap-1 border-t border-surface-100 px-3 py-2 text-caption font-semibold text-primary-600"
           >
-            {open ? 'Masquer le détail' : 'Voir le détail par catégorie'}
+            {open ? 'Masquer le détail' : 'Voir le détail'}
             <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
           </button>
+          {open && produits.length > 0 && (
+            <ul className="space-y-1 px-3 pb-2 text-caption">
+              {produits.map((a, i) => (
+                <li key={`${a.produit_id}-${i}`} className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 text-surface-600">{a.designation}</span>
+                  <span className="shrink-0 font-semibold text-surface-900">{fmtKg(Number(a.poids) || 0)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {open && (
-            <ul className="space-y-1 px-3 pb-3 text-caption">
+            <ul className="space-y-1 border-t border-surface-100 px-3 pb-3 pt-2 text-caption">
               {details.map((d) => (
                 <li key={d.category_id} className="flex items-start justify-between gap-3">
                   <span className="min-w-0 text-surface-600">
@@ -276,9 +290,8 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames, single =
   );
 }
 
-// Coche / décoche une offre en respectant `cumulable_avec[]` : une offre
-// exclusive (CA_COMBINE, `cumulable_avec: []`) décoche tout le reste, et les
-// offres hors CA (DHD Aérien / Maritime) ne se cumulent jamais entre elles.
+// Coche / décoche une offre selon `cumulable_avec[]` (CA_COMBINE est exclusive ;
+// DHD Aérien et Maritime ne se cumulent pas).
 function toggleOffre(selected, code, offres) {
   if (selected.includes(code)) return selected.filter((c) => c !== code);
   const offre = offres.find((o) => o.code === code);
@@ -291,9 +304,8 @@ function toggleOffre(selected, code, offres) {
   return [...kept, code];
 }
 
-// Résultat de `store`. Livraison à domicile : une expédition. Récupération en
-// agence : 201 (succès total/partiel) ou 422 (aucune créée), toujours avec
-// `resultats[]` par catégorie — chaque échec porte son `message`.
+// Résultat de `store` : une expédition en LD ; en agence, `resultats[]` par
+// catégorie (succès partiel possible, chaque échec porte son `message`).
 function SubmitResultScreen({ result, pickupMode, pickupEstimate, currency, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
   const navigate = useNavigate();
   const fmt = (v) => formatPrice(v, currency);
@@ -530,9 +542,7 @@ export default function ExtrapaysFormPage() {
 
   const isLD = mode === 'livraison_domicile';
   const destinationIsAfrican = isAfricanCountry(paysDestination);
-  // En agence : destination demandée pour tous les pays (sans elle, ni DHD ni CA
-  // ne peuvent être proposés), choisie dans les communes du pays. À domicile :
-  // demandée hors Afrique seulement.
+  // Agence : ville de destination (communes) toujours requise ; LD : hors Afrique seulement.
   const villeRequise = Boolean(paysDestination) && (mode === 'recuperation_agence' || !destinationIsAfrican);
   const communeApplicable = Boolean(paysDestination) && mode === 'recuperation_agence';
   const communeDestination = communes.find((c) => c.id === communeDestinationId) || null;
@@ -680,9 +690,7 @@ export default function ExtrapaysFormPage() {
   useEffect(() => {
     if (!country.code || !mode) return;
     setProductsStatus('loading');
-    // GET /produits ne filtre que par `code_pays` : en mode LD, l'eligibilite
-    // (`eligible_ld === true`) est a la charge du frontend
-    // (api-enregistrement-expedition-client.md).
+    // /produits filtre par `code_pays` seulement : l'éligibilité LD est filtrée ici.
     produitService
       .list({ code_pays: country.code })
       .then((data) => {
@@ -699,9 +707,7 @@ export default function ExtrapaysFormPage() {
     ? colisList.length > 0 && colisList.every(ldColisOk)
     : articles.length > 0 && articles.every((a) => Number(a.poids) > 0);
 
-  // Devis dès que le trajet est complet et que le contenu est saisi. En LD, le
-  // backend exige au moins un produit par colis (422 « colis.0.articles field
-  // is required » sinon), même si la doc le dit facultatif.
+  // Devis dès que trajet et contenu sont saisis (en LD, le backend exige au moins un produit par colis).
   const canComputeDevis = trajetOk && contenuOk;
 
   useEffect(() => {
@@ -767,9 +773,7 @@ export default function ExtrapaysFormPage() {
     };
   }, [canComputeDevis, mode, country.code, paysDestination, villeDestination, villeDepart, villeRequise, communeApplicable, communeDestination, agence, articles, colisList, devisRetry]);
 
-  // Auto-pick the type_expedition for groupage categories that only have one
-  // eligible type (per api-enregistrement-expedition-client.md), and keep an
-  // existing choice only if it is still among the eligible types.
+  // Type auto-choisi quand une catégorie n'a qu'un type éligible ; choix existant gardé s'il reste valide.
   useEffect(() => {
     if (mode !== 'recuperation_agence' || !Array.isArray(devis)) return;
     setTypesChoisis((prev) => {
@@ -1095,9 +1099,7 @@ export default function ExtrapaysFormPage() {
     goToStep(2);
   };
 
-  // Retour (flèche de l'en-tête ou bouton système) : revient d'une étape ; à la
-  // première, demande confirmation avant de quitter si une saisie existe. Une
-  // feuille ouverte est fermée avant (pile des feuilles, useExitGuard).
+  // Retour : recule d'une étape ; à la première, confirme avant de quitter si saisie existante.
   const dirty = Boolean(mode || paysDestination);
   const handleBack = () => {
     if (step > 1) {
@@ -1547,6 +1549,7 @@ export default function ExtrapaysFormPage() {
                             onToggle={handleToggleOffre}
                             currency={currency}
                             categoryNames={categoryNames}
+                            articles={articles}
                             single={offres.length === 1}
                           />
                         ))}

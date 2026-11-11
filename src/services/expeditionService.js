@@ -41,13 +41,9 @@ const getPickupTariffGrid = async (communeId) => {
   return data;
 };
 
-// POST /api/expedition/client/simulate-interville — the ONLY way to simulate an
-// interville tariff (the public `devis` covers LD/Groupage only). Auth (client).
-// Call it with type_expedition: "interville". On success the result is
-// double-wrapped: `data.data.{ success, tarif, colis }` (tarif has
-// montant_base / pourcentage_prestation / montant_prestation / montant_expedition,
-// per-colis detail in `data.colis`). On failure: a flat { success:false, message }
-// (HTTP 422) — always show `message` as-is.
+// POST /expedition/client/simulate-interville — simulation du tarif interville.
+// Succès : `data.data.{ success, tarif, colis }` ; échec : { success:false, message }
+// (422) — afficher `message` tel quel.
 const simulateInterville = async (payload) => {
   const { data } = await api.post('/expedition/client/simulate-interville', payload);
   return data;
@@ -99,13 +95,9 @@ const storeExpedition = async (payload) => {
 
 // --- API client documentée (api-enregistrement-expedition-client.md) ---------
 
-// GET /api/expedition/client/list — liste complète (pas de pagination) des
-// expéditions du client connecté. `{ success, message, data: [...] }`.
-// Filtres query optionnels : statut, type_expedition, date_debut, date_fin.
-// La doc la decrit paginee (api-client-livreur.md) : toutes les pages sont lues
-// (20 au plus) pour que recherche, filtres et compteurs voient tous les envois.
-// Lecture defensive : tableau direct, ou sous data / expeditions, avec ou sans
-// pagination Laravel (`last_page` a la racine, dans `meta`, `data` ou `expeditions`).
+// GET /expedition/client/list — expéditions du client (filtres : statut,
+// type_expedition, date_debut, date_fin). Toutes les pages sont lues (20 max) ;
+// lecture défensive du tableau et de la pagination Laravel.
 const listRows = (b) => {
   const c = [b?.data, b?.data?.data, b?.expeditions, b?.expeditions?.data];
   return c.find(Array.isArray) ?? null;
@@ -163,14 +155,11 @@ const clientMissions = async (id) => {
   return data;
 };
 
-// POST /api/expedition/client/{id}/demander-enlevement | demander-livraison —
-// corps { mode: groupage|express, distance_km?, type_vehicule?, latitude?,
-// longitude?, instructions? } (utils/pickup.js missionRequestPayload).
-// 201 { message, mission } ; 422 si une demande du même type est déjà en cours
-// ou si `distance_km` sort de la grille de la commune ; 404 si l'expédition
-// n'appartient pas au client. En express, la mission est créée directement avec
-// son `montant_fixe` (standard × taux express) puis diffusée aux livreurs ; 422
-// si aucun taux express n'est configuré pour la tranche.
+// POST /expedition/client/{id}/demander-enlevement | demander-livraison — corps
+// { mode: groupage|express, distance_km?, type_vehicule?, latitude?, longitude?,
+// instructions? } (utils/pickup.js missionRequestPayload). 201 { message, mission } ;
+// 422 si une demande est déjà en cours ou hors grille ; 404 si l'expédition
+// n'est pas au client.
 const requestPickup = async (id, payload) => {
   const { data } = await api.post(`/expedition/client/${id}/demander-enlevement`, payload);
   return data;

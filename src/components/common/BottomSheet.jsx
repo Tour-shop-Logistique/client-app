@@ -11,10 +11,13 @@ export default function BottomSheet({ open, onClose, title, children }) {
 
   useEffect(() => {
     if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current?.(); };
+    document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     // Empilée : le bouton retour ferme la feuille du dessus avant tout (useExitGuard).
     const unregister = registerSheet(() => onCloseRef.current?.());
     return () => {
+      document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
       unregister();
     };
@@ -30,7 +33,7 @@ export default function BottomSheet({ open, onClose, title, children }) {
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative w-full max-w-md rounded-t-2xl bg-white p-5 pb-safe-bottom animate-sheet-up max-h-[90dvh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} className="relative w-full max-w-md rounded-t-2xl bg-white p-5 pb-safe-bottom animate-sheet-up max-h-[90dvh] overflow-y-auto">
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-surface-200" />
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-surface-900">{title}</h2>

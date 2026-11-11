@@ -6,22 +6,12 @@ import PostalCodeField from './PostalCodeField';
 import { applyFavorite, whatsappInvalid, emailInvalid, contactMissing } from '../../utils/contact';
 import { digitsOnly, digitsInputProps } from '../../utils/digits';
 
-// Shared expediteur/destinataire block for the expedition forms.
-// Shape + helpers (EMPTY_CONTACT, contactIsComplete, contactPayload) live in
-// src/utils/contact.js.
-//
-// The ville field: pass `villeFixed` to lock it to the commune already chosen
-// during the trajet step, `communes` to offer a select of the country's
-// communes, or neither for free text.
-// `children` : bloc complémentaire affiché sous l'adresse (ex. pièce d'identité).
-// `withLocation` : position GPS + instructions pour le livreur (optionnelles,
-// `{prefix}_latitude/longitude/instructions`), utiles pour une livraison ou un
-// enlèvement à domicile.
-// `showErrors` : après un clic sur « Vérifier » avec des champs manquants, les
-// champs obligatoires vides sont encadrés en rouge (data-invalid sert à y défiler).
-// `emailHint` : affiche l'e-mail comme champ principal (visible) avec cette description.
-// Les adresses favorites du profil (`user.adresses_favoris`) préremplissent
-// adresse, ville et code postal.
+// Bloc expéditeur/destinataire (helpers dans src/utils/contact.js).
+// ville : `villeFixed` la verrouille, `communes` propose une liste, sinon texte libre.
+// `children` : bloc sous l'adresse (ex. pièce d'identité). `withLocation` : GPS +
+// instructions livreur. `showMap` / `postalVisible` : carte et code postal.
+// `showErrors` : encadre en rouge les champs obligatoires vides. `emailHint` :
+// e-mail affiché comme champ principal. Les adresses favorites préremplissent le bloc.
 export default function ContactFields({
   title, data, onChange, communes, villeFixed, withLocation = false, locationLabel = 'Position pour le livreur', children,
   showErrors = false, emailHint, showMap = true, postalVisible = false, postalCountry,

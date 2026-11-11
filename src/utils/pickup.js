@@ -1,12 +1,7 @@
-// Enlèvement à domicile choisi dès l'enregistrement (POST /expedition/client/store,
-// modes `interville`, `livraison_domicile` et `recuperation_agence`) —
-// REPONSE_AUDIT_CAHIER_DES_CHARGES_CLIENT (1).md §6.
-//   - groupage : la demande part au backoffice, qui assigne un livreur rattaché
-//                (tarif fixe par tranche de km) ;
-//   - express  : prix imposé = montant standard × taux express, calculé par le
-//                backend ; course diffusée aux livreurs, le premier qui accepte
-//                la prend (plus d'offres à comparer —
-//                user-parcour/CHANGEMENTS_APPS_CLIENT_LIVREUR.md §2).
+// Enlèvement à domicile :
+//   - groupage : demande au backoffice, livreur rattaché, tarif fixe par tranche de km ;
+//   - express  : prix = standard × taux express (calculé par le backend), course
+//                diffusée aux livreurs, le premier qui accepte la prend.
 
 export const EMPTY_PICKUP = {
   domicile: false,
@@ -23,13 +18,10 @@ export const PICKUP_MODE_MESSAGE = {
   express: 'Récupération express : prix fixe, la course est proposée aux livreurs disponibles et le premier qui l’accepte vient chercher le colis.',
 };
 
-// Tarifs estimés depuis la grille de l'agence
-// (GET /expedition/client/grille-tarifs-enlevement) pour une distance routière
-// et un véhicule. Tranche : { type_vehicule, km_min, km_max (null = illimitée),
-// montant_standard, taux_express (null = express indisponible), montant_express }.
-// `montant` (ancien nom de `montant_standard`) reste lu en repli. Lecture
-// défensive (tableau direct, ou sous `data` / `grille` / `tranches`, ou
-// regroupé par véhicule), null si aucune tranche ne correspond.
+// Tarifs estimés depuis la grille de l'agence (grille-tarifs-enlevement) pour une
+// distance et un véhicule. Tranche : { type_vehicule, km_min, km_max, montant_standard,
+// taux_express, montant_express } ; `montant` lu en repli. Lecture défensive,
+// null si aucune tranche ne correspond.
 const firstNum = (obj, keys) => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -115,14 +107,9 @@ export function expressDisabledInGrid(grid, vehicule) {
   return rows.length > 0 && rows.every((r) => r.taux_express === null && r.montant_express == null);
 }
 
-// Champs à ajouter au corps de `store` ({} si le client dépose lui-même).
-// `enlevement_distance_km` : distance PAR LA ROUTE agence -> point d'enlèvement,
-// calculée sur la carte (services/routingService.js). Absente si aucun moteur
-// routier n'a répondu ou si l'agence n'a pas de coordonnées : le backoffice
-// confirme alors le montant à l'assignation.
-// Point et instructions : `expediteur_latitude/longitude/instructions` en
-// entrée de `store` (api-enregistrement-expedition-client.md), stockés par le
-// serveur sur `expediteur_latitude/longitude` et `instructions_enlevement`.
+// Champs d'enlèvement à ajouter au corps de `store` ({} si le client dépose lui-même).
+// `enlevement_distance_km` : distance routière agence -> point d'enlèvement
+// (routingService) ; absente si indisponible, le backoffice confirme alors le montant.
 export function pickupPayload(pickup) {
   if (!pickup?.domicile) return {};
   const out = {

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { getEcho, disconnectEcho } from '../services/echo';
 
+// Journal de debug : silencieux en production.
+const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
+
 // Portage du hook WebSocket de l'app agence-partenaire, adapte au client :
 //   - canal prive `client.{userId}` (au lieu de `agence.{agenceId}`)
 //   - meme evenement generique `.model.updated` avec un payload
@@ -43,7 +46,7 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
 
   // Routeur unifie pour tous les evenements `.model.updated`.
   const handleModelUpdate = useCallback((payload) => {
-    if (import.meta.env.DEV) console.log('📥 [WebSocket] Message recu :', {
+    if (import.meta.env.DEV) devLog('📥 [WebSocket] Message recu :', {
       model: payload.model,
       action: payload.action,
       count: payload.count,
@@ -151,12 +154,12 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
     // Un seul channel.listen() reel par canal, meme si plusieurs composants
     // s'abonnent en parallele.
     if (!channelRefs.has(channelName)) {
-      console.log(`🔌 [WebSocket] Abonnement au canal : ${channelName}`);
+      devLog(`🔌 [WebSocket] Abonnement au canal : ${channelName}`);
       const channel = echo.private(channelName);
       channelRefs.set(channelName, channel);
 
       channel.subscribed(() => {
-        console.log(`✅ [WebSocket] Abonne au canal : ${channelName}`);
+        devLog(`✅ [WebSocket] Abonne au canal : ${channelName}`);
       });
 
       channel.error((error) => {
@@ -175,7 +178,7 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
       if (listeners) {
         listeners.delete(handleModelUpdate);
         if (listeners.size === 0) {
-          console.log(`🔌 [WebSocket] Desabonnement du canal : ${channelName}`);
+          devLog(`🔌 [WebSocket] Desabonnement du canal : ${channelName}`);
           echo.leave(channelName);
           channelListeners.delete(channelName);
           channelRefs.delete(channelName);

@@ -1,4 +1,5 @@
 import api from './api';
+import { purgePrivateData } from '../utils/privacy';
 
 // Email-based auth per docs/api-authentification-client.md.
 // Mandatory flow for a new client: register -> verify-email -> login.
@@ -103,6 +104,7 @@ const logout = async () => {
     await api.post('/logout');
   } finally {
     clearSession();
+    purgePrivateData();
   }
 };
 

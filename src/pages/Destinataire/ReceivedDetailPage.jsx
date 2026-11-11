@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { openAuthSheet } from '../../store/slices/uiSlice';
 import { Link, useParams } from 'react-router-dom';
 import {
-  AlertTriangle, Building2, Home, Info, Package, Route as RouteIcon, Truck,
+  AlertTriangle, Building2, Home, Info, LogIn, Package, Route as RouteIcon, Truck,
 } from 'lucide-react';
 import TopBar from '../../components/common/TopBar';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -50,13 +52,15 @@ const MISSION_STATUT = {
 
 export default function ReceivedDetailPage() {
   const { id } = useParams();
+  const dispatch = useDispatch();
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const [exp, setExp] = useState(() => getReceived(id));
   const [loading, setLoading] = useState(!getReceived(id));
   const [mission, setMission] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    if (!exp) {
+    if (!exp && isAuthenticated) {
       setLoading(true);
       findReceived(id)
         .then((e) => { if (alive) setExp(e); })
@@ -64,9 +68,29 @@ export default function ReceivedDetailPage() {
         .finally(() => { if (alive) setLoading(false); });
     }
     return () => { alive = false; };
-  }, [id, exp]);
+  }, [id, exp, isAuthenticated]);
 
   useEffect(() => { if (exp) setMission(recipientMission(exp)); }, [exp]);
+
+  if (!isAuthenticated) {
+    return (
+      <div>
+        <TopBar title="Colis reçu" back />
+        <div className="page-container py-10">
+          <EmptyState
+            icon={LogIn}
+            title="Connectez-vous pour voir ce colis"
+            description="Retrouvez les colis qui vous sont destinés avec votre compte."
+            action={(
+              <button type="button" className="btn-primary" onClick={() => dispatch(openAuthSheet({ mode: 'login', reason: 'default' }))}>
+                Se connecter
+              </button>
+            )}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -1,19 +1,7 @@
-// Recherche de lieux (adresse, quartier, commerce, repère…) -> coordonnées.
-//
-// Deux moteurs OpenStreetMap, sans clé API, interrogés ensemble :
-//   1. Photon (komoot) — pensé pour la saisie : tolère les requêtes à plusieurs
-//      mots ("Angré 8e tranche", "pharmacie Saint Gabriel"), renvoie quartiers,
-//      commerces et repères, et privilégie ce qui est proche de l'agence
-//      (biais de position). Principal.
-//   2. Nominatim — complète quand Photon renvoie peu de résultats (adresses,
-//      lieux nommés que Photon ne connaît pas). Limité à ~1 requête/s : appelé
-//      seulement en complément, après la saisie temporisée.
-// Les résultats sont fusionnés et dédoublonnés (même lieu à ~100 m près).
-//
-// Variables facultatives pour pointer vers des instances hébergées par TourShop
-// (recommandé en production, sans limite de débit) :
-//   VITE_PHOTON_URL     ex. https://photon.exemple.com
-//   VITE_GEOCODING_URL  instance Nominatim
+// Recherche de lieux et d'adresses postales -> coordonnées (OpenStreetMap, sans clé).
+// Photon (komoot) est le moteur principal ; Nominatim (~1 requête/s) complète
+// quand Photon renvoie peu de résultats. Résultats fusionnés et dédoublonnés.
+// Instances auto-hébergées possibles : VITE_PHOTON_URL, VITE_GEOCODING_URL.
 
 const env = import.meta.env;
 const PHOTON = (env.VITE_PHOTON_URL || 'https://photon.komoot.io').replace(/\/+$/, '');

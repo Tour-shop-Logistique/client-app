@@ -6,6 +6,7 @@ import TopBar from '../../components/common/TopBar';
 import BottomSheet from '../../components/common/BottomSheet';
 import AbonnementBanner from '../../components/marketplace/AbonnementBanner';
 import useMarketplaceError from '../../hooks/useMarketplaceError';
+import useConfirm from '../../hooks/useConfirm';
 import marketplaceService from '../../services/marketplaceService';
 import { PAYMENT_METHODS } from '../../utils/marketplace';
 import { digitsOnly, digitsInputProps } from '../../utils/digits';
@@ -38,6 +39,7 @@ const EMPTY_FORM = { methode: 'mobile_money', libelle: 'Orange Money', numeroDes
 // Moyens de paiement du vendeur (section 3), valables pour toutes ses annonces.
 export default function PaymentMethodsPage() {
   const handleError = useMarketplaceError();
+  const [confirm, confirmDialog] = useConfirm();
   const [moyens, setMoyens] = useState(null);
   const [sheet, setSheet] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -89,7 +91,7 @@ export default function PaymentMethodsPage() {
   };
 
   const remove = async (m) => {
-    if (!window.confirm(`Supprimer « ${m.libelle || PAYMENT_METHODS[m.methode]} » ?`)) return;
+    if (!(await confirm({ title: 'Supprimer ce moyen de paiement ?', message: m.libelle || PAYMENT_METHODS[m.methode], confirmLabel: 'Supprimer', danger: true }))) return;
     setBusyId(m.id);
     try {
       await marketplaceService.supprimerMoyenPaiement(m.id);
@@ -104,6 +106,7 @@ export default function PaymentMethodsPage() {
 
   return (
     <div>
+      {confirmDialog}
       <TopBar title="Moyens de paiement" back />
       <div className="page-container space-y-4 py-4">
         <AbonnementBanner />
