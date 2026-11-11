@@ -46,7 +46,7 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityNumberMissing, identityPayload,
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
@@ -191,7 +191,7 @@ function GroupTypeChoice({ group, chosen, onSelect, currency }) {
 // Offre DHD / CA du devis (api-devis-client.md, « Offres DHD / CA ») : une offre
 // = une expédition (un type, une facture). Case à cocher, détail par catégorie
 // dépliable. Pas de recommandation ni de présélection : le client compare.
-function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
+function OfferCard({ offre, checked, onToggle, currency, categoryNames, single = false }) {
   const [open, setOpen] = useState(false);
   const fmt = (v) => formatPrice(v, currency);
   const exp = offre.expedition || {};
@@ -207,18 +207,21 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
     <div className={`overflow-hidden rounded-xl border transition ${checked ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'}`}>
       <button
         type="button"
-        role="checkbox"
-        aria-checked={checked}
+        role={single ? undefined : 'checkbox'}
+        aria-checked={single ? undefined : checked}
+        disabled={single}
         onClick={() => onToggle(offre.code)}
-        className="flex min-h-[60px] w-full items-center gap-3 px-3 py-2.5 text-left active:scale-[0.99]"
+        className={`flex min-h-[60px] w-full items-center gap-3 px-3 py-2.5 text-left ${single ? 'cursor-default' : 'active:scale-[0.99]'}`}
       >
-        <span
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-            checked ? 'border-primary-600 bg-primary-600 text-white' : 'border-surface-300'
-          }`}
-        >
-          {checked && <Check size={13} strokeWidth={3} />}
-        </span>
+        {!single && (
+          <span
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+              checked ? 'border-primary-600 bg-primary-600 text-white' : 'border-surface-300'
+            }`}
+          >
+            {checked && <Check size={13} strokeWidth={3} />}
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className={`block text-sm font-semibold ${checked ? 'text-primary-800' : 'text-surface-900'}`}>
             {offre.libelle || typeLabel(exp.type_expedition)}
@@ -239,8 +242,9 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
         </p>
       )}
       {exp.minimum_applique && (
-        <p className="px-3 pb-2 text-caption text-amber-700">
-          Minimum de la ligne appliqué{exp.montant_calcule != null ? ` (montant calculé : ${fmt(exp.montant_calcule)})` : ''}.
+        <p className="mx-3 mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-caption text-amber-800">
+          Le tarif de base de cette ligne est de <strong>{fmt(exp.montant_avant_promotion ?? exp.montant_expedition ?? offre.montant_total)}</strong>.
+          {exp.montant_calcule != null ? ` Vos articles ne totalisent que ${fmt(exp.montant_calcule)} : ce tarif de base s'applique.` : ''}
         </p>
       )}
       {details.length > 0 && (
@@ -540,7 +544,7 @@ export default function ExtrapaysFormPage() {
     setExpediteur((e) => fillEmptyFields(e, expediteurFromProfile(user)));
   }, [user]);
 
-  const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
+  const expediteurOk = contactIsComplete(expediteur) && !identityNumberMissing(expediteur) && !identityExpired(expediteur);
 
   const goToStep = (n) => {
     setStep(n);
@@ -788,6 +792,13 @@ export default function ExtrapaysFormPage() {
       const next = prev.filter((c) => offres.some((o) => o.code === c));
       return next.length === prev.length ? prev : next;
     });
+  }, [offres]);
+
+  // Une seule offre possible : elle est retenue d'office (pas de choix à faire).
+  useEffect(() => {
+    if (Array.isArray(offres) && offres.length === 1) {
+      setOffresChoisies((prev) => (prev.length === 1 && prev[0] === offres[0].code ? prev : [offres[0].code]));
+    }
   }, [offres]);
 
   const handleToggleOffre = (code) => setOffresChoisies((prev) => toggleOffre(prev, code, offres || []));
@@ -1514,15 +1525,19 @@ export default function ExtrapaysFormPage() {
 
               {withOffres && devisStatus !== 'error' && (
                 <div className="space-y-2.5 pt-2">
-                  <h3 className="font-heading text-[15px] font-semibold text-surface-900">Choisissez votre offre</h3>
+                  <h3 className="font-heading text-[15px] font-semibold text-surface-900">
+                    {offres.length === 1 ? 'Votre estimation' : 'Choisissez votre offre'}
+                  </h3>
                   {offres.length === 0 ? (
                     <ErrorNote message="Aucun tarif configuré vers cette destination pour ces articles. Modifiez les articles ou la destination." />
                   ) : (
                     <>
+                      {offres.length > 1 && (
                       <p className="text-caption text-surface-500">
                         Chaque offre correspond à une expédition et une facture. Vous pouvez cumuler une offre DHD et l’offre Colis Accompagnés ;
                         l’offre combinée regroupe tout le panier en une seule expédition.
                       </p>
+                      )}
                       <div className="space-y-2" role="group" aria-label="Offres d'expédition">
                         {offres.map((o) => (
                           <OfferCard
@@ -1532,6 +1547,7 @@ export default function ExtrapaysFormPage() {
                             onToggle={handleToggleOffre}
                             currency={currency}
                             categoryNames={categoryNames}
+                            single={offres.length === 1}
                           />
                         ))}
                       </div>
@@ -1585,7 +1601,7 @@ export default function ExtrapaysFormPage() {
             <div className="space-y-3">
               <h2 className="font-heading text-lg font-semibold text-surface-900">Qui envoie le colis ?</h2>
               <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} showErrors={showExpediteurErrors}>
-                <IdentityFields data={expediteur} onChange={setExpediteur} />
+                <IdentityFields data={expediteur} onChange={setExpediteur} showErrors={showExpediteurErrors} />
               </ContactFields>
               {!expediteurOk && (
                 <p className="text-caption text-surface-500">Nom, téléphone, adresse et ville sont requis.</p>

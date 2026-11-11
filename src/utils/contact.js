@@ -159,6 +159,7 @@ export const EMPTY_IDENTITY = { numero_piece_identite: '', date_expiration_piece
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Pièce déjà expirée : date saisie antérieure à aujourd'hui.
+export const identityNumberMissing = (data) => !(data?.numero_piece_identite || '').trim();
 export const identityExpired = (data) =>
   Boolean(data?.date_expiration_piece_identite) && data.date_expiration_piece_identite < today();
 

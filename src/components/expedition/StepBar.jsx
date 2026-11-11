@@ -22,11 +22,11 @@ export default function StepBar({ step, labels, maxStepReached, onStepClick }) {
                 }`}
               />
               <span
-                className={`mt-1.5 block truncate text-caption ${
+                className={`mt-1.5 block truncate text-center text-caption ${
                   isCurrent ? 'font-bold text-surface-900' : isDone || canJump ? 'font-semibold text-primary-700' : 'font-medium text-surface-400'
                 }`}
               >
-                {label}
+                {n}
               </span>
             </>
           );
