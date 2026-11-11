@@ -5,7 +5,6 @@
 
 export const DESTINATION_TYPES = [
   { key: 'ld', label: 'LD', modes: ['livraison_domicile'] },
-  { key: 'groupage_afrique', label: 'Groupage Afrique', modes: ['recuperation_agence'] },
   { key: 'groupage_ca', label: 'CA', modes: ['recuperation_agence'] },
   { key: 'groupage_dhd_aerien', label: 'DHD Aerien', modes: ['recuperation_agence'] },
   { key: 'groupage_dhd_maritime', label: 'DHD Maritime', modes: ['recuperation_agence'] },

@@ -56,7 +56,7 @@ const simulateInterville = async (payload) => {
 // GET /api/expedition/client/pays-disponibles?code_pays=<DEPART> — public.
 // Call BEFORE the devis: returns only destination countries that actually have
 // at least one active tariff from the departure backoffice, each with a boolean
-// per type (ld / groupage_afrique / groupage_ca / groupage_dhd_aerien /
+// per type (ld / groupage_ca / groupage_dhd_aerien /
 // groupage_dhd_maritime). A country with a zone but no active tariff is absent.
 // See api-devis-client.md.
 const listAvailableDestinations = async (codePaysDepart) => {

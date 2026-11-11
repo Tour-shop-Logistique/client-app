@@ -7,7 +7,7 @@ import { normalizeSearch } from '../../utils/colisFormat';
 // Commune d'arrivée (Interville) : recherche insensible aux accents dans la
 // liste des communes du pays, avec les destinations récentes en raccourci.
 // La valeur retenue est l'id de la commune (`destinataire_commune_id`).
-export default function CommuneSelectSheet({ open, onClose, communes = [], status, onRetry, currentId, recent = [], onSelect }) {
+export default function CommuneSelectSheet({ open, onClose, communes = [], status, onRetry, currentId, recent = [], onSelect, title = 'Commune de destination', noun = 'commune' }) {
   const [query, setQuery] = useState('');
   const q = normalizeSearch(query);
   const visible = useMemo(
@@ -25,16 +25,16 @@ export default function CommuneSelectSheet({ open, onClose, communes = [], statu
   };
 
   return (
-    <BottomSheet open={open} onClose={close} title="Commune de destination">
+    <BottomSheet open={open} onClose={close} title={title}>
       <div className="relative mb-3">
         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
         <input
           type="search"
           className="input-field pl-9"
-          placeholder="Rechercher une commune"
+          placeholder={`Rechercher une ${noun}`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Rechercher une commune"
+          aria-label={`Rechercher une ${noun}`}
         />
       </div>
 
@@ -42,7 +42,7 @@ export default function CommuneSelectSheet({ open, onClose, communes = [], statu
 
       {status === 'error' && (
         <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
-          <p>Impossible de charger les communes. Vérifiez votre connexion.</p>
+          <p>Impossible de charger les {noun}s. Vérifiez votre connexion.</p>
           <button type="button" onClick={onRetry} className="mt-2 font-semibold underline">
             Réessayer
           </button>
@@ -71,7 +71,7 @@ export default function CommuneSelectSheet({ open, onClose, communes = [], statu
 
           {visible.length === 0 ? (
             <p className="rounded-xl bg-surface-50 p-4 text-center text-sm text-surface-500">
-              {communes.length === 0 ? 'Aucune commune disponible pour ce pays.' : `Aucune commune ne correspond à « ${query.trim()} ».`}
+              {communes.length === 0 ? `Aucune ${noun} disponible pour ce pays.` : `Aucune ${noun} ne correspond à « ${query.trim()} ».`}
             </p>
           ) : (
             <ul className="divide-y divide-surface-100 rounded-xl border border-surface-100">

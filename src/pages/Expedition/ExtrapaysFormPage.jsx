@@ -30,7 +30,7 @@ import DestinationCountrySheet from '../../components/expedition/DestinationCoun
 import PickupOption from '../../components/expedition/PickupOption';
 import CreditOption from '../../components/expedition/CreditOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
-import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
+import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, missionRequestPayload, pickupPayload } from '../../utils/pickup';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import useRequireAuth from '../../hooks/useRequireAuth';
 import expeditionService from '../../services/expeditionService';
@@ -103,8 +103,13 @@ const migrateStep = (s) => {
 
 // Shared with the groupage selector below so the estimate in the action bar
 // always matches what each category's choice shows.
-function computeEstimateTotal(mode, devis, typesChoisis) {
+function computeEstimateTotal(mode, devis, typesChoisis, offres, offresChoisies = []) {
   if (mode === 'livraison_domicile') return devis?.montant_expedition ?? null;
+  // Offres DHD / CA : montant = somme des offres cochées (aucune présélection).
+  if (Array.isArray(offres)) {
+    const chosen = offres.filter((o) => offresChoisies.includes(o.code));
+    return chosen.length ? chosen.reduce((sum, o) => sum + Number(o.montant_total || 0), 0) : null;
+  }
   if (!Array.isArray(devis) || devis.length === 0) return null;
   const shippable = devis.filter((g) => g.types_eligibles.length > 0);
   if (shippable.length === 0) return null;
@@ -181,17 +186,108 @@ function GroupTypeChoice({ group, chosen, onSelect, currency }) {
   );
 }
 
+// Offre DHD / CA du devis (api-devis-client.md, « Offres DHD / CA ») : une offre
+// = une expédition (un type, une facture). Case à cocher, détail par catégorie
+// dépliable. Pas de recommandation ni de présélection : le client compare.
+function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
+  const [open, setOpen] = useState(false);
+  const fmt = (v) => formatPrice(v, currency);
+  const exp = offre.expedition || {};
+  const details = Array.isArray(exp.detail_categories) ? exp.detail_categories : [];
+  const catIds = Object.keys(offre.types_choisis || {});
+  const contenu = details.length
+    ? details.map((d) => d.category_nom).filter(Boolean)
+    : catIds.map((id) => categoryNames[id]).filter(Boolean);
+  return (
+    <div className={`overflow-hidden rounded-xl border transition ${checked ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'}`}>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        onClick={() => onToggle(offre.code)}
+        className="flex min-h-[60px] w-full items-center gap-3 px-3 py-2.5 text-left active:scale-[0.99]"
+      >
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+            checked ? 'border-primary-600 bg-primary-600 text-white' : 'border-surface-300'
+          }`}
+        >
+          {checked && <Check size={13} strokeWidth={3} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block text-sm font-semibold ${checked ? 'text-primary-800' : 'text-surface-900'}`}>
+            {offre.libelle || typeLabel(exp.type_expedition)}
+          </span>
+          {contenu.length > 0 && <span className="block truncate text-caption text-surface-500">{contenu.join(' · ')}</span>}
+          {exp.poids_total != null && <span className="block text-caption text-surface-500">Poids : {fmtKg(exp.poids_total)}</span>}
+        </span>
+        <span className="shrink-0 font-heading text-sm font-bold text-surface-900">{fmt(offre.montant_total)}</span>
+      </button>
+      {exp.minimum_applique && (
+        <p className="px-3 pb-2 text-caption text-amber-700">
+          Minimum de la ligne appliqué{exp.montant_calcule != null ? ` (montant calculé : ${fmt(exp.montant_calcule)})` : ''}.
+        </p>
+      )}
+      {details.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="flex w-full items-center gap-1 border-t border-surface-100 px-3 py-2 text-caption font-semibold text-primary-600"
+          >
+            {open ? 'Masquer le détail' : 'Voir le détail par catégorie'}
+            <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+          {open && (
+            <ul className="space-y-1 px-3 pb-3 text-caption">
+              {details.map((d) => (
+                <li key={d.category_id} className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 text-surface-600">
+                    {d.category_nom} · {fmtKg(d.poids)}{d.prix_unitaire != null ? ` × ${fmt(d.prix_unitaire)}/kg` : ''}
+                  </span>
+                  <span className="shrink-0 font-semibold text-surface-900">{fmt(d.montant)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Coche / décoche une offre en respectant `cumulable_avec[]` : une offre
+// exclusive (CA_COMBINE, `cumulable_avec: []`) décoche tout le reste, et les
+// offres hors CA (DHD Aérien / Maritime) ne se cumulent jamais entre elles.
+function toggleOffre(selected, code, offres) {
+  if (selected.includes(code)) return selected.filter((c) => c !== code);
+  const offre = offres.find((o) => o.code === code);
+  if (!offre) return selected;
+  const allowed = offre.cumulable_avec || [];
+  const kept = selected.filter((c) => {
+    const other = offres.find((o) => o.code === c);
+    return allowed.includes(c) && (other?.cumulable_avec || []).includes(code);
+  });
+  return [...kept, code];
+}
+
 // Résultat de `store`. Livraison à domicile : une expédition. Récupération en
 // agence : 201 (succès total/partiel) ou 422 (aucune créée), toujours avec
 // `resultats[]` par catégorie — chaque échec porte son `message`.
 function SubmitResultScreen({ result, pickupMode, pickupEstimate, currency, categoryNames = {}, onNewExpedition, onBack, onRetryFailed }) {
   const navigate = useNavigate();
   const fmt = (v) => formatPrice(v, currency);
-  const isGroupage = Array.isArray(result.resultats);
-  const successes = isGroupage
-    ? result.resultats.filter((r) => r.success)
-    : result.expedition ? [{ expedition: result.expedition }] : [];
-  const failures = isGroupage ? result.resultats.filter((r) => !r.success) : [];
+  const isGroupage = Array.isArray(result.resultats) || Array.isArray(result.expeditions);
+  // `expeditions[]` (une entrée par expédition réellement créée) est à privilégier :
+  // avec une offre combinée, plusieurs catégories partagent la même expédition.
+  const successes = Array.isArray(result.expeditions) && result.expeditions.length
+    ? result.expeditions.map((exp) => ({ expedition: exp }))
+    : isGroupage
+      ? (result.resultats ?? []).filter((r) => r.success)
+      : result.expedition ? [{ expedition: result.expedition }] : [];
+  const failures = isGroupage ? (result.resultats ?? []).filter((r) => !r.success) : [];
+  const nonEnvoyees = (result.category_ids_non_envoyees ?? []).map((id) => categoryNames[id]).filter(Boolean);
   const partial = successes.length > 0 && failures.length > 0;
 
   return (
@@ -203,12 +299,14 @@ function SubmitResultScreen({ result, pickupMode, pickupEstimate, currency, cate
             title={partial ? 'Envoi en partie enregistré' : 'Demande enregistrée !'}
             subtitle={
               partial
-                ? `${successes.length} sur ${successes.length + failures.length} catégories enregistrées. L'agence va examiner votre demande.`
+                ? `${successes.length} expédition${successes.length > 1 ? 's' : ''} enregistrée${successes.length > 1 ? 's' : ''}, ${failures.length} en échec. L'agence va examiner votre demande.`
                 : "En attente d'acceptation par l'agence de départ."
             }
           >
             {successes.length === 1 && !partial && <CopyReference reference={successes[0].expedition.reference} />}
-            {pickupMode && (
+            {pickupMode && result.pickupError ? (
+              <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{result.pickupError}</p>
+            ) : pickupMode && (
               <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-medium text-primary-700">
                 {PICKUP_MODE_MESSAGE[pickupMode]}
                 {pickupEstimate?.total != null && <> Montant de l’enlèvement : <strong>{fmt(pickupEstimate.total)}</strong>.</>}
@@ -248,6 +346,11 @@ function SubmitResultScreen({ result, pickupMode, pickupEstimate, currency, cate
                 <span className="shrink-0 font-heading text-sm font-bold text-primary-700">{fmt(exp.montant_expedition)}</span>
               </button>
             ))}
+            {nonEnvoyees.length > 0 && (
+              <p className="rounded-xl bg-amber-50 p-3 text-caption text-amber-800">
+                Non envoyé (hors des offres choisies) : {nonEnvoyees.join(', ')}.
+              </p>
+            )}
             {failures.map((f, i) => (
               <div key={f.category_id || i} className="flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-600 text-white">
@@ -333,11 +436,14 @@ export default function ExtrapaysFormPage() {
   const [articles, setArticles] = useState([]); // groupage: { produit_id, designation, reference, category, poids }
   const [colisList, setColisList] = useState([]); // LD: { poids, longueur, largeur, hauteur, articles: [{produit_id, designation, reference}], photo }
   const [agence, setAgence] = useState(null);
-  const [typesChoisis, setTypesChoisis] = useState({}); // groupage: { category_id: type_expedition }
+  const [typesChoisis, setTypesChoisis] = useState({}); // groupage (ancien format) : { category_id: type_expedition }
+  // Offres DHD / CA du devis (`offres[]`) et codes cochés par le client.
+  const [offres, setOffres] = useState(null);
+  const [offresChoisies, setOffresChoisies] = useState([]);
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
   // Enlèvement à domicile : disponible dans les deux modes (livraison_domicile
-  // et recuperation_agence), mêmes champs `enlevement_*` dans `store`.
+  // et recuperation_agence) : champs `enlevement_*` du `store` en LD, demander-enlevement après le `store` en agence.
   const [pickup, setPickup] = useState(EMPTY_PICKUP);
   // Paiement différé : groupage (recuperation_agence) seulement, ignoré en LD.
   const [paiementCredit, setPaiementCredit] = useState(false);
@@ -361,10 +467,10 @@ export default function ExtrapaysFormPage() {
   const draftData = useMemo(
     () => ({
       v: DRAFT_VERSION, code_pays: country.code, step, maxStepReached, mode, paysDestination, villeDestination, communeDestinationId, articles,
-      colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit,
+      colisList, agence, typesChoisis, offresChoisies, expediteur, destinataire, pickup, paiementCredit,
     }),
     [country.code, step, maxStepReached, mode, paysDestination, villeDestination, communeDestinationId, articles,
-      colisList, agence, typesChoisis, expediteur, destinataire, pickup, paiementCredit]
+      colisList, agence, typesChoisis, offresChoisies, expediteur, destinataire, pickup, paiementCredit]
   );
   const draft = useFormDraft(
     'tourshop:expedition-extrapays',
@@ -389,6 +495,7 @@ export default function ExtrapaysFormPage() {
       setColisList(d.colisList ?? []);
       setAgence(d.agence ?? null);
       setTypesChoisis(d.typesChoisis ?? {});
+      setOffresChoisies(Array.isArray(d.offresChoisies) ? d.offresChoisies : []);
       if (d.expediteur) setExpediteur(d.expediteur);
       if (d.destinataire) setDestinataire(d.destinataire);
       if (d.pickup) setPickup(d.pickup);
@@ -400,12 +507,13 @@ export default function ExtrapaysFormPage() {
 
   const isLD = mode === 'livraison_domicile';
   const destinationIsAfrican = isAfricanCountry(paysDestination);
-  // Ville de destination demandée dès que la destination n'est pas africaine
-  // (les deux modes).
-  const villeRequise = Boolean(paysDestination) && !destinationIsAfrican;
-  // Le sélecteur de commune ne concerne que le groupage hors Afrique (tarif CA).
-  const communeApplicable = villeRequise && mode === 'recuperation_agence';
+  // En agence : destination demandée pour tous les pays (sans elle, ni DHD ni CA
+  // ne peuvent être proposés), choisie dans les communes du pays. À domicile :
+  // demandée hors Afrique seulement.
+  const villeRequise = Boolean(paysDestination) && (mode === 'recuperation_agence' || !destinationIsAfrican);
+  const communeApplicable = Boolean(paysDestination) && mode === 'recuperation_agence';
   const communeDestination = communes.find((c) => c.id === communeDestinationId) || null;
+  const villeDepart = (agence?.ville || agence?.commune || '').trim();
 
   useEffect(() => {
     if (!user) return;
@@ -437,6 +545,7 @@ export default function ExtrapaysFormPage() {
     setOpenColis(0);
     setAgence(null);
     setTypesChoisis({});
+    setOffresChoisies([]);
     setExpediteur({
       ...EMPTY_CONTACT,
       nom_prenom: [user?.nom, user?.prenoms].filter(Boolean).join(' '),
@@ -445,6 +554,7 @@ export default function ExtrapaysFormPage() {
     setDestinataire(EMPTY_CONTACT);
     setPickup(EMPTY_PICKUP);
     setDevis(null);
+    setOffres(null);
     setDevisStatus('idle');
   };
 
@@ -461,8 +571,10 @@ export default function ExtrapaysFormPage() {
     setColisList(isLD ? [{ ...EMPTY_LD_COLIS }] : []);
     setOpenColis(0);
     setTypesChoisis({});
+    setOffresChoisies([]);
     setProducts([]);
     setDevis(null);
+    setOffres(null);
     setDevisStatus('idle');
     setPickup(EMPTY_PICKUP);
     setStep(1);
@@ -472,9 +584,14 @@ export default function ExtrapaysFormPage() {
   const handleSelectMode = (value) => {
     if (value === mode) return;
     setMode(value);
+    // La source des villes change selon le mode (communes en agence) : on repart de zéro.
+    setVilleDestination('');
+    setCommuneDestinationId('');
     setDevis(null);
+    setOffres(null);
     setDevisStatus('idle');
     setTypesChoisis({});
+    setOffresChoisies([]);
     // Drop a destination that isn't tariffed for the new mode (e.g. an LD-only
     // country when switching to groupage) so the devis can't fail silently.
     const dest = destinations.find((d) => d.code_pays === paysDestination);
@@ -567,6 +684,7 @@ export default function ExtrapaysFormPage() {
   useEffect(() => {
     if (!canComputeDevis) {
       setDevis(null);
+      setOffres(null);
       setDevisStatus('idle');
       return undefined;
     }
@@ -597,12 +715,15 @@ export default function ExtrapaysFormPage() {
             agence_id: agence.id,
             colis: [{ articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })) }],
           };
+          // Repli de la ligne DHD si l'agence n'a pas de ville en base (agence.ville prime côté serveur).
+          if (villeDepart) payload.ville_depart = villeDepart;
         }
         if (villeRequise) payload.ville_destination = villeDestination;
         if (communeApplicable && communeDestination) payload.destinataire_commune_id = communeDestination.id;
         const data = await expeditionService.getDevis(payload);
         if (cancelled) return;
         setDevis(mode === 'livraison_domicile' ? data.devis ?? null : data.groupes ?? []);
+        setOffres(mode === 'livraison_domicile' || !Array.isArray(data.offres) ? null : data.offres);
         setDevisStatus('idle');
       } catch (err) {
         if (cancelled) return;
@@ -612,6 +733,7 @@ export default function ExtrapaysFormPage() {
             Object.values(err.response?.data?.errors || {}).flat().join(' ') ||
             'Impossible de calculer le devis pour le moment.';
         setDevis(null);
+        setOffres(null);
         setDevisError(message);
         setDevisStatus('error');
       }
@@ -620,7 +742,7 @@ export default function ExtrapaysFormPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [canComputeDevis, mode, country.code, paysDestination, villeDestination, villeRequise, communeApplicable, communeDestination, agence, articles, colisList, devisRetry]);
+  }, [canComputeDevis, mode, country.code, paysDestination, villeDestination, villeDepart, villeRequise, communeApplicable, communeDestination, agence, articles, colisList, devisRetry]);
 
   // Auto-pick the type_expedition for groupage categories that only have one
   // eligible type (per api-enregistrement-expedition-client.md), and keep an
@@ -640,13 +762,25 @@ export default function ExtrapaysFormPage() {
     });
   }, [devis, mode]);
 
+  // Devis recalculé : on ne garde que les offres cochées encore proposées.
+  useEffect(() => {
+    if (!Array.isArray(offres)) return;
+    setOffresChoisies((prev) => {
+      const next = prev.filter((c) => offres.some((o) => o.code === c));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [offres]);
+
+  const handleToggleOffre = (code) => setOffresChoisies((prev) => toggleOffre(prev, code, offres || []));
+
   const handleSelectType = (categoryId, typeExpedition) => {
     setTypesChoisis((prev) => ({ ...prev, [categoryId]: typeExpedition }));
   };
 
   const addArticle = (product) => {
     setArticles((list) => [...list, {
-      produit_id: product.id, designation: product.designation, reference: product.reference, category: product.category?.nom || '', poids: '',
+      produit_id: product.id, designation: product.designation, reference: product.reference, category: product.category?.nom || '',
+      is_ca: product.category?.is_default === true || product.category?.is_default === 1, poids: '',
     }]);
   };
   const updateArticlePoids = (index, poids) => {
@@ -704,7 +838,20 @@ export default function ExtrapaysFormPage() {
   const groupageAllChoicesMade =
     isLD || !Array.isArray(devis) || devis.every((g) => g.types_eligibles.length === 0 || Boolean(typesChoisis[g.category_id]));
   const devisReady = devisStatus === 'idle' && (isLD ? Boolean(devis) : Array.isArray(devis));
-  const canContinueContenu = contenuOk && devisReady && groupageHasShippableGroup && groupageAllChoicesMade;
+  // Offres DHD / CA : `types_choisis` = fusion des offres cochées.
+  const withOffres = !isLD && Array.isArray(offres);
+  const offresCochees = withOffres ? offres.filter((o) => offresChoisies.includes(o.code)) : [];
+  const typesFromOffres = offresCochees.reduce((acc, o) => ({ ...acc, ...(o.types_choisis || {}) }), {});
+  const typesToSend = withOffres ? typesFromOffres : typesChoisis;
+  const categoryNames = Object.fromEntries(groupes.map((g) => [g.category_id, g.category_nom]));
+  const poidsHorsCa = articles.filter((a) => !a.is_ca).reduce((sum, a) => sum + (Number(a.poids) || 0), 0);
+  // Catégories du panier qu'aucune offre cochée n'envoie : à signaler avant validation.
+  const categoriesNonEnvoyees = withOffres && offresCochees.length
+    ? groupes.filter((g) => !typesFromOffres[g.category_id]).map((g) => g.category_nom)
+    : [];
+  const canContinueContenu = withOffres
+    ? contenuOk && devisReady && offresCochees.length > 0
+    : contenuOk && devisReady && groupageHasShippableGroup && groupageAllChoicesMade;
 
   const destinataireOk = contactIsComplete(destinataire);
 
@@ -748,7 +895,7 @@ export default function ExtrapaysFormPage() {
     setRecapOpen(true);
   };
 
-  const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis);
+  const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis, withOffres ? offres : null, offresChoisies);
   const totalLabel = estimateTotal != null ? fmt(estimateTotal) : null;
   // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
   const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
@@ -792,15 +939,34 @@ export default function ExtrapaysFormPage() {
           colis: [{
             articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })),
           }],
-          types_choisis: typesChoisis,
+          types_choisis: typesToSend,
         };
       }
-      Object.assign(payload, pickupPayload(pickup));
+      // L'enlèvement intégré au `store` n'existe qu'en LD / Interville : en agence,
+      // il est demandé juste après via demander-enlevement (voir plus bas).
+      if (isLD) Object.assign(payload, pickupPayload(pickup));
+      else if (villeDepart) payload.ville_depart = villeDepart;
       if (villeRequise) payload.ville_destination = villeDestination;
       if (communeApplicable && communeDestination) payload.destinataire_commune_id = communeDestination.id;
       if (!isLD && paiementCredit) payload.is_paiement_credit = true;
 
       const result = await expeditionService.storeExpedition(payload);
+      // En agence : POST /{id}/demander-enlevement après coup, sur la première
+      // expédition créée (les colis sont remis ensemble au livreur).
+      if (!isLD && pickup.domicile) {
+        const created = Array.isArray(result.expeditions) && result.expeditions.length
+          ? result.expeditions
+          : (result.resultats ?? []).filter((r) => r.success).map((r) => r.expedition);
+        const first = created.find((e) => e?.id);
+        if (first) {
+          try {
+            await expeditionService.requestPickup(first.id, missionRequestPayload(pickup));
+          } catch (pickupErr) {
+            result.pickupError = pickupErr.response?.data?.message
+              || "L'enlèvement n'a pas pu être demandé. Vous pouvez le demander depuis le détail de l'expédition.";
+          }
+        }
+      }
       // Demande envoyee (meme partiellement) : ne pas la re-proposer.
       draft.clear();
       setRecapOpen(false);
@@ -843,6 +1009,7 @@ export default function ExtrapaysFormPage() {
     );
     if (failedProduits.size > 0) setArticles((list) => list.filter((a) => failedProduits.has(a.produit_id)));
     setTypesChoisis((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => failedIds.has(id))));
+    setOffresChoisies([]); // le devis est recalculé : nouvelles offres à choisir
     setSubmitResult(null);
     goToStep(2);
   };
@@ -868,7 +1035,7 @@ export default function ExtrapaysFormPage() {
         pickupMode={pickup.domicile ? pickup.mode : null}
         pickupEstimate={pickup.domicile ? pickup.estimate : null}
         currency={currency}
-        categoryNames={Array.isArray(devis) ? Object.fromEntries(devis.map((g) => [g.category_id, g.category_nom])) : {}}
+        categoryNames={categoryNames}
         onNewExpedition={resetForm}
         onBack={() => setSubmitResult(null)}
         onRetryFailed={retryFailed}
@@ -991,7 +1158,16 @@ export default function ExtrapaysFormPage() {
               {villeRequise && (
                 <div>
                   <p className="mb-1.5 text-sm font-medium text-surface-700">Ville de destination</p>
-                  {cityService.hasCitySearch(paysDestination) ? (
+                  {communeApplicable && (communes.length > 0 || communesStatus === 'loading') ? (
+                    // En agence : les villes de destination viennent de l'API des communes.
+                    <PickerButton
+                      icon={MapPinned}
+                      selected={Boolean(villeDestination)}
+                      title={villeDestination || (communesStatus === 'loading' ? 'Chargement des villes…' : 'Choisir une ville')}
+                      subtitle={villeDestination ? getCountryName(paysDestination) : 'Villes desservies dans ce pays'}
+                      onClick={() => setCommuneSheetOpen(true)}
+                    />
+                  ) : !communeApplicable && cityService.hasCitySearch(paysDestination) ? (
                     <PickerButton
                       icon={Search}
                       selected={Boolean(villeDestination)}
@@ -1000,28 +1176,22 @@ export default function ExtrapaysFormPage() {
                       onClick={() => setCitySheetOpen(true)}
                     />
                   ) : (
-                    <input
-                      id="ville-destination"
-                      className="input-field h-14"
-                      placeholder="Ex : Marseille"
-                      autoComplete="address-level2"
-                      value={villeDestination}
-                      onChange={(e) => setVilleDestination(e.target.value)}
-                    />
+                    <>
+                      <input
+                        id="ville-destination"
+                        className="input-field h-14"
+                        placeholder="Ex : Marseille"
+                        autoComplete="address-level2"
+                        value={villeDestination}
+                        onChange={(e) => setVilleDestination(e.target.value)}
+                      />
+                      {communeApplicable && communesStatus === 'error' && (
+                        <button type="button" onClick={() => setCommunesRetry((t) => t + 1)} className="mt-1.5 text-xs font-semibold text-primary-600">
+                          Liste des villes indisponible · Réessayer
+                        </button>
+                      )}
+                    </>
                   )}
-                </div>
-              )}
-
-              {communeApplicable && (communes.length > 0 || communesStatus === 'loading') && (
-                <div>
-                  <p className="mb-1.5 text-sm font-medium text-surface-700">Commune de destination (optionnel)</p>
-                  <PickerButton
-                    icon={MapPinned}
-                    selected={Boolean(communeDestination)}
-                    title={communeDestination ? communeDestination.nom : communesStatus === 'loading' ? 'Chargement des communes…' : 'Choisir une commune'}
-                    subtitle={communeDestination ? getCountryName(paysDestination) : 'Affine le tarif Colis Accompagnés'}
-                    onClick={() => setCommuneSheetOpen(true)}
-                  />
                 </div>
               )}
 
@@ -1221,7 +1391,10 @@ export default function ExtrapaysFormPage() {
                       <li key={`${a.produit_id}-${i}`} className="flex min-h-[72px] items-center gap-3 py-3">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-surface-900">{a.designation}</p>
-                          <p className="truncate text-caption text-surface-500">{a.category || a.reference}</p>
+                          <p className="flex min-w-0 items-center gap-1.5 text-caption text-surface-500">
+                            {a.is_ca && <span className="shrink-0 rounded-full bg-shop-100 px-2 py-0.5 font-semibold text-shop-700">CA</span>}
+                            <span className="truncate">{a.category || a.reference}</span>
+                          </p>
                         </div>
                         <label
                           htmlFor={`article-${i}-poids`}
@@ -1269,7 +1442,46 @@ export default function ExtrapaysFormPage() {
 
               {devisStatus === 'error' && <ErrorNote message={devisError} onRetry={() => setDevisRetry((t) => t + 1)} />}
 
-              {groupes.length > 0 && devisStatus !== 'error' && (
+              {withOffres && devisStatus !== 'error' && (
+                <div className="space-y-2.5 pt-2">
+                  <h3 className="font-heading text-[15px] font-semibold text-surface-900">Choisissez votre offre</h3>
+                  {offres.length === 0 ? (
+                    <ErrorNote message="Aucun tarif configuré vers cette destination pour ces articles. Modifiez les articles ou la destination." />
+                  ) : (
+                    <>
+                      <p className="text-caption text-surface-500">
+                        Chaque offre correspond à une expédition et une facture. Vous pouvez cumuler une offre DHD et l’offre Colis Accompagnés ;
+                        l’offre combinée regroupe tout le panier en une seule expédition.
+                      </p>
+                      <div className="space-y-2" role="group" aria-label="Offres d'expédition">
+                        {offres.map((o) => (
+                          <OfferCard
+                            key={o.code}
+                            offre={o}
+                            checked={offresChoisies.includes(o.code)}
+                            onToggle={handleToggleOffre}
+                            currency={currency}
+                            categoryNames={categoryNames}
+                          />
+                        ))}
+                      </div>
+                      {destination?.groupage_dhd_maritime && !offres.some((o) => o.code === 'DHD_MARITIME') && poidsHorsCa > 0 && poidsHorsCa < 50 && (
+                        <p className="text-caption text-surface-500">
+                          Le DHD Maritime est proposé à partir de 50 kg de produits hors Colis Accompagnés (actuellement {fmtKg(poidsHorsCa)}).
+                        </p>
+                      )}
+                      {categoriesNonEnvoyees.length > 0 && (
+                        <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 p-3 text-caption text-amber-800">
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                          <span>Avec cette sélection, ne seront pas envoyés : <strong>{categoriesNonEnvoyees.join(', ')}</strong>.</span>
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!withOffres && groupes.length > 0 && devisStatus !== 'error' && (
                 <div className="space-y-2.5 pt-2">
                   <h3 className="font-heading text-[15px] font-semibold text-surface-900">Mode d'expédition par catégorie</h3>
                   {!groupageHasShippableGroup && groupes.length > 1 && (
@@ -1285,7 +1497,9 @@ export default function ExtrapaysFormPage() {
             <ActionDock>
               <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
               <button type="button" className="btn-primary h-12 flex-1" disabled={!canContinueContenu} onClick={() => goToStep(3)}>
-                {devisReady && !groupageAllChoicesMade ? 'Choisir les modes' : 'Continuer'}
+                {withOffres
+                  ? devisReady && offres.length > 0 && offresCochees.length === 0 ? 'Choisir une offre' : 'Continuer'
+                  : devisReady && !groupageAllChoicesMade ? 'Choisir les modes' : 'Continuer'}
               </button>
             </ActionDock>
           </>
@@ -1413,7 +1627,21 @@ export default function ExtrapaysFormPage() {
             <Row label="Destinataire" value={`${destinataire.nom_prenom} · ${destinataire.telephone}`} />
           </div>
 
-          {!isLD && groupes.some((g) => typesChoisis[g.category_id]) && (
+          {withOffres && offresCochees.length > 0 && (
+            <div className="space-y-1.5 rounded-xl bg-surface-50 p-3 text-sm">
+              {offresCochees.map((o) => (
+                <div key={o.code} className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 text-surface-600">{o.libelle || typeLabel(o.expedition?.type_expedition)}</span>
+                  <span className="shrink-0 font-semibold text-surface-900">{fmt(o.montant_total)}</span>
+                </div>
+              ))}
+              {categoriesNonEnvoyees.length > 0 && (
+                <p className="pt-1 text-caption text-amber-700">Non envoyé : {categoriesNonEnvoyees.join(', ')}.</p>
+              )}
+            </div>
+          )}
+
+          {!withOffres && !isLD && groupes.some((g) => typesChoisis[g.category_id]) && (
             <div className="space-y-1.5 rounded-xl bg-surface-50 p-3 text-sm">
               {groupes.filter((g) => typesChoisis[g.category_id]).map((g) => {
                 const t = g.types_eligibles.find((x) => x.type_expedition === typesChoisis[g.category_id]);
@@ -1514,7 +1742,12 @@ export default function ExtrapaysFormPage() {
         status={communesStatus}
         onRetry={() => setCommunesRetry((t) => t + 1)}
         currentId={communeDestinationId}
-        onSelect={(c) => setCommuneDestinationId(c.id)}
+        onSelect={(c) => {
+          setCommuneDestinationId(c.id);
+          setVilleDestination(c.nom);
+        }}
+        title="Ville de destination"
+        noun="ville"
       />
       <AgencySelectSheet
         open={agenceSheetOpen}
