@@ -103,10 +103,12 @@ const migrateStep = (s) => {
 
 // Shared with the groupage selector below so the estimate in the action bar
 // always matches what each category's choice shows.
-function computeEstimateTotal(mode, devis, typesChoisis, offres, offresChoisies = []) {
+function computeEstimateTotal(mode, devis, typesChoisis, offres, offresChoisies = [], montantFinal = null) {
   if (mode === 'livraison_domicile') return devis?.montant_expedition ?? null;
-  // Offres DHD / CA : montant = somme des offres cochées (aucune présélection).
+  // Offres DHD / CA : prix final du 2e appel au devis (`montant_total`, promotions
+  // comprises) ; en attendant, somme des offres cochées (aucune présélection).
   if (Array.isArray(offres)) {
+    if (montantFinal != null && offresChoisies.length) return Number(montantFinal);
     const chosen = offres.filter((o) => offresChoisies.includes(o.code));
     return chosen.length ? chosen.reduce((sum, o) => sum + Number(o.montant_total || 0), 0) : null;
   }
@@ -195,6 +197,9 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
   const exp = offre.expedition || {};
   const details = Array.isArray(exp.detail_categories) ? exp.detail_categories : [];
   const catIds = Object.keys(offre.types_choisis || {});
+  // Promotion de tarif (api-promotions-tarifs.md) : `montant_expedition` est déjà réduit.
+  const promoRemise = Number(exp.montant_remise_promotion) || 0;
+  const promoNom = typeof exp.promotion === 'string' ? exp.promotion : exp.promotion?.nom || exp.promotion?.libelle || '';
   const contenu = details.length
     ? details.map((d) => d.category_nom).filter(Boolean)
     : catIds.map((id) => categoryNames[id]).filter(Boolean);
@@ -221,8 +226,18 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames }) {
           {contenu.length > 0 && <span className="block truncate text-caption text-surface-500">{contenu.join(' · ')}</span>}
           {exp.poids_total != null && <span className="block text-caption text-surface-500">Poids : {fmtKg(exp.poids_total)}</span>}
         </span>
-        <span className="shrink-0 font-heading text-sm font-bold text-surface-900">{fmt(offre.montant_total)}</span>
+        <span className="shrink-0 text-right">
+          {promoRemise > 0 && exp.montant_avant_promotion != null && (
+            <span className="block text-caption text-surface-400 line-through">{fmt(exp.montant_avant_promotion)}</span>
+          )}
+          <span className="block font-heading text-sm font-bold text-surface-900">{fmt(offre.montant_total)}</span>
+        </span>
       </button>
+      {promoRemise > 0 && (
+        <p className="px-3 pb-2 text-caption font-medium text-emerald-700">
+          {promoNom ? `${promoNom} : ` : 'Promotion : '}-{fmt(promoRemise)}
+        </p>
+      )}
       {exp.minimum_applique && (
         <p className="px-3 pb-2 text-caption text-amber-700">
           Minimum de la ligne appliqué{exp.montant_calcule != null ? ` (montant calculé : ${fmt(exp.montant_calcule)})` : ''}.
@@ -440,6 +455,10 @@ export default function ExtrapaysFormPage() {
   // Offres DHD / CA du devis (`offres[]`) et codes cochés par le client.
   const [offres, setOffres] = useState(null);
   const [offresChoisies, setOffresChoisies] = useState([]);
+  // 2e appel au devis avec `types_choisis` : prix réel final (`expeditions_prevues[]` + `montant_total`).
+  const [devisFinal, setDevisFinal] = useState(null);
+  const [finalStatus, setFinalStatus] = useState('idle'); // idle | loading | error
+  const [finalError, setFinalError] = useState('');
   const [expediteur, setExpediteur] = useState(EMPTY_CONTACT);
   const [destinataire, setDestinataire] = useState(EMPTY_CONTACT);
   // Enlèvement à domicile : disponible dans les deux modes (livraison_domicile
@@ -849,9 +868,57 @@ export default function ExtrapaysFormPage() {
   const categoriesNonEnvoyees = withOffres && offresCochees.length
     ? groupes.filter((g) => !typesFromOffres[g.category_id]).map((g) => g.category_nom)
     : [];
+  const typesKey = JSON.stringify(typesFromOffres);
+  const prevuesEnEchec = (devisFinal?.expeditions_prevues ?? []).filter((e) => e?.success === false);
+  const finalReady = finalStatus === 'idle' && Boolean(devisFinal) && prevuesEnEchec.length === 0;
   const canContinueContenu = withOffres
-    ? contenuOk && devisReady && offresCochees.length > 0
+    ? contenuOk && devisReady && offresCochees.length > 0 && finalReady
     : contenuOk && devisReady && groupageHasShippableGroup && groupageAllChoicesMade;
+
+  // 2e appel au devis (parcours conseillé, étape 3) : même panier + `types_choisis`
+  // fusionné des offres cochées -> prix final à afficher.
+  useEffect(() => {
+    if (!withOffres || offresChoisies.length === 0 || !canComputeDevis) {
+      setDevisFinal(null);
+      setFinalStatus('idle');
+      return undefined;
+    }
+    let cancelled = false;
+    setFinalStatus('loading');
+    const timer = setTimeout(async () => {
+      try {
+        const payload = {
+          mode,
+          code_pays_depart: country.code,
+          code_pays_destination: paysDestination,
+          agence_id: agence.id,
+          colis: [{ articles: articles.map((a) => ({ produit_id: a.produit_id, poids: Number(a.poids) })) }],
+          types_choisis: JSON.parse(typesKey),
+        };
+        if (villeDepart) payload.ville_depart = villeDepart;
+        if (villeRequise) payload.ville_destination = villeDestination;
+        if (communeApplicable && communeDestination) payload.destinataire_commune_id = communeDestination.id;
+        const data = await expeditionService.getDevis(payload);
+        if (cancelled) return;
+        setDevisFinal({ montant_total: data.montant_total ?? null, expeditions_prevues: data.expeditions_prevues ?? [] });
+        setFinalStatus('idle');
+      } catch (err) {
+        if (cancelled) return;
+        setDevisFinal(null);
+        setFinalError(
+          err.response?.data?.message
+          || Object.values(err.response?.data?.errors || {}).flat().join(' ')
+          || 'Impossible de calculer le prix final pour le moment.'
+        );
+        setFinalStatus('error');
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [withOffres, typesKey, canComputeDevis, mode, country.code, paysDestination, villeDestination, villeDepart, villeRequise, communeApplicable, communeDestination, agence, articles]);
 
   const destinataireOk = contactIsComplete(destinataire);
 
@@ -895,7 +962,10 @@ export default function ExtrapaysFormPage() {
     setRecapOpen(true);
   };
 
-  const estimateTotal = computeEstimateTotal(mode, devis, typesChoisis, withOffres ? offres : null, offresChoisies);
+  const estimateTotal = computeEstimateTotal(
+    mode, devis, typesChoisis, withOffres ? offres : null, offresChoisies, finalReady ? devisFinal.montant_total : null
+  );
+  const dockStatus = devisStatus === 'loading' || finalStatus === 'loading' ? 'loading' : devisStatus;
   const totalLabel = estimateTotal != null ? fmt(estimateTotal) : null;
   // Total à prévoir : envoi + enlèvement à domicile, quand son tarif est connu.
   const pickupFee = pickup.domicile && pickup.estimate?.total != null ? Number(pickup.estimate.total) : null;
@@ -1353,7 +1423,7 @@ export default function ExtrapaysFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label={`Estimation · ${colisList.length} colis`} amount={totalLabel} status={devisStatus} />
+              <DockTotal label={`Estimation · ${colisList.length} colis`} amount={totalLabel} status={dockStatus} />
               <button type="button" className="btn-primary h-12 flex-1" disabled={!canContinueContenu} onClick={() => goToStep(3)}>
                 Continuer
               </button>
@@ -1470,6 +1540,10 @@ export default function ExtrapaysFormPage() {
                           Le DHD Maritime est proposé à partir de 50 kg de produits hors Colis Accompagnés (actuellement {fmtKg(poidsHorsCa)}).
                         </p>
                       )}
+                      {finalStatus === 'error' && <ErrorNote message={finalError} />}
+                      {prevuesEnEchec.map((e, i) => (
+                        <ErrorNote key={i} message={e.message || 'Une des expéditions prévues ne peut pas être créée.'} />
+                      ))}
                       {categoriesNonEnvoyees.length > 0 && (
                         <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 p-3 text-caption text-amber-800">
                           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -1495,7 +1569,7 @@ export default function ExtrapaysFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <DockTotal label="Estimation" amount={totalLabel} status={dockStatus} />
               <button type="button" className="btn-primary h-12 flex-1" disabled={!canContinueContenu} onClick={() => goToStep(3)}>
                 {withOffres
                   ? devisReady && offres.length > 0 && offresCochees.length === 0 ? 'Choisir une offre' : 'Continuer'
@@ -1519,7 +1593,7 @@ export default function ExtrapaysFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <DockTotal label="Estimation" amount={totalLabel} status={dockStatus} />
               <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinueExpediteur}>
                 Continuer
               </button>
@@ -1549,7 +1623,7 @@ export default function ExtrapaysFormPage() {
             </div>
 
             <ActionDock>
-              <DockTotal label="Estimation" amount={totalLabel} status={devisStatus} />
+              <DockTotal label="Estimation" amount={totalLabel} status={dockStatus} />
               <button type="button" className="btn-primary h-12 flex-1" onClick={handleContinueDestinataire}>
                 Continuer
               </button>
@@ -1580,7 +1654,7 @@ export default function ExtrapaysFormPage() {
                 label={pickupFee != null ? 'Estimation · enlèvement inclus' : 'Estimation'}
                 detail={pickupFee != null ? `dont enlèvement ${fmt(pickupFee)}` : null}
                 amount={grandTotalLabel}
-                status={devisStatus}
+                status={dockStatus}
               />
               <button
                 type="button"
@@ -1631,7 +1705,12 @@ export default function ExtrapaysFormPage() {
             <div className="space-y-1.5 rounded-xl bg-surface-50 p-3 text-sm">
               {offresCochees.map((o) => (
                 <div key={o.code} className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 text-surface-600">{o.libelle || typeLabel(o.expedition?.type_expedition)}</span>
+                  <span className="min-w-0 text-surface-600">
+                    {o.libelle || typeLabel(o.expedition?.type_expedition)}
+                    {Number(o.expedition?.montant_remise_promotion) > 0 && (
+                      <span className="block text-caption text-emerald-700">Promotion : -{fmt(o.expedition.montant_remise_promotion)}</span>
+                    )}
+                  </span>
                   <span className="shrink-0 font-semibold text-surface-900">{fmt(o.montant_total)}</span>
                 </div>
               ))}

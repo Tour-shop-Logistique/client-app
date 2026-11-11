@@ -4,6 +4,24 @@
 
 Le client choisit d'abord un **mode**, qui détermine tout le reste du comportement. Les deux modes ont des formats d'entrée et de sortie différents.
 
+## Endpoints du parcours devis (vue d'ensemble)
+
+Toutes les URL sont préfixées par `/api`. « Public » = pas de token.
+
+| # | Méthode | URL | Auth | Rôle | Documenté |
+|---|---|---|---|---|---|
+| 1 | GET | `/expedition/client/pays-disponibles` | Public | Pays de destination réellement tarifés | ce fichier |
+| 2 | GET | `/produits` | Public | Produits / catégories (éligibilité LD, catégorie CA) | ce fichier |
+| 3 | GET | `/agences`, `/agences/{id}` | Public | Agences de départ / d'arrivée | ce fichier |
+| 4 | GET | `/communes` | Public | Communes (destination Interville, commune de départ/arrivée) | `api-simulation-et-formats-client.md` |
+| 5 | GET | `/expedition/client/formats-colis` | Public | Seuils de format de colis (Interville) | `api-simulation-et-formats-client.md` |
+| 6 | **POST** | **`/expedition/client/devis`** | Public | **Devis** : `mode = livraison_domicile` (LD) ou `recuperation_agence` (groupage Afrique/CA/DHD) | ce fichier |
+| 7 | POST | `/expedition/client/simulate-interville` | Public | Devis **Interville** (national) | `api-simulation-et-formats-client.md` |
+| 8 | GET | `/grille-tarifs-enlevement` | Public | Grille de tarifs d'enlèvement / livraison à domicile par km | `api-enlevement-livraison-client.md` |
+| 9 | POST | `/expedition/client/store` | Token client | Enregistrer l'expédition après le devis | `api-enregistrement-expedition-client.md` |
+
+Le prix calculé aux endpoints 6 et 7 tient compte des **promotions de tarif** du backoffice (voir `api-promotions-tarifs.md`).
+
 ---
 
 ## `GET /api/expedition/client/pays-disponibles`
@@ -67,6 +85,10 @@ Un pays qui a une zone configurée mais **aucun tarif actif** n'apparaît pas da
 ## Mode 1 — `livraison_domicile` (LD)
 
 Un seul devis, calculé **par colis** (poids + dimensions), pas par produit. Correspond exactement au fonctionnement déjà utilisé côté agence.
+
+### Endpoint
+
+`POST /api/expedition/client/devis` — public, corps JSON avec `"mode": "livraison_domicile"`.
 
 ### Entrée
 
@@ -144,6 +166,10 @@ Un seul devis, calculé **par colis** (poids + dimensions), pas par produit. Cor
 
 Un ou plusieurs devis, calculés **par produit** (poids par article), regroupés par catégorie. Le ou les types testés dépendent strictement du pays de destination.
 
+### Endpoint
+
+`POST /api/expedition/client/devis` — **même URL que le mode 1**, public, corps JSON avec `"mode": "recuperation_agence"`.
+
 ### Entrée
 
 ```json
@@ -176,6 +202,7 @@ Un ou plusieurs devis, calculés **par produit** (poids par article), regroupés
 | `ville_destination` | string | **Requis si `destinataire_commune_id` n'est pas fourni** (voir routage) | Ville de destination, en repli de `destinataire_commune_id`. Sans l'un des deux, ni le DHD ni le CA ne peuvent être proposés (ils dépendent de la ligne départ-destination) |
 | `colis[].articles[].produit_id` | uuid | Oui | Depuis `GET /api/produits` — tous les produits sont valides pour ce mode, aucun filtre d'éligibilité à appliquer côté frontend ici (contrairement au mode LD) |
 | `colis[].articles[].poids` | number | Oui, min 0.01 | Poids de cet article en kg |
+| `types_choisis` | objet `{ category_id: type_expedition }` | Non | **Second appel** : une fois que le client a coché ses offres, renvoyer le même devis avec ce champ pour obtenir le **prix réel final** (`expeditions_prevues[]` + `montant_total`, voir sortie). Sans ce champ, ces deux clés sont absentes. Valeurs : `groupage_dhd_aerien`, `groupage_dhd_maritime`, `groupage_ca` |
 
 ### Routage géographique (automatique, pas de paramètre à envoyer pour ça)
 
@@ -192,6 +219,20 @@ DHD et CA ont besoin de la destination (`destinataire_commune_id` ou `ville_dest
 Exemple : vers l'Allemagne, avec des produits CA et des produits hors CA, et des tarifs DHD Aérien, DHD Maritime et CA définis sur la ligne, le client voit les offres `DHD_AERIEN`, `DHD_MARITIME` (si ≥ 50 kg), `CA` et `CA_COMBINE` — exactement comme vers la France.
 
 ### Sortie — succès (200)
+
+**Un seul appel `POST /api/expedition/client/devis` (mode `recuperation_agence`) renvoie tout.** Il n'y a pas d'endpoint séparé pour les offres. La réponse contient :
+
+| Clé racine | Toujours présente | Contenu |
+|---|---|---|
+| `success` | oui | `true` |
+| `groupes[]` | oui | Prix **par catégorie** (conservé pour compatibilité, ne plus l'utiliser pour afficher les prix) |
+| **`offres[]`** | **oui** | **Les offres à proposer au client** (DHD Aérien, DHD Maritime, CA, CA combiné) avec leur prix par expédition — voir section « Offres DHD / CA » plus bas. Peut être `[]` |
+| `expeditions_prevues[]` | seulement si `types_choisis` est envoyé en entrée | Une entrée par expédition qui sera créée au store (même structure que `offres[].expedition`) |
+| `montant_total` | seulement si `types_choisis` est envoyé | Somme des `montant_expedition` de `expeditions_prevues[]` = prix final à afficher |
+
+Parcours conseillé : (1) appel sans `types_choisis` → afficher `offres[]` ; (2) le client coche ses offres ; (3) rappel du même endpoint avec `types_choisis` fusionné → afficher `montant_total` ; (4) `POST /api/expedition/client/store` avec les mêmes `types_choisis`.
+
+Extrait (les champs de `offres[]` sont détaillés plus bas) :
 
 ```json
 {
@@ -215,7 +256,10 @@ Exemple : vers l'Allemagne, avec des produits CA et des produits hors CA, et des
         }
       ]
     }
-  ]
+  ],
+  "offres": [ "… voir « Offres DHD / CA — offres[] » …" ],
+  "expeditions_prevues": [ "… seulement si types_choisis envoyé …" ],
+  "montant_total": 0
 }
 ```
 
@@ -229,6 +273,8 @@ Exemple : vers l'Allemagne, avec des produits CA et des produits hors CA, et des
 Un groupe peut avoir `types_eligibles: []` (aucun tarif configuré pour cette combinaison) — ce n'est pas une erreur.
 
 ### Offres DHD / CA — `offres[]`
+
+> **D'où vient `offres[]` ?** C'est la clé `offres` de la réponse de `POST /api/expedition/client/devis` avec `"mode": "recuperation_agence"` (même appel que `groupes[]`, voir « Sortie — succès » ci-dessus). Aucun autre endpoint à appeler.
 
 > **Affichage recommandé : par expédition, pas par catégorie.** Chaque offre correspond à **une expédition** (un seul type d'expédition, une facture) qui regroupe toutes les catégories partant dans ce type (ex: Denrées alimentaires + Divers en DHD Aérien = une seule expédition DHD Aérien, un seul prix). Afficher le prix de chaque offre, avec `expedition.detail_categories[]` en détail dépliable. `groupes[].types_eligibles[]` (prix par catégorie) reste renvoyé pour compatibilité mais ne doit plus servir à l'affichage des prix.
 
@@ -324,6 +370,7 @@ Si le client coche `DHD_AERIEN` + `CA`, envoyer au store :
 | `offres[].code` / `libelle` | Identifiant stable de l'offre / libellé affichable |
 | `offres[].montant_total` | Prix de l'offre (= `expedition.montant_expedition`) |
 | `offres[].expedition.montant_expedition` | **Prix facturé** (minimum de la ligne inclus si appliqué) |
+| `offres[].expedition.montant_avant_promotion` / `montant_remise_promotion` / `promotion` | Présents si une promotion de tarif s'applique (sinon `null` / `0`). `montant_expedition` est **déjà réduit** ; voir `api-promotions-tarifs.md` |
 | `offres[].expedition.montant_calcule` | Somme des montants par catégorie, **avant** minimum. Différent de `montant_expedition` seulement si `minimum_applique` est vrai |
 | `offres[].expedition.minimum_applique` | Vrai si le total calculé était sous le minimum de la ligne (DHD) et que c'est le minimum qui est facturé |
 | `offres[].expedition.detail_categories[]` | Détail par catégorie : `category_nom`, `poids`, `prix_unitaire`, `montant` (vrai montant calculé, sans minimum) |
