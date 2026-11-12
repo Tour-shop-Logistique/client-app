@@ -24,7 +24,7 @@ export default function WeightStepper({ id, value, onChange, label = 'Poids du c
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-surface-700">
         {label}
       </label>
-      <div className="flex h-14 items-stretch overflow-hidden rounded-xl border border-surface-200 bg-white focus-within:border-transparent focus-within:ring-2 focus-within:ring-primary-500">
+      <div className="flex h-14 items-stretch overflow-hidden rounded-xl border border-surface-300 bg-white shadow-sm focus-within:border-primary-600 focus-within:ring-2 focus-within:ring-primary-600/30">
         <button
           type="button"
           onClick={decrease}

@@ -77,7 +77,7 @@ export default function FormatSelectSheet({ open, onClose, formats = [], current
                   onClick={() => pick(f)}
                   aria-pressed={active}
                   className={`flex min-h-[64px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${
-                    active ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
+                    active ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'
                   }`}
                 >
                   <span

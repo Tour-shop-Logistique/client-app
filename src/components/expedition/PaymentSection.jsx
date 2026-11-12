@@ -79,7 +79,7 @@ function AgencyMethods({ methods, selected, onSelect }) {
               onClick={() => onSelect(m)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(m); }}
               aria-pressed={active}
-              className={`flex items-center gap-3 rounded-xl border p-3 transition ${active ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'}`}
+              className={`flex items-center gap-3 rounded-xl border p-3 transition ${active ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'}`}
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary-600 shadow-card">
                 <Icon size={16} />

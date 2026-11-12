@@ -10,7 +10,7 @@ export default function CreditOption({ value, onChange }) {
       aria-checked={value}
       onClick={() => onChange(!value)}
       className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${
-        value ? 'border-primary-400 bg-primary-50' : 'border-surface-200 bg-white'
+        value ? 'border-primary-400 bg-primary-50' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'
       }`}
     >
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${value ? 'bg-primary-100 text-primary-700' : 'bg-surface-100 text-surface-500'}`}>

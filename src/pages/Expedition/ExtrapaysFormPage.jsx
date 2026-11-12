@@ -159,7 +159,7 @@ function GroupTypeChoice({ group, chosen, onSelect, currency }) {
                 aria-checked={selected}
                 onClick={() => onSelect(group.category_id, t.type_expedition)}
                 className={`flex min-h-[52px] w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition active:scale-[0.99] ${
-                  selected ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
+                  selected ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'
                 }`}
               >
                 <span
@@ -207,7 +207,7 @@ function OfferCard({ offre, checked, onToggle, currency, categoryNames, articles
       ? details.map((d) => d.category_nom).filter(Boolean)
       : catIds.map((id) => categoryNames[id]).filter(Boolean);
   return (
-    <div className={`overflow-hidden rounded-xl border transition ${checked ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'}`}>
+    <div className={`overflow-hidden rounded-xl border transition ${checked ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'}`}>
       <button
         type="button"
         role={single ? undefined : 'checkbox'}

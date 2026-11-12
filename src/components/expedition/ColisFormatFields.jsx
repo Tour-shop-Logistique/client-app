@@ -44,7 +44,7 @@ export default function ColisFormatFields({ colis, formats = [], status = 'idle'
                     aria-pressed={active}
                     onClick={() => pick(f)}
                     className={`flex min-h-[56px] flex-col items-center justify-center rounded-xl border px-1.5 py-2 text-center transition active:scale-[0.98] ${
-                      active ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-surface-200 bg-white text-surface-800'
+                      active ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-surface-300 bg-white text-surface-800 shadow-sm hover:border-primary-300'
                     } ${fits ? '' : 'opacity-60'}`}
                   >
                     <span className="block w-full truncate text-sm font-semibold">{f.nom}</span>
@@ -59,7 +59,7 @@ export default function ColisFormatFields({ colis, formats = [], status = 'idle'
                 type="button"
                 onClick={() => setSheetOpen(true)}
                 className={`flex min-h-[60px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${
-                  selected ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
+                  selected ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'
                 }`}
               >
                 <span className={`icon-tile h-10 w-10 rounded-xl ${selected ? 'bg-white text-primary-600' : 'bg-surface-100 text-surface-500'}`}>

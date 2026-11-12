@@ -10,16 +10,16 @@ export default {
         // Brand palette sourced from the TourShop logomark (feather: navy base ->
         // teal -> cyan -> lime tip, "Tour" wordmark blue, "Shop" wordmark lime).
         primary: {
-          50: '#eff7fe',
-          100: '#dceefc',
-          200: '#b7ddfa',
-          300: '#82c3f5',
-          400: '#47a3eb',
-          500: '#2185d6',
-          600: '#156fbe',
-          700: '#10589a',
-          800: '#12477b',
-          900: '#143c64',
+          50: '#eef5fc',
+          100: '#d9e9f9',
+          200: '#b0d2f3',
+          300: '#78b2e9',
+          400: '#3b8ddb',
+          500: '#1a72c2',
+          600: '#115ca5',
+          700: '#0d4a86',
+          800: '#0f3c6b',
+          900: '#11325a',
           950: '#0c2540',
         },
         teal: {
@@ -98,7 +98,7 @@ export default {
       boxShadow: {
         'nav': '0 -2px 12px rgba(15, 23, 42, 0.06)',
         'card': '0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
-        'brand': '0 8px 24px -8px rgba(21, 111, 190, 0.45)',
+        'brand': '0 8px 24px -8px rgba(17, 92, 165, 0.45)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out forwards',

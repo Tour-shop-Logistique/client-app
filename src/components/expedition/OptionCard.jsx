@@ -14,7 +14,7 @@ const BADGE_TONES = {
 
 const frame = (selected) => (selected
   ? 'border-primary-600 bg-primary-50/60 shadow-card'
-  : 'border-surface-200 bg-white');
+  : 'border-surface-300 bg-white shadow-sm hover:border-primary-300');
 
 function Radio({ selected }) {
   return (

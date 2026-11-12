@@ -12,7 +12,7 @@ export function PickerButton({ icon, title, subtitle, selected, onClick, trailin
       onClick={onClick}
       disabled={disabled}
       className={`flex h-16 w-full items-center gap-3 rounded-xl border px-3 text-left transition active:scale-[0.99] disabled:opacity-60 ${
-        selected ? 'border-primary-600 bg-primary-50' : 'border-surface-200 bg-white'
+        selected ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600/30' : 'border-surface-300 bg-white shadow-sm hover:border-primary-300'
       }`}
       {...rest}
     >
