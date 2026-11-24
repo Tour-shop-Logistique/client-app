@@ -20,7 +20,7 @@ import DraftRestoredBanner from '../../components/common/DraftRestoredBanner';
 import useFormDraft from '../../hooks/useFormDraft';
 import useExitGuard from '../../hooks/useExitGuard';
 import ExitFlowSheet from '../../components/expedition/ExitFlowSheet';
-import EmptyParcelAnimation from '../../components/illustrations/EmptyParcelAnimation';
+import EmptyArticlesIllustration from '../../components/expedition/EmptyArticlesIllustration';
 import CountrySelectSheet from '../../components/common/CountrySelectSheet';
 import CitySelectSheet from '../../components/common/CitySelectSheet';
 import CommuneSelectSheet from '../../components/expedition/CommuneSelectSheet';
@@ -47,7 +47,7 @@ import { ROUTES, expeditionDetailPath } from '../../routes';
 import InvoiceDownloadButton from '../../components/invoice/InvoiceDownloadButton';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityNumberMissing, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityPayload,
 } from '../../utils/contact';
 import ContactFields from '../../components/expedition/ContactFields';
 
@@ -549,7 +549,7 @@ export default function ExtrapaysFormPage() {
     setExpediteur((e) => fillEmptyFields(e, expediteurFromProfile(user)));
   }, [user]);
 
-  const expediteurOk = contactIsComplete(expediteur) && !identityNumberMissing(expediteur) && !identityExpired(expediteur);
+  const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
 
   const goToStep = (n) => {
     setStep(n);
@@ -1402,7 +1402,7 @@ export default function ExtrapaysFormPage() {
 
               {articles.length === 0 ? (
                 <EmptyState
-                  illustration={<EmptyParcelAnimation />}
+                  illustration={<EmptyArticlesIllustration />}
                   float={false}
                   title="Aucun article ajouté"
                   description="Ajoutez les produits à expédier et indiquez le poids de chacun."
@@ -1546,7 +1546,7 @@ export default function ExtrapaysFormPage() {
             <div className="space-y-3">
               <h2 className="font-heading text-lg font-semibold text-surface-900">Qui envoie le colis ?</h2>
               <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} showErrors={showExpediteurErrors}>
-                <IdentityFields data={expediteur} onChange={setExpediteur} showErrors={showExpediteurErrors} />
+                <IdentityFields data={expediteur} onChange={setExpediteur} />
               </ContactFields>
               {!expediteurOk && (
                 <p className="text-caption text-surface-500">Nom, téléphone, adresse et ville sont requis.</p>

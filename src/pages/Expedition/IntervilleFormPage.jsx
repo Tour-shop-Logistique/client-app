@@ -30,7 +30,7 @@ import CreditOption from '../../components/expedition/CreditOption';
 import FeeBreakdown from '../../components/expedition/FeeBreakdown';
 import { ProofPicker } from '../../components/marketplace/FilePickers';
 import {
-  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityNumberMissing, identityPayload,
+  EMPTY_CONTACT, contactIsComplete, contactPayload, focusFirstInvalid, expediteurFromProfile, fillEmptyFields, identityExpired, identityPayload,
 } from '../../utils/contact';
 import IdentityFields from '../../components/expedition/IdentityFields';
 import { EMPTY_PICKUP, PICKUP_MODE_MESSAGE, pickupPayload } from '../../utils/pickup';
@@ -361,7 +361,7 @@ export default function IntervilleFormPage() {
     setExpediteur((e) => (e.ville === agenceVille ? e : { ...e, ville: agenceVille }));
   }, [agenceVille]);
 
-  const expediteurOk = contactIsComplete(expediteur) && !identityNumberMissing(expediteur) && !identityExpired(expediteur);
+  const expediteurOk = contactIsComplete(expediteur) && !identityExpired(expediteur);
   const contactsOk = expediteurOk && contactIsComplete(destinataire);
 
   // « Continuer » reste cliquable : si un champ obligatoire manque, on affiche
@@ -727,7 +727,7 @@ export default function IntervilleFormPage() {
               {expediteurOpen ? (
                 <div className="space-y-2">
                   <ContactFields title="Expéditeur" data={expediteur} onChange={setExpediteur} communes={communes} villeFixed={agenceVille || undefined} showErrors={showContactErrors}>
-                    <IdentityFields data={expediteur} onChange={setExpediteur} showErrors={showContactErrors} />
+                    <IdentityFields data={expediteur} onChange={setExpediteur} />
                   </ContactFields>
                   {expediteurOk && (
                     <button type="button" className="btn-ghost w-full" onClick={() => setExpediteurOpen(false)}>
