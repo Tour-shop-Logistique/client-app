@@ -3,10 +3,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, Package, PackageCheck, Truck, CircleCheckBig, CircleX, CheckCheck, Trash2, Wallet, Receipt,
-  ShoppingBag, TriangleAlert, Gift, CalendarClock, Lock, RefreshCw, Building2, X,
+  ShoppingBag, TriangleAlert, Gift, CalendarClock, Lock, RefreshCw, Building2, X, Megaphone,
 } from 'lucide-react';
 import TopBar from '../../components/common/TopBar';
 import EmptyState from '../../components/common/EmptyState';
+import BottomSheet from '../../components/common/BottomSheet';
 import { EmptyParcelArt } from '../../components/illustrations';
 import usePushSubscription from '../../hooks/usePushSubscription';
 import {
@@ -34,15 +35,17 @@ const KIND = {
   referral: { icon: Gift, className: 'bg-violet-100 text-violet-700' },
   subscription: { icon: CalendarClock, className: 'bg-amber-100 text-amber-700' },
   subscription_blocked: { icon: Lock, className: 'bg-red-100 text-red-600' },
+  announcement: { icon: Megaphone, className: 'bg-shop-100 text-shop-700' },
   info: { icon: Bell, className: 'bg-surface-100 text-surface-500' },
 };
 
-const GROUP_OF = (kind) => (kind.startsWith('parcel_') ? 'colis' : kind.startsWith('order') ? 'marketplace' : 'compte');
+const GROUP_OF = (kind) => (kind === 'announcement' ? 'annonces' : kind.startsWith('parcel_') ? 'colis' : kind.startsWith('order') ? 'marketplace' : 'compte');
 
 const FILTERS = [
   { key: 'all', label: 'Toutes' },
   { key: 'colis', label: 'Colis' },
   { key: 'marketplace', label: 'Marketplace' },
+  { key: 'annonces', label: 'Annonces' },
   { key: 'compte', label: 'Compte' },
 ];
 
@@ -81,7 +84,11 @@ function NotificationRow({ item, onOpen, onRemove }) {
               </time>
             </span>
           </span>
-          {item.message && <span className="mt-0.5 block text-xs leading-snug text-surface-500">{item.message}</span>}
+          {item.message && (
+            <span className={`mt-0.5 block whitespace-pre-line text-xs leading-snug text-surface-500 ${item.kind === 'announcement' ? 'line-clamp-3' : ''}`}>
+              {item.message}
+            </span>
+          )}
           {!item.lue && <span className="sr-only">Non lue</span>}
         </span>
       </button>
@@ -106,6 +113,7 @@ export default function NotificationsPage() {
   const hasLocal = useSelector((state) => state.notifications.items.length > 0);
   const push = usePushSubscription();
   const [filter, setFilter] = useState('all');
+  const [announcement, setAnnouncement] = useState(null);
   const hasUnread = items.some((n) => !n.lue);
 
   useEffect(() => {
@@ -144,7 +152,9 @@ export default function NotificationsPage() {
     } else {
       dispatch(markRead(n.id));
     }
-    if (n.link) navigate(n.link);
+    // Annonce : message complet (jusqu'a 2000 caracteres) dans une feuille.
+    if (n.kind === 'announcement') setAnnouncement(n);
+    else if (n.link) navigate(n.link);
   };
 
   const remove = (n) => {
@@ -276,6 +286,14 @@ export default function NotificationsPage() {
           </>
         )}
       </div>
+      <BottomSheet open={Boolean(announcement)} onClose={() => setAnnouncement(null)} title={announcement?.titre || 'Annonce'}>
+        {announcement && (
+          <div className="space-y-3">
+            <p className="text-caption text-surface-500">{formatDateTime(announcement.date)}</p>
+            <p className="whitespace-pre-line break-words text-sm leading-relaxed text-surface-800">{announcement.message}</p>
+          </div>
+        )}
+      </BottomSheet>
     </div>
   );
 }

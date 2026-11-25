@@ -33,6 +33,7 @@ const channelRefs = new Map(); // channelName -> instance Echo channel
  * @param {Function} handlers.onMissionStep - Etape d'enlevement / de livraison (Mission/etape).
  * @param {Function} handlers.onMarketplaceEvent - (model, action, data, meta) pour
  *   CommandeMarketplace | LivraisonMarketplace | LivraisonMarketplaceOffre (WEBSOCKETS.md).
+ * @param {Function} handlers.onAnnouncement - Annonce du backoffice (Announcement/created, payload `items`).
  * @param {boolean} enabled - Active/desactive l'ecoute (defaut: true).
  */
 export function useWebSocket(userId, handlers = {}, enabled = true) {
@@ -64,6 +65,11 @@ export function useWebSocket(userId, handlers = {}, enabled = true) {
     const h = handlersRef.current;
 
     switch (model) {
+      // Annonce du backoffice : la notification serveur est deja creee.
+      case 'Announcement':
+        if (action === 'created') h.onAnnouncement?.(data, meta);
+        break;
+
       case 'CommandeMarketplace':
       case 'LivraisonMarketplace':
       case 'LivraisonMarketplaceOffre':

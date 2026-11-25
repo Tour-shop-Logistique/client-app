@@ -23,6 +23,8 @@ const DUPLICATE_MS = 30 * 1000; // meme evenement relaye par le WebSocket ET le 
 
 // `data.type` documente (api-client-livreur.md, « Types de notification client »).
 const TYPE_KIND = {
+  // Annonce diffusee par le backoffice (api-annonces-client-livreur.md).
+  annonce: 'announcement',
   demande_acceptee: 'parcel_accepted',
   demande_refusee: 'parcel_refused',
   expedition_controlled: 'parcel_price',

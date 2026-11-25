@@ -3,8 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useWebSocket } from './useWebSocket';
-import { orderPath, salePath, expeditionDetailPath } from '../routes';
-import { pushActivity } from '../store/slices/notificationsSlice';
+import { ROUTES, orderPath, salePath, expeditionDetailPath } from '../routes';
+import { pushActivity, fetchServerNotifications } from '../store/slices/notificationsSlice';
 import { objectLabel } from '../services/paymentService';
 import { getStatutMeta } from '../utils/expeditionStatus';
 import { formatPrice } from '../utils/format';
@@ -82,6 +82,9 @@ export function useRealtimeUpdates(onUpdate, options = {}) {
       : undefined,
     onMissionStep: shouldListen('missions')
       ? (d, m) => emit(d, m, 'mission.step')
+      : undefined,
+    onAnnouncement: shouldListen('annonces')
+      ? (d, m) => emit(d, m, 'announcement.created')
       : undefined,
     onMarketplaceEvent: shouldListen('marketplace')
       ? (model, action, d, m) => emit(d, m, `marketplace.${model}.${action}`)
@@ -205,6 +208,8 @@ function soundFor(eventType, item, role) {
     case 'delivery_offer.received':
     case 'marketplace.LivraisonMarketplaceOffre.proposee':
       return null;
+    case 'announcement.created':
+      return 'default';
     case 'expedition.status_changed':
       return item?.statut_expedition === 'refused' ? 'alert' : 'default';
     case 'marketplace.CommandeMarketplace.paiement_declare':
@@ -403,6 +408,15 @@ export function useRealtimeWithNotifications(onUpdate, options = {}) {
         case 'marketplace.LivraisonMarketplace.demarree':
           if (role === 'vendeur') say.info('Le livreur a récupéré l’article', { action: open(salePath) });
           else say.info('Votre commande est en route 🚚', { action: open(orderPath) });
+          break;
+        // Annonce du backoffice : on recharge l'historique serveur (la notification
+        // y est deja) au lieu d'ajouter une ligne locale en double.
+        case 'announcement.created':
+          dispatch(fetchServerNotifications());
+          toast.info(item?.titre || 'Nouvelle annonce TourShop', {
+            action: { label: 'Voir', onClick: () => navigate(ROUTES.NOTIFICATIONS) },
+            duration: 8000,
+          });
           break;
         // Offres livreurs supprimées (livraison en 3 modes à prix fixé) : rien à afficher.
         case 'marketplace.LivraisonMarketplaceOffre.proposee':
